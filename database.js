@@ -1,11 +1,14 @@
-const Database = require('better-sqlite3');
+const { Database } = require('node-sqlite3-wasm');
 const bcrypt = require('bcryptjs');
 const path = require('path');
 
-const db = new Database(path.join(__dirname, 'tracker.db'));
+// On Vercel production the only writable path is /tmp
+const DB_PATH = process.env.DB_PATH || path.join(__dirname, 'tracker.db');
 
-db.pragma('journal_mode = WAL');
-db.pragma('foreign_keys = ON');
+const db = new Database(DB_PATH);
+
+db.run('PRAGMA journal_mode = WAL');
+db.run('PRAGMA foreign_keys = ON');
 
 db.exec(`
   CREATE TABLE IF NOT EXISTS admins (
@@ -53,11 +56,11 @@ db.exec(`
 `);
 
 // Seed default admin if none exist
-const adminCount = db.prepare('SELECT COUNT(*) as c FROM admins').get();
-if (adminCount.c === 0) {
+const adminCount = db.get('SELECT COUNT(*) as c FROM admins');
+if (parseInt(adminCount.c) === 0) {
   const hash = bcrypt.hashSync('admin123', 10);
-  db.prepare(`INSERT INTO admins (username, password_hash, role) VALUES (?, ?, 'admin')`)
-    .run('admin', hash);
+  db.run(`INSERT INTO admins (username, password_hash, role) VALUES (?, ?, 'admin')`,
+    ['admin', hash]);
   console.log('Default admin created: username=admin password=admin123');
 }
 

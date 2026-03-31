@@ -9,11 +9,10 @@ const PORT = process.env.PORT || 3000;
 
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
-// Serve login page for unauthenticated root requests
+
+// Redirect unauthenticated root requests to login
 app.get('/', (req, res, next) => {
-  if (!req.session || !req.session.adminId) {
-    return res.redirect('/login.html');
-  }
+  if (!req.session || !req.session.adminId) return res.redirect('/login.html');
   next();
 });
 
@@ -26,7 +25,6 @@ app.use(session({
   cookie: { maxAge: 8 * 60 * 60 * 1000 } // 8 hours
 }));
 
-// Auth middleware
 function requireAuth(req, res, next) {
   if (!req.session.adminId) return res.status(401).json({ error: 'Not authenticated' });
   next();
@@ -36,7 +34,7 @@ function requireAuth(req, res, next) {
 
 app.post('/api/login', (req, res) => {
   const { username, password } = req.body;
-  const admin = db.prepare('SELECT * FROM admins WHERE username = ?').get(username);
+  const admin = db.get('SELECT * FROM admins WHERE username = ?', [username]);
   if (!admin || !bcrypt.compareSync(password, admin.password_hash)) {
     return res.status(401).json({ error: 'Invalid username or password' });
   }
@@ -59,8 +57,7 @@ app.get('/api/me', requireAuth, (req, res) => {
 
 app.get('/api/admins', requireAuth, (req, res) => {
   if (req.session.role !== 'admin') return res.status(403).json({ error: 'Admin only' });
-  const admins = db.prepare('SELECT id, username, role, created_at FROM admins').all();
-  res.json(admins);
+  res.json(db.all('SELECT id, username, role, created_at FROM admins'));
 });
 
 app.post('/api/admins', requireAuth, (req, res) => {
@@ -69,8 +66,10 @@ app.post('/api/admins', requireAuth, (req, res) => {
   if (!username || !password) return res.status(400).json({ error: 'Username and password required' });
   const hash = bcrypt.hashSync(password, 10);
   try {
-    const result = db.prepare('INSERT INTO admins (username, password_hash, role) VALUES (?, ?, ?)')
-      .run(username, hash, role || 'manager');
+    const result = db.run(
+      'INSERT INTO admins (username, password_hash, role) VALUES (?, ?, ?)',
+      [username, hash, role || 'manager']
+    );
     res.json({ id: result.lastInsertRowid, username, role: role || 'manager' });
   } catch {
     res.status(400).json({ error: 'Username already exists' });
@@ -82,7 +81,7 @@ app.delete('/api/admins/:id', requireAuth, (req, res) => {
   if (parseInt(req.params.id) === req.session.adminId) {
     return res.status(400).json({ error: 'Cannot delete your own account' });
   }
-  db.prepare('DELETE FROM admins WHERE id = ?').run(req.params.id);
+  db.run('DELETE FROM admins WHERE id = ?', [req.params.id]);
   res.json({ success: true });
 });
 
@@ -91,40 +90,36 @@ app.put('/api/admins/:id/password', requireAuth, (req, res) => {
   const { password } = req.body;
   if (!password) return res.status(400).json({ error: 'Password required' });
   const hash = bcrypt.hashSync(password, 10);
-  db.prepare('UPDATE admins SET password_hash = ? WHERE id = ?').run(hash, req.params.id);
+  db.run('UPDATE admins SET password_hash = ? WHERE id = ?', [hash, req.params.id]);
   res.json({ success: true });
 });
 
 // ─── EMPLOYEES ───────────────────────────────────────────────────────────────
 
 app.get('/api/employees', requireAuth, (req, res) => {
-  const employees = db.prepare('SELECT * FROM employees WHERE active = 1 ORDER BY name').all();
-  res.json(employees);
+  res.json(db.all('SELECT * FROM employees WHERE active = 1 ORDER BY name'));
 });
 
 app.get('/api/employees/all', requireAuth, (req, res) => {
-  const employees = db.prepare('SELECT * FROM employees ORDER BY name').all();
-  res.json(employees);
+  res.json(db.all('SELECT * FROM employees ORDER BY name'));
 });
 
 app.post('/api/employees', requireAuth, (req, res) => {
   const { name, daily_rate } = req.body;
   if (!name) return res.status(400).json({ error: 'Name required' });
-  const result = db.prepare('INSERT INTO employees (name, daily_rate) VALUES (?, ?)')
-    .run(name, daily_rate || 0);
+  const result = db.run('INSERT INTO employees (name, daily_rate) VALUES (?, ?)', [name, daily_rate || 0]);
   res.json({ id: result.lastInsertRowid, name, daily_rate: daily_rate || 0 });
 });
 
 app.put('/api/employees/:id', requireAuth, (req, res) => {
   const { name, daily_rate, active } = req.body;
-  db.prepare('UPDATE employees SET name = ?, daily_rate = ?, active = ? WHERE id = ?')
-    .run(name, daily_rate, active !== undefined ? active : 1, req.params.id);
+  db.run('UPDATE employees SET name = ?, daily_rate = ?, active = ? WHERE id = ?',
+    [name, daily_rate, active !== undefined ? active : 1, req.params.id]);
   res.json({ success: true });
 });
 
 app.delete('/api/employees/:id', requireAuth, (req, res) => {
-  // Soft delete
-  db.prepare('UPDATE employees SET active = 0 WHERE id = ?').run(req.params.id);
+  db.run('UPDATE employees SET active = 0 WHERE id = ?', [req.params.id]);
   res.json({ success: true });
 });
 
@@ -158,13 +153,12 @@ app.get('/api/records/:employeeId', requireAuth, (req, res) => {
   `;
   const params = [req.params.employeeId];
   if (from) { query += ' AND r.record_date >= ?'; params.push(from); }
-  if (to) { query += ' AND r.record_date <= ?'; params.push(to); }
+  if (to)   { query += ' AND r.record_date <= ?'; params.push(to); }
   query += ' ORDER BY r.record_date DESC';
 
-  const records = db.prepare(query).all(...params);
+  const records = db.all(query, params);
   const enriched = records.map(r => {
     const calc = calcDeduction(r, r.daily_rate);
-    // manual adj in minutes, added to deductible
     const totalDeductMinutes = calc.deductible_minutes + (r.manual_adj || 0);
     const ratePerMin = r.daily_rate / (SHIFT_HOURS * 60);
     return {
@@ -181,29 +175,30 @@ app.get('/api/records/:employeeId', requireAuth, (req, res) => {
 app.post('/api/records', requireAuth, (req, res) => {
   const { employee_id, record_date, break_minutes, phone_minutes, wasted_minutes, late_minutes, is_day_off, notes } = req.body;
   if (!employee_id || !record_date) return res.status(400).json({ error: 'employee_id and record_date required' });
-
   try {
-    const result = db.prepare(`
-      INSERT INTO daily_records (employee_id, record_date, break_minutes, phone_minutes, wasted_minutes, late_minutes, is_day_off, notes, created_by, updated_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
-    `).run(employee_id, record_date, break_minutes || 0, phone_minutes || 0, wasted_minutes || 0, late_minutes || 0, is_day_off ? 1 : 0, notes || '', req.session.adminId);
+    const result = db.run(
+      `INSERT INTO daily_records (employee_id, record_date, break_minutes, phone_minutes, wasted_minutes, late_minutes, is_day_off, notes, created_by, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))`,
+      [employee_id, record_date, break_minutes || 0, phone_minutes || 0, wasted_minutes || 0,
+       late_minutes || 0, is_day_off ? 1 : 0, notes || '', req.session.adminId]
+    );
     res.json({ id: result.lastInsertRowid });
   } catch {
-    res.status(400).json({ error: 'Record for this date already exists. Use PUT to update.' });
+    res.status(400).json({ error: 'Record for this date already exists. Use edit to update.' });
   }
 });
 
 app.put('/api/records/:id', requireAuth, (req, res) => {
   const { break_minutes, phone_minutes, wasted_minutes, late_minutes, is_day_off, notes } = req.body;
-  db.prepare(`
-    UPDATE daily_records SET break_minutes=?, phone_minutes=?, wasted_minutes=?, late_minutes=?, is_day_off=?, notes=?, updated_at=datetime('now')
-    WHERE id=?
-  `).run(break_minutes || 0, phone_minutes || 0, wasted_minutes || 0, late_minutes || 0, is_day_off ? 1 : 0, notes || '', req.params.id);
+  db.run(
+    `UPDATE daily_records SET break_minutes=?, phone_minutes=?, wasted_minutes=?, late_minutes=?, is_day_off=?, notes=?, updated_at=datetime('now') WHERE id=?`,
+    [break_minutes || 0, phone_minutes || 0, wasted_minutes || 0, late_minutes || 0, is_day_off ? 1 : 0, notes || '', req.params.id]
+  );
   res.json({ success: true });
 });
 
 app.delete('/api/records/:id', requireAuth, (req, res) => {
-  db.prepare('DELETE FROM daily_records WHERE id = ?').run(req.params.id);
+  db.run('DELETE FROM daily_records WHERE id = ?', [req.params.id]);
   res.json({ success: true });
 });
 
@@ -215,7 +210,7 @@ app.get('/api/adjustments/:employeeId', requireAuth, (req, res) => {
   const params = [req.params.employeeId];
   if (date) { query += ' AND a.record_date = ?'; params.push(date); }
   query += ' ORDER BY a.created_at DESC';
-  res.json(db.prepare(query).all(...params));
+  res.json(db.all(query, params));
 });
 
 app.post('/api/adjustments', requireAuth, (req, res) => {
@@ -223,13 +218,15 @@ app.post('/api/adjustments', requireAuth, (req, res) => {
   if (!employee_id || !record_date || adjustment_minutes === undefined || !reason) {
     return res.status(400).json({ error: 'All fields required' });
   }
-  const result = db.prepare('INSERT INTO manual_adjustments (employee_id, record_date, adjustment_minutes, reason, created_by) VALUES (?, ?, ?, ?, ?)')
-    .run(employee_id, record_date, adjustment_minutes, reason, req.session.adminId);
+  const result = db.run(
+    'INSERT INTO manual_adjustments (employee_id, record_date, adjustment_minutes, reason, created_by) VALUES (?, ?, ?, ?, ?)',
+    [employee_id, record_date, adjustment_minutes, reason, req.session.adminId]
+  );
   res.json({ id: result.lastInsertRowid });
 });
 
 app.delete('/api/adjustments/:id', requireAuth, (req, res) => {
-  db.prepare('DELETE FROM manual_adjustments WHERE id = ?').run(req.params.id);
+  db.run('DELETE FROM manual_adjustments WHERE id = ?', [req.params.id]);
   res.json({ success: true });
 });
 
@@ -237,7 +234,7 @@ app.delete('/api/adjustments/:id', requireAuth, (req, res) => {
 
 app.get('/api/summary', requireAuth, (req, res) => {
   const { from, to } = req.query;
-  const employees = db.prepare('SELECT * FROM employees WHERE active = 1 ORDER BY name').all();
+  const employees = db.all('SELECT * FROM employees WHERE active = 1 ORDER BY name');
 
   const summary = employees.map(emp => {
     let query = `
@@ -249,20 +246,18 @@ app.get('/api/summary', requireAuth, (req, res) => {
     `;
     const params = [emp.id];
     if (from) { query += ' AND r.record_date >= ?'; params.push(from); }
-    if (to) { query += ' AND r.record_date <= ?'; params.push(to); }
+    if (to)   { query += ' AND r.record_date <= ?'; params.push(to); }
 
-    const records = db.prepare(query).all(...params);
+    const records = db.all(query, params);
     let totalDeductMinutes = 0;
     let totalDeduction = 0;
     let daysOff = 0;
 
     records.forEach(r => {
       const calc = calcDeduction(r, emp.daily_rate);
-      const adjMin = r.manual_adj || 0;
-      const totalMin = calc.deductible_minutes + adjMin;
+      const totalMin = calc.deductible_minutes + (r.manual_adj || 0);
       totalDeductMinutes += totalMin;
-      const ratePerMin = emp.daily_rate / (SHIFT_HOURS * 60);
-      totalDeduction += totalMin * ratePerMin;
+      totalDeduction += totalMin * (emp.daily_rate / (SHIFT_HOURS * 60));
       if (r.is_day_off) daysOff++;
     });
 
