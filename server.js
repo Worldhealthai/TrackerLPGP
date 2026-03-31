@@ -9,10 +9,12 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 const JWT_SECRET = process.env.JWT_SECRET || 'lpgp-tracker-jwt-2024';
 
-// Initialize DB once; the promise is reused across all requests in the same instance
+// Initialize DB once; promise is reused across requests in the same instance
+// NOTE: Do NOT call process.exit() here — it kills the serverless function
+let dbInitError = null;
 const dbReady = initDb().catch(err => {
   console.error('DB init failed:', err.message);
-  process.exit(1);
+  dbInitError = err;
 });
 
 app.use(express.json());
@@ -20,7 +22,18 @@ app.use(express.urlencoded({ extended: true }));
 app.use(cookieParser());
 
 // Redirect unauthenticated root requests to login
-app.get('/', (req, res, next) => {
+app.get('/', async (req, res, next) => {
+  // Show a setup page if DB isn't configured yet
+  await dbReady;
+  if (dbInitError) {
+    const hint = !process.env.DATABASE_URL
+      ? '<p>Set the <strong>DATABASE_URL</strong> environment variable in Vercel → Project Settings → Environment Variables, then redeploy.</p>'
+      : `<p>DB error: ${dbInitError.message}</p>`;
+    return res.status(503).send(`<!DOCTYPE html><html><head><title>Setup Required</title>
+      <style>body{font-family:sans-serif;max-width:600px;margin:80px auto;padding:20px}
+      h1{color:#d93025}code{background:#f1f3f4;padding:2px 8px;border-radius:4px}</style></head>
+      <body><h1>Database Not Connected</h1>${hint}</body></html>`);
+  }
   const token = req.cookies.token;
   if (!token) return res.redirect('/login.html');
   try { jwt.verify(token, JWT_SECRET); next(); } catch { res.redirect('/login.html'); }
@@ -30,7 +43,14 @@ app.use(express.static(path.join(__dirname, 'public')));
 
 // Wait for DB init before handling any API request
 app.use('/api', async (req, res, next) => {
-  try { await dbReady; next(); } catch { res.status(503).json({ error: 'Database unavailable' }); }
+  await dbReady;
+  if (dbInitError) {
+    const msg = !process.env.DATABASE_URL
+      ? 'DATABASE_URL environment variable is not set. Add your Neon connection string in Vercel → Settings → Environment Variables.'
+      : `Database connection failed: ${dbInitError.message}`;
+    return res.status(503).json({ error: msg });
+  }
+  next();
 });
 
 // ─── AUTH MIDDLEWARE ──────────────────────────────────────────────────────────
