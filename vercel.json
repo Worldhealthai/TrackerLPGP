@@ -11,8 +11,5 @@
       "src": "/(.*)",
       "dest": "server.js"
     }
-  ],
-  "env": {
-    "DB_PATH": "/tmp/tracker.db"
-  }
+  ]
 }
