@@ -1,0 +1,367 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Employee Tracker</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div class="app" id="app">
+
+  <!-- SIDEBAR -->
+  <nav class="sidebar">
+    <div class="sidebar-logo">
+      <h2>EmpTracker</h2>
+      <span id="userLabel"></span>
+    </div>
+    <div class="sidebar-nav">
+      <div class="nav-item active" data-page="dashboard">
+        <span class="icon">📊</span> Dashboard
+      </div>
+      <div class="nav-item" data-page="tracking">
+        <span class="icon">⏱️</span> Daily Tracking
+      </div>
+      <div class="nav-item" data-page="employees">
+        <span class="icon">👥</span> Employees
+      </div>
+      <div class="nav-item" data-page="reports">
+        <span class="icon">📋</span> Reports
+      </div>
+      <div class="nav-item admin-only hidden" data-page="admins">
+        <span class="icon">🔐</span> Admin Users
+      </div>
+    </div>
+    <div class="sidebar-footer">
+      <div style="margin-bottom:10px;font-size:0.75rem">
+        Shift: 8hrs &nbsp;|&nbsp; Break: 40min allowed
+      </div>
+      <button class="btn btn-ghost btn-sm" id="logoutBtn" style="width:100%;justify-content:center">
+        Sign Out
+      </button>
+    </div>
+  </nav>
+
+  <!-- MAIN -->
+  <div class="main">
+    <div class="topbar">
+      <h1 id="pageTitle">Dashboard</h1>
+      <span id="todayDate" style="color:var(--muted);font-size:0.88rem"></span>
+    </div>
+    <div class="content">
+
+      <!-- ══ DASHBOARD ══ -->
+      <div class="page active" id="page-dashboard">
+        <div class="filter-bar">
+          <div class="form-group">
+            <label>From</label>
+            <input type="date" id="dashFrom">
+          </div>
+          <div class="form-group">
+            <label>To</label>
+            <input type="date" id="dashTo">
+          </div>
+          <button class="btn btn-primary" onclick="loadDashboard()">Filter</button>
+        </div>
+
+        <div class="stats-grid" id="dashStats"></div>
+
+        <div class="card">
+          <div class="card-header">
+            <span class="card-title">Employee Summary</span>
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Employee</th>
+                  <th>Days Tracked</th>
+                  <th>Days Off</th>
+                  <th>Total Deduct (min)</th>
+                  <th>Total Deduction</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody id="dashTable"></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <!-- ══ DAILY TRACKING ══ -->
+      <div class="page" id="page-tracking">
+        <div class="filter-bar">
+          <div class="form-group">
+            <label>Employee</label>
+            <select id="trackEmp" onchange="loadEmployeeRecords()">
+              <option value="">-- Select Employee --</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>Month</label>
+            <input type="month" id="trackMonth">
+          </div>
+          <button class="btn btn-primary" onclick="loadEmployeeRecords()">Load</button>
+          <button class="btn btn-ghost" id="addRecordBtn" onclick="openRecordModal()" style="margin-left:auto">
+            + Add Record
+          </button>
+        </div>
+
+        <!-- Employee stats bar -->
+        <div id="empStatsBar" class="stats-grid hidden"></div>
+
+        <div class="card">
+          <div class="card-header">
+            <span class="card-title" id="trackTableTitle">Records</span>
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Date</th>
+                  <th>Break</th>
+                  <th>Phone</th>
+                  <th>Wasted</th>
+                  <th>Late</th>
+                  <th>Day Off</th>
+                  <th>Manual Adj</th>
+                  <th>Total Deduct</th>
+                  <th>Amount</th>
+                  <th>Notes</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody id="trackTable"></tbody>
+            </table>
+          </div>
+          <div id="trackEmpty" class="empty-state hidden">
+            <div class="icon">📅</div>
+            <div>No records found. Select an employee and load records.</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ══ EMPLOYEES ══ -->
+      <div class="page" id="page-employees">
+        <div style="display:flex;justify-content:flex-end;margin-bottom:16px">
+          <button class="btn btn-primary" onclick="openEmpModal()">+ Add Employee</button>
+        </div>
+        <div class="card">
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Name</th>
+                  <th>Daily Rate</th>
+                  <th>Status</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody id="empTable"></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <!-- ══ REPORTS ══ -->
+      <div class="page" id="page-reports">
+        <div class="filter-bar">
+          <div class="form-group">
+            <label>From</label>
+            <input type="date" id="repFrom">
+          </div>
+          <div class="form-group">
+            <label>To</label>
+            <input type="date" id="repTo">
+          </div>
+          <div class="form-group">
+            <label>Employee</label>
+            <select id="repEmp">
+              <option value="">All Employees</option>
+            </select>
+          </div>
+          <button class="btn btn-primary" onclick="loadReport()">Generate</button>
+        </div>
+
+        <div id="reportContent">
+          <div class="empty-state">
+            <div class="icon">📋</div>
+            <div>Select a date range and generate a report.</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ══ ADMINS ══ -->
+      <div class="page" id="page-admins">
+        <div style="display:flex;justify-content:flex-end;margin-bottom:16px">
+          <button class="btn btn-primary" onclick="openAdminModal()">+ Add Manager</button>
+        </div>
+        <div class="card">
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Username</th>
+                  <th>Role</th>
+                  <th>Created</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody id="adminTable"></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+    </div><!-- /content -->
+  </div><!-- /main -->
+</div><!-- /app -->
+
+<!-- ══ MODAL: Record ══ -->
+<div class="modal-overlay" id="recordModal">
+  <div class="modal">
+    <div class="modal-header">
+      <h2 id="recordModalTitle">Add Daily Record</h2>
+      <button class="modal-close" onclick="closeModal('recordModal')">✕</button>
+    </div>
+
+    <input type="hidden" id="recId">
+    <input type="hidden" id="recEmpId">
+
+    <div class="form-row">
+      <div class="form-group">
+        <label>Date</label>
+        <input type="date" id="recDate">
+      </div>
+      <div class="form-group">
+        <label>Day Off?</label>
+        <select id="recDayOff" onchange="toggleDayOff()">
+          <option value="0">No</option>
+          <option value="1">Yes – Full Day</option>
+        </select>
+      </div>
+    </div>
+
+    <div id="recFields">
+      <div class="form-row">
+        <div class="form-group">
+          <label>Break Taken (min)</label>
+          <input type="number" id="recBreak" min="0" value="40" oninput="updatePreview()">
+        </div>
+        <div class="form-group">
+          <label>Phone Time (min)</label>
+          <input type="number" id="recPhone" min="0" value="0" oninput="updatePreview()">
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label>Wasted Time (min)</label>
+          <input type="number" id="recWasted" min="0" value="0" oninput="updatePreview()">
+        </div>
+        <div class="form-group">
+          <label>Late Arrival (min)</label>
+          <input type="number" id="recLate" min="0" value="0" oninput="updatePreview()">
+        </div>
+      </div>
+    </div>
+
+    <div class="form-group" style="margin-bottom:16px">
+      <label>Notes</label>
+      <textarea id="recNotes" placeholder="Optional notes…"></textarea>
+    </div>
+
+    <div id="recPreview" class="deduction-box hidden"></div>
+
+    <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:20px">
+      <button class="btn btn-ghost" onclick="closeModal('recordModal')">Cancel</button>
+      <button class="btn btn-primary" onclick="saveRecord()">Save Record</button>
+    </div>
+  </div>
+</div>
+
+<!-- ══ MODAL: Adjustments ══ -->
+<div class="modal-overlay" id="adjModal">
+  <div class="modal">
+    <div class="modal-header">
+      <h2>Manual Adjustments</h2>
+      <button class="modal-close" onclick="closeModal('adjModal')">✕</button>
+    </div>
+    <p style="font-size:0.85rem;color:var(--muted);margin-bottom:16px" id="adjModalSubtitle"></p>
+
+    <div class="section-title">Add Adjustment</div>
+    <div class="form-row">
+      <div class="form-group">
+        <label>Minutes (+deduct / -restore)</label>
+        <input type="number" id="adjMinutes" placeholder="e.g. 30 or -15">
+      </div>
+      <div class="form-group">
+        <label>Reason</label>
+        <input type="text" id="adjReason" placeholder="Reason for adjustment">
+      </div>
+    </div>
+    <button class="btn btn-primary" onclick="saveAdjustment()">Add Adjustment</button>
+
+    <div class="section-title">Existing Adjustments</div>
+    <div id="adjList" class="adj-list"></div>
+  </div>
+</div>
+
+<!-- ══ MODAL: Employee ══ -->
+<div class="modal-overlay" id="empModal">
+  <div class="modal">
+    <div class="modal-header">
+      <h2 id="empModalTitle">Add Employee</h2>
+      <button class="modal-close" onclick="closeModal('empModal')">✕</button>
+    </div>
+    <input type="hidden" id="empId">
+    <div class="form-row">
+      <div class="form-group">
+        <label>Full Name</label>
+        <input type="text" id="empName">
+      </div>
+      <div class="form-group">
+        <label>Daily Rate ($)</label>
+        <input type="number" id="empRate" min="0" step="0.01" value="0">
+      </div>
+    </div>
+    <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:20px">
+      <button class="btn btn-ghost" onclick="closeModal('empModal')">Cancel</button>
+      <button class="btn btn-primary" onclick="saveEmployee()">Save</button>
+    </div>
+  </div>
+</div>
+
+<!-- ══ MODAL: Admin ══ -->
+<div class="modal-overlay" id="adminModal">
+  <div class="modal">
+    <div class="modal-header">
+      <h2>Add Manager / Admin</h2>
+      <button class="modal-close" onclick="closeModal('adminModal')">✕</button>
+    </div>
+    <div class="form-row">
+      <div class="form-group">
+        <label>Username</label>
+        <input type="text" id="newAdminUser">
+      </div>
+      <div class="form-group">
+        <label>Password</label>
+        <input type="password" id="newAdminPass">
+      </div>
+    </div>
+    <div class="form-group" style="margin-bottom:20px">
+      <label>Role</label>
+      <select id="newAdminRole">
+        <option value="manager">Manager</option>
+        <option value="admin">Admin (full access)</option>
+      </select>
+    </div>
+    <div style="display:flex;gap:10px;justify-content:flex-end">
+      <button class="btn btn-ghost" onclick="closeModal('adminModal')">Cancel</button>
+      <button class="btn btn-primary" onclick="saveAdmin()">Create Account</button>
+    </div>
+  </div>
+</div>
+
+<script src="app.js"></script>
+</body>
+</html>
