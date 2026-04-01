@@ -422,48 +422,53 @@ app.delete('/api/payments/:id', requireAuth, async (req, res) => {
 // ─── SALARY OVERVIEW ─────────────────────────────────────────────────────────
 
 app.get('/api/salary-overview', requireAuth, async (req, res) => {
-  const year = parseInt(req.query.year) || new Date().getFullYear();
-  const { rows: employees } = await q('SELECT * FROM employees WHERE active = 1 ORDER BY name');
+  try {
+    const year = parseInt(req.query.year) || new Date().getFullYear();
+    const { rows: employees } = await q('SELECT * FROM employees WHERE active = 1 ORDER BY name');
 
-  const overview = await Promise.all(employees.map(async emp => {
-    const { rows: payments } = await q(
-      'SELECT * FROM monthly_payments WHERE employee_id = ? AND payment_year = ? ORDER BY payment_month',
-      [emp.id, year]
-    );
+    const overview = await Promise.all(employees.map(async emp => {
+      const { rows: payments } = await q(
+        'SELECT * FROM monthly_payments WHERE employee_id = ? AND payment_year = ? ORDER BY payment_month',
+        [emp.id, year]
+      );
 
-    const allowance  = DAY_OFF_ALLOWANCE[emp.employment_type] || 20;
-    const annualSal  = parseFloat(emp.annual_salary) || 0;
-    const dayCalc    = await calcExcessDeductions(emp.id, year, annualSal, allowance);
+      const allowance  = DAY_OFF_ALLOWANCE[emp.employment_type] || 20;
+      const annualSal  = parseFloat(emp.annual_salary) || 0;
+      const dayCalc    = await calcExcessDeductions(emp.id, year, annualSal, allowance);
 
-    const { rows: officeRows } = await q(
-      'SELECT *, deduction_date::TEXT AS deduction_date FROM office_deductions WHERE employee_id = ? ORDER BY deduction_date DESC',
-      [emp.id]
-    );
-    const totalOffice = officeRows.reduce((a, b) => a + parseFloat(b.amount), 0);
-    const totalPaid   = payments.reduce((a, b) => a + parseFloat(b.amount), 0);
-    const netRemaining = parseFloat((annualSal - totalPaid - dayCalc.excess_deduction - totalOffice).toFixed(2));
-    const pctPaid     = annualSal > 0 ? Math.min(100, Math.round((totalPaid / annualSal) * 100)) : 0;
+      const { rows: officeRows } = await q(
+        'SELECT *, deduction_date::TEXT AS deduction_date FROM office_deductions WHERE employee_id = ? ORDER BY deduction_date DESC',
+        [emp.id]
+      );
+      const totalOffice = officeRows.reduce((a, b) => a + parseFloat(b.amount), 0);
+      const totalPaid   = payments.reduce((a, b) => a + parseFloat(b.amount), 0);
+      const netRemaining = parseFloat((annualSal - totalPaid - dayCalc.excess_deduction - totalOffice).toFixed(2));
+      const pctPaid     = annualSal > 0 ? Math.min(100, Math.round((totalPaid / annualSal) * 100)) : 0;
 
-    return {
-      employee_id:       emp.id,
-      name:              emp.name,
-      employment_type:   emp.employment_type,
-      annual_salary:     annualSal,
-      payments,
-      office_deductions: officeRows,
-      total_office_deductions: parseFloat(totalOffice.toFixed(2)),
-      total_paid:        parseFloat(totalPaid.toFixed(2)),
-      total_days_off:    dayCalc.total_days_off,
-      allowance_days:    allowance,
-      excess_days:       dayCalc.excess_days,
-      excess_deduction:  dayCalc.excess_deduction,
-      breakdown:         dayCalc.breakdown,
-      net_remaining:     netRemaining,
-      pct_paid:          pctPaid
-    };
-  }));
+      return {
+        employee_id:       emp.id,
+        name:              emp.name,
+        employment_type:   emp.employment_type,
+        annual_salary:     annualSal,
+        payments,
+        office_deductions: officeRows,
+        total_office_deductions: parseFloat(totalOffice.toFixed(2)),
+        total_paid:        parseFloat(totalPaid.toFixed(2)),
+        total_days_off:    dayCalc.total_days_off,
+        allowance_days:    allowance,
+        excess_days:       dayCalc.excess_days,
+        excess_deduction:  dayCalc.excess_deduction,
+        breakdown:         dayCalc.breakdown,
+        net_remaining:     netRemaining,
+        pct_paid:          pctPaid
+      };
+    }));
 
-  res.json(overview);
+    res.json(overview);
+  } catch (e) {
+    console.error('/api/salary-overview error:', e);
+    res.status(500).json({ error: e.message });
+  }
 });
 
 // ─── CALENDAR ────────────────────────────────────────────────────────────────
@@ -586,6 +591,16 @@ app.post('/api/office-deductions', requireAuth, async (req, res) => {
 app.delete('/api/office-deductions/:id', requireAuth, async (req, res) => {
   await q('DELETE FROM office_deductions WHERE id = ?', [req.params.id]);
   res.json({ success: true });
+});
+
+// ─── GLOBAL ERROR HANDLER ────────────────────────────────────────────────────
+// Catches any unhandled async errors thrown in routes (e.g. DB failures)
+// eslint-disable-next-line no-unused-vars
+app.use((err, req, res, next) => {
+  console.error('Unhandled route error:', err);
+  if (!res.headersSent) {
+    res.status(500).json({ error: err.message || 'Internal server error' });
+  }
 });
 
 // ─── START ────────────────────────────────────────────────────────────────────

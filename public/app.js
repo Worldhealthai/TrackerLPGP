@@ -743,8 +743,19 @@ async function loadSalaryPage() {
     const year   = document.getElementById('salaryYear').value || new Date().getFullYear();
     const empFilter = document.getElementById('salaryEmpFilter').value;
 
-    const res  = await fetch(`/api/salary-overview?year=${year}`);
-    if (!res.ok) throw new Error(`Server error ${res.status}`);
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), 20000);
+    let res;
+    try {
+      res = await fetch(`/api/salary-overview?year=${year}`, { signal: ctrl.signal });
+    } finally {
+      clearTimeout(timer);
+    }
+    if (!res.ok) {
+      let errMsg = `Server error ${res.status}`;
+      try { const j = await res.json(); errMsg = j.error || errMsg; } catch {}
+      throw new Error(errMsg);
+    }
     const data = await res.json();
     if (!Array.isArray(data)) throw new Error('Unexpected response from server');
     const rows = empFilter ? data.filter(e => String(e.employee_id) === empFilter) : data;
