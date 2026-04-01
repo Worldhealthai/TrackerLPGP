@@ -1,4 +1,4 @@
-const { neon, neonConfig } = require('@neondatabase/serverless');
+const { neon } = require('@neondatabase/serverless');
 const bcrypt = require('bcryptjs');
 
 const connectionString = process.env.DATABASE_URL || process.env.POSTGRES_URL;
