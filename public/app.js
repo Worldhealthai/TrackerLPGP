@@ -737,131 +737,149 @@ function initSalaryYearSelect() {
 }
 
 async function loadSalaryPage() {
-  initSalaryYearSelect();
-  const year   = document.getElementById('salaryYear').value || new Date().getFullYear();
-  const empFilter = document.getElementById('salaryEmpFilter').value;
-
-  const res  = await fetch(`/api/salary-overview?year=${year}`);
-  const data = await res.json();
-  const rows = empFilter ? data.filter(e => String(e.employee_id) === empFilter) : data;
-
-  // ── Totals strip ──
-  const totalAnnual   = rows.reduce((a, b) => a + b.annual_salary, 0);
-  const totalPaid     = rows.reduce((a, b) => a + b.total_paid, 0);
-  const totalDeduct   = rows.reduce((a, b) => a + b.excess_deduction, 0);
-  const totalRemain   = rows.reduce((a, b) => a + b.net_remaining, 0);
-
-  document.getElementById('salaryTotals').innerHTML = `
-    <div class="stat-card blue"><div class="stat-label">Total Payroll ${year}</div><div class="stat-value">£${fmtK(totalAnnual)}</div></div>
-    <div class="stat-card green"><div class="stat-label">Total Paid</div><div class="stat-value">£${fmtK(totalPaid)}</div></div>
-    <div class="stat-card red"><div class="stat-label">Day-Off Deductions</div><div class="stat-value">£${fmtK(totalDeduct)}</div></div>
-    <div class="stat-card yellow"><div class="stat-label">Outstanding</div><div class="stat-value">£${fmtK(totalRemain)}</div></div>
-  `;
-
-  // ── Per-employee cards ──
   const container = document.getElementById('salaryCards');
-  if (!rows.length) {
-    container.innerHTML = `<div class="empty-state"><div class="icon">💰</div><div>No employees with salary data.</div></div>`;
-    return;
-  }
+  try {
+    initSalaryYearSelect();
+    const year   = document.getElementById('salaryYear').value || new Date().getFullYear();
+    const empFilter = document.getElementById('salaryEmpFilter').value;
 
-  container.innerHTML = rows.map(emp => {
-    const initials = emp.name.split(' ').map(w => w[0]).join('').slice(0,2).toUpperCase();
-    const typeLabel = emp.employment_type === 'self_employed' ? 'Self-Employed' : 'Payroll';
-    const typeBadge = emp.employment_type === 'self_employed' ? 'badge-yellow' : 'badge-blue';
-    const allowanceLabel = emp.employment_type === 'self_employed' ? '5 days/yr free' : '20 days/yr free';
-    const isOverpaid = emp.net_remaining < 0;
+    const res  = await fetch(`/api/salary-overview?year=${year}`);
+    if (!res.ok) throw new Error(`Server error ${res.status}`);
+    const data = await res.json();
+    if (!Array.isArray(data)) throw new Error('Unexpected response from server');
+    const rows = empFilter ? data.filter(e => String(e.employee_id) === empFilter) : data;
 
-    // Progress bar
-    const fill = `<div class="salary-progress-fill${isOverpaid ? ' overpaid' : ''}" style="width:${emp.pct_paid}%"></div>`;
-    const progress = `
-      <div class="salary-progress-wrap">
-        <div class="salary-progress-labels">
-          <span>Paid: £${emp.total_paid.toLocaleString('en-GB', {minimumFractionDigits:2})}</span>
-          <span>${emp.pct_paid}% of annual salary paid</span>
-        </div>
-        <div class="salary-progress-bar">${fill}</div>
-      </div>`;
+    // ── Totals strip ──
+    const totalAnnual   = rows.reduce((a, b) => a + (parseFloat(b.annual_salary) || 0), 0);
+    const totalPaid     = rows.reduce((a, b) => a + (parseFloat(b.total_paid) || 0), 0);
+    const totalDeduct   = rows.reduce((a, b) => a + (parseFloat(b.excess_deduction) || 0), 0);
+    const totalRemain   = rows.reduce((a, b) => a + (parseFloat(b.net_remaining) || 0), 0);
 
-    // Payments list
-    const payList = emp.payments.length
-      ? emp.payments.map(p => `
-        <div class="salary-payment-row">
-          <span class="salary-payment-month">${MONTHS[p.payment_month]} ${p.payment_year}</span>
-          <span class="salary-payment-amount">+£${parseFloat(p.amount).toLocaleString('en-GB', {minimumFractionDigits:2})}</span>
-          <span class="salary-payment-notes">${esc(p.notes || '')}</span>
-          <button class="btn btn-danger btn-sm" onclick="deleteSalaryPayment(${p.id})">Del</button>
-        </div>`).join('')
-      : `<div style="color:var(--muted);font-size:0.85rem;padding:8px 0">No payments logged yet.</div>`;
+    document.getElementById('salaryTotals').innerHTML = `
+      <div class="stat-card blue"><div class="stat-label">Total Payroll ${year}</div><div class="stat-value">£${fmtK(totalAnnual)}</div></div>
+      <div class="stat-card green"><div class="stat-label">Total Paid</div><div class="stat-value">£${fmtK(totalPaid)}</div></div>
+      <div class="stat-card red"><div class="stat-label">Day-Off Deductions</div><div class="stat-value">£${fmtK(totalDeduct)}</div></div>
+      <div class="stat-card yellow"><div class="stat-label">Outstanding</div><div class="stat-value">£${fmtK(totalRemain)}</div></div>
+    `;
 
-    const deductNote = emp.excess_days > 0
-      ? `<div class="salary-stat danger"><div class="salary-stat-label">Day-Off Deduction</div><div class="salary-stat-value">−£${emp.excess_deduction.toLocaleString('en-GB', {minimumFractionDigits:2})}</div></div>`
-      : `<div class="salary-stat success"><div class="salary-stat-label">Day-Off Deduction</div><div class="salary-stat-value">£0.00</div></div>`;
+    // ── Per-employee cards ──
+    if (!rows.length) {
+      container.innerHTML = `<div class="empty-state"><div class="icon">💰</div><div>No employees with salary data.</div></div>`;
+      return;
+    }
 
-    const officeTotal = emp.total_office_deductions || 0;
-    const officeNote = officeTotal > 0
-      ? `<div class="salary-stat danger"><div class="salary-stat-label">Office Items</div><div class="salary-stat-value">−£${officeTotal.toLocaleString('en-GB', {minimumFractionDigits:2})}</div></div>`
-      : '';
+    container.innerHTML = rows.map(emp => {
+      const annualSalary    = parseFloat(emp.annual_salary) || 0;
+      const totalPaidEmp    = parseFloat(emp.total_paid) || 0;
+      const excessDeduction = parseFloat(emp.excess_deduction) || 0;
+      const netRemaining    = parseFloat(emp.net_remaining) || 0;
+      const excessDays      = parseFloat(emp.excess_days) || 0;
+      const totalDaysOff    = emp.total_days_off != null ? emp.total_days_off : 0;
+      const allowanceDays   = emp.allowance_days != null ? emp.allowance_days : '—';
+      const pctPaid         = parseFloat(emp.pct_paid) || 0;
+      const payments        = Array.isArray(emp.payments) ? emp.payments : [];
+      const officeDeductions = Array.isArray(emp.office_deductions) ? emp.office_deductions : [];
+      const officeTotal     = parseFloat(emp.total_office_deductions) || 0;
 
-    const netClass = isOverpaid ? ' danger' : '';
+      const initials = (emp.name || '?').split(' ').map(w => w[0]).join('').slice(0,2).toUpperCase();
+      const typeLabel = emp.employment_type === 'self_employed' ? 'Self-Employed' : 'Payroll';
+      const typeBadge = emp.employment_type === 'self_employed' ? 'badge-yellow' : 'badge-blue';
+      const allowanceLabel = emp.employment_type === 'self_employed' ? '5 days/yr free' : '20 days/yr free';
+      const isOverpaid = netRemaining < 0;
 
-    return `<div class="salary-card">
-      <div class="salary-card-header">
-        <div class="salary-avatar">${initials}</div>
-        <div>
-          <div class="salary-name">${esc(emp.name)}</div>
-          <div class="salary-sub">
-            <span class="badge ${typeBadge}" style="font-size:0.68rem">${typeLabel}</span>
-            &nbsp;${allowanceLabel} &nbsp;·&nbsp; Rate: (annual ÷ 12) ÷ working days/month
+      // Progress bar
+      const fill = `<div class="salary-progress-fill${isOverpaid ? ' overpaid' : ''}" style="width:${Math.min(pctPaid,100)}%"></div>`;
+      const progress = `
+        <div class="salary-progress-wrap">
+          <div class="salary-progress-labels">
+            <span>Paid: £${totalPaidEmp.toLocaleString('en-GB', {minimumFractionDigits:2})}</span>
+            <span>${pctPaid}% of annual salary paid</span>
           </div>
-        </div>
-        <div class="salary-header-right">
-          <div class="salary-annual-label">Annual Salary</div>
-          <div class="salary-annual">£${parseFloat(emp.annual_salary).toLocaleString('en-GB', {minimumFractionDigits:2})}</div>
-        </div>
-        <button class="btn btn-ghost btn-sm" onclick="openSalaryPaymentModal(${emp.employee_id})">+ Payment</button>
-      </div>
-      <div class="salary-card-body">
-        ${progress}
-        <div class="salary-stats-row">
-          <div class="salary-stat primary"><div class="salary-stat-label">Annual Salary</div><div class="salary-stat-value">£${parseFloat(emp.annual_salary).toLocaleString('en-GB', {minimumFractionDigits:2})}</div></div>
-          <div class="salary-stat success"><div class="salary-stat-label">Total Paid</div><div class="salary-stat-value">£${emp.total_paid.toLocaleString('en-GB', {minimumFractionDigits:2})}</div></div>
-          <div class="salary-stat ${emp.excess_days > 0 ? 'warning' : ''}"><div class="salary-stat-label">Days Off (${year})</div><div class="salary-stat-value">${emp.total_days_off} / ${emp.allowance_days}</div></div>
-          ${deductNote}
-          ${officeNote}
-        </div>
+          <div class="salary-progress-bar">${fill}</div>
+        </div>`;
 
-        <button class="salary-payments-toggle" onclick="togglePaymentsList(this)">▶ Payment History (${emp.payments.length})</button>
-        <div class="salary-payments-list">${payList}</div>
+      // Payments list
+      const payList = payments.length
+        ? payments.map(p => `
+          <div class="salary-payment-row">
+            <span class="salary-payment-month">${MONTHS[p.payment_month] || p.payment_month} ${p.payment_year}</span>
+            <span class="salary-payment-amount">+£${parseFloat(p.amount || 0).toLocaleString('en-GB', {minimumFractionDigits:2})}</span>
+            <span class="salary-payment-notes">${esc(p.notes || '')}</span>
+            <button class="btn btn-danger btn-sm" onclick="deleteSalaryPayment(${p.id})">Del</button>
+          </div>`).join('')
+        : `<div style="color:var(--muted);font-size:0.85rem;padding:8px 0">No payments logged yet.</div>`;
 
-        <div style="margin-top:14px">
-          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
-            <span style="font-size:0.78rem;font-weight:700;text-transform:uppercase;letter-spacing:0.5px;color:var(--muted)">Office Items / Deductions (${(emp.office_deductions||[]).length})</span>
-            <button class="btn btn-ghost btn-sm" onclick="openOfficeDeductModal(${emp.employee_id})">+ Add Item</button>
-          </div>
-          ${(emp.office_deductions||[]).length ? `
-            <div style="display:flex;flex-direction:column;gap:6px">
-              ${(emp.office_deductions||[]).map(od => `
-                <div class="salary-payment-row" style="background:#fff8f8;border-color:#fca5a5">
-                  <span class="salary-payment-month">${od.deduction_date}</span>
-                  <span style="font-weight:800;color:var(--danger)">−£${parseFloat(od.amount).toLocaleString('en-GB',{minimumFractionDigits:2})}</span>
-                  <span class="salary-payment-notes">${esc(od.description)}</span>
-                  ${od.notes ? `<span style="color:var(--muted);font-size:0.75rem">${esc(od.notes)}</span>` : ''}
-                  <button class="btn btn-danger btn-sm" onclick="deleteOfficeDeduction(${od.id})">Del</button>
-                </div>`).join('')}
-            </div>` : `<div style="color:var(--muted);font-size:0.82rem;padding:4px 0">No items logged.</div>`}
-        </div>
+      const deductNote = excessDays > 0
+        ? `<div class="salary-stat danger"><div class="salary-stat-label">Day-Off Deduction</div><div class="salary-stat-value">−£${excessDeduction.toLocaleString('en-GB', {minimumFractionDigits:2})}</div></div>`
+        : `<div class="salary-stat success"><div class="salary-stat-label">Day-Off Deduction</div><div class="salary-stat-value">£0.00</div></div>`;
 
-        <div class="salary-net-remaining${netClass}">
+      const officeNote = officeTotal > 0
+        ? `<div class="salary-stat danger"><div class="salary-stat-label">Office Items</div><div class="salary-stat-value">−£${officeTotal.toLocaleString('en-GB', {minimumFractionDigits:2})}</div></div>`
+        : '';
+
+      const netClass = isOverpaid ? ' danger' : '';
+
+      return `<div class="salary-card">
+        <div class="salary-card-header">
+          <div class="salary-avatar">${initials}</div>
           <div>
-            <div class="salary-net-remaining-label">Net Remaining to Pay (${year})</div>
-            <div style="font-size:0.75rem;color:var(--muted);margin-top:2px">Annual − Paid − Day-Off Deductions − Office Items</div>
+            <div class="salary-name">${esc(emp.name || '')}</div>
+            <div class="salary-sub">
+              <span class="badge ${typeBadge}" style="font-size:0.68rem">${typeLabel}</span>
+              &nbsp;${allowanceLabel} &nbsp;·&nbsp; Rate: (annual ÷ 12) ÷ working days/month
+            </div>
           </div>
-          <div class="salary-net-remaining-value">${isOverpaid ? '−' : ''}£${Math.abs(emp.net_remaining).toLocaleString('en-GB', {minimumFractionDigits:2})}</div>
+          <div class="salary-header-right">
+            <div class="salary-annual-label">Annual Salary</div>
+            <div class="salary-annual">£${annualSalary.toLocaleString('en-GB', {minimumFractionDigits:2})}</div>
+          </div>
+          <button class="btn btn-ghost btn-sm" onclick="openSalaryPaymentModal(${emp.employee_id})">+ Payment</button>
         </div>
-      </div>
-    </div>`;
-  }).join('');
+        <div class="salary-card-body">
+          ${progress}
+          <div class="salary-stats-row">
+            <div class="salary-stat primary"><div class="salary-stat-label">Annual Salary</div><div class="salary-stat-value">£${annualSalary.toLocaleString('en-GB', {minimumFractionDigits:2})}</div></div>
+            <div class="salary-stat success"><div class="salary-stat-label">Total Paid</div><div class="salary-stat-value">£${totalPaidEmp.toLocaleString('en-GB', {minimumFractionDigits:2})}</div></div>
+            <div class="salary-stat ${excessDays > 0 ? 'warning' : ''}"><div class="salary-stat-label">Days Off (${year})</div><div class="salary-stat-value">${totalDaysOff} / ${allowanceDays}</div></div>
+            ${deductNote}
+            ${officeNote}
+          </div>
+
+          <button class="salary-payments-toggle" onclick="togglePaymentsList(this)">▶ Payment History (${payments.length})</button>
+          <div class="salary-payments-list">${payList}</div>
+
+          <div style="margin-top:14px">
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+              <span style="font-size:0.78rem;font-weight:700;text-transform:uppercase;letter-spacing:0.5px;color:var(--muted)">Office Items / Deductions (${officeDeductions.length})</span>
+              <button class="btn btn-ghost btn-sm" onclick="openOfficeDeductModal(${emp.employee_id})">+ Add Item</button>
+            </div>
+            ${officeDeductions.length ? `
+              <div style="display:flex;flex-direction:column;gap:6px">
+                ${officeDeductions.map(od => `
+                  <div class="salary-payment-row" style="background:#fff8f8;border-color:#fca5a5">
+                    <span class="salary-payment-month">${od.deduction_date || ''}</span>
+                    <span style="font-weight:800;color:var(--danger)">−£${parseFloat(od.amount || 0).toLocaleString('en-GB',{minimumFractionDigits:2})}</span>
+                    <span class="salary-payment-notes">${esc(od.description || '')}</span>
+                    ${od.notes ? `<span style="color:var(--muted);font-size:0.75rem">${esc(od.notes)}</span>` : ''}
+                    <button class="btn btn-danger btn-sm" onclick="deleteOfficeDeduction(${od.id})">Del</button>
+                  </div>`).join('')}
+              </div>` : `<div style="color:var(--muted);font-size:0.82rem;padding:4px 0">No items logged.</div>`}
+          </div>
+
+          <div class="salary-net-remaining${netClass}">
+            <div>
+              <div class="salary-net-remaining-label">Net Remaining to Pay (${year})</div>
+              <div style="font-size:0.75rem;color:var(--muted);margin-top:2px">Annual − Paid − Day-Off Deductions − Office Items</div>
+            </div>
+            <div class="salary-net-remaining-value">${isOverpaid ? '−' : ''}£${Math.abs(netRemaining).toLocaleString('en-GB', {minimumFractionDigits:2})}</div>
+          </div>
+        </div>
+      </div>`;
+    }).join('');
+  } catch(e) {
+    console.error('loadSalaryPage error:', e);
+    container.innerHTML = `<div class="alert alert-error" style="margin:24px">Failed to load salary data: ${esc(e.message)}. Please refresh and try again.</div>`;
+  }
 }
 
 function togglePaymentsList(btn) {
