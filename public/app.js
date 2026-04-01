@@ -818,7 +818,7 @@ async function loadSalaryPage() {
           <div class="salary-name">${esc(emp.name)}</div>
           <div class="salary-sub">
             <span class="badge ${typeBadge}" style="font-size:0.68rem">${typeLabel}</span>
-            &nbsp;${allowanceLabel} &nbsp;·&nbsp; Daily rate: £${emp.daily_rate.toFixed(2)}
+            &nbsp;${allowanceLabel} &nbsp;·&nbsp; Rate: (annual ÷ 12) ÷ working days/month
           </div>
         </div>
         <div class="salary-header-right">
