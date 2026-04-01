@@ -9,22 +9,32 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 const JWT_SECRET = process.env.JWT_SECRET || 'lpgp-tracker-jwt-2024';
 
-let dbInitError = null;
-const dbReady = initDb().catch(err => {
-  console.error('DB init failed:', err.message);
-  dbInitError = err;
-});
+// Lazy init: retry on every request until it succeeds once, then skip forever.
+let dbInitialized = false;
+let dbInitPromise = null; // serialise concurrent first-request inits
+
+async function ensureDb() {
+  if (dbInitialized) return;
+  // Only one concurrent init attempt at a time; reset on failure so next request can retry
+  if (!dbInitPromise) {
+    dbInitPromise = initDb()
+      .then(() => { dbInitialized = true; })
+      .catch(err => { dbInitPromise = null; throw err; });
+  }
+  await dbInitPromise;
+}
 
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(cookieParser());
 
 app.get('/', async (req, res, next) => {
-  await dbReady;
-  if (dbInitError) {
+  try {
+    await ensureDb();
+  } catch (err) {
     const hint = !(process.env.DATABASE_URL || process.env.POSTGRES_URL)
       ? '<p>In your <strong>Vercel dashboard</strong>: go to <strong>Storage → Create Database → Postgres</strong>, connect it to this project, then redeploy.</p>'
-      : `<p>DB error: ${dbInitError.message}</p>`;
+      : `<p>DB error: ${err.message}</p>`;
     return res.status(503).send(`<!DOCTYPE html><html><head><title>Setup Required</title>
       <style>body{font-family:sans-serif;max-width:600px;margin:80px auto;padding:20px}h1{color:#d93025}</style></head>
       <body><h1>Database Not Connected</h1>${hint}</body></html>`);
@@ -37,14 +47,15 @@ app.get('/', async (req, res, next) => {
 app.use(express.static(path.join(__dirname, 'public')));
 
 app.use('/api', async (req, res, next) => {
-  await dbReady;
-  if (dbInitError) {
+  try {
+    await ensureDb();
+    next();
+  } catch (err) {
     const msg = !(process.env.DATABASE_URL || process.env.POSTGRES_URL)
       ? 'No database connected. In Vercel: Storage → Create Database → Postgres → connect project → redeploy.'
-      : `Database connection failed: ${dbInitError.message}`;
+      : `Database connection failed: ${err.message}`;
     return res.status(503).json({ error: msg });
   }
-  next();
 });
 
 function requireAuth(req, res, next) {

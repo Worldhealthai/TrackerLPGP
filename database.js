@@ -6,8 +6,27 @@ const connectionString = process.env.DATABASE_URL || process.env.POSTGRES_URL;
 // Create an HTTP-based SQL client — no persistent TCP connections, no stale TLS issues
 const sql = connectionString ? neon(connectionString) : null;
 
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+
 async function initDb() {
   if (!sql) throw new Error('DATABASE_URL or POSTGRES_URL environment variable is not set');
+
+  // Retry up to 4 times with backoff — handles Neon cold-start wake-up delays
+  let lastErr;
+  for (let attempt = 1; attempt <= 4; attempt++) {
+    try {
+      await runMigrations();
+      return;
+    } catch (err) {
+      lastErr = err;
+      console.warn(`DB init attempt ${attempt} failed: ${err.message}`);
+      if (attempt < 4) await sleep(attempt * 1500);
+    }
+  }
+  throw lastErr;
+}
+
+async function runMigrations() {
 
   await sql(`
     CREATE TABLE IF NOT EXISTS admins (
