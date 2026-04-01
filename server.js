@@ -229,25 +229,26 @@ app.get('/api/employees/all', requireAuth, async (req, res) => {
 });
 
 app.post('/api/employees', requireAuth, async (req, res) => {
-  const { name, employment_type, annual_salary } = req.body;
+  const { name, employment_type, annual_salary, currency } = req.body;
   if (!name) return res.status(400).json({ error: 'Name required' });
-  // Derive daily rate from annual salary (260 working days/year)
   const annualSal = parseFloat(annual_salary) || 0;
   const daily_rate = parseFloat((annualSal / 260).toFixed(4));
+  const cur = ['GBP','AED'].includes(currency) ? currency : 'GBP';
   const { rows } = await q(
-    'INSERT INTO employees (name, daily_rate, employment_type, annual_salary) VALUES (?, ?, ?, ?) RETURNING id',
-    [name, daily_rate, employment_type || 'payroll', annualSal]
+    'INSERT INTO employees (name, daily_rate, employment_type, annual_salary, currency) VALUES (?, ?, ?, ?, ?) RETURNING id',
+    [name, daily_rate, employment_type || 'payroll', annualSal, cur]
   );
   res.json({ id: rows[0].id, name, daily_rate });
 });
 
 app.put('/api/employees/:id', requireAuth, async (req, res) => {
-  const { name, active, employment_type, annual_salary } = req.body;
+  const { name, active, employment_type, annual_salary, currency } = req.body;
   const annualSal = parseFloat(annual_salary) || 0;
   const daily_rate = parseFloat((annualSal / 260).toFixed(4));
+  const cur = ['GBP','AED'].includes(currency) ? currency : 'GBP';
   await q(
-    'UPDATE employees SET name=?, daily_rate=?, active=?, employment_type=?, annual_salary=? WHERE id=?',
-    [name, daily_rate, active !== undefined ? active : 1, employment_type || 'payroll', annualSal, req.params.id]
+    'UPDATE employees SET name=?, daily_rate=?, active=?, employment_type=?, annual_salary=?, currency=? WHERE id=?',
+    [name, daily_rate, active !== undefined ? active : 1, employment_type || 'payroll', annualSal, cur, req.params.id]
   );
   res.json({ success: true });
 });
@@ -449,6 +450,7 @@ app.get('/api/salary-overview', requireAuth, async (req, res) => {
         employee_id:       emp.id,
         name:              emp.name,
         employment_type:   emp.employment_type,
+        currency:          emp.currency || 'GBP',
         annual_salary:     annualSal,
         payments,
         office_deductions: officeRows,

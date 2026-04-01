@@ -8,6 +8,9 @@ const ALLOWED_BREAK = 40;
 const MONTHS = ['','January','February','March','April','May','June',
                 'July','August','September','October','November','December'];
 
+function currencySymbol(c) { return c === 'AED' ? 'AED ' : '£'; }
+function fmtMoney(amount, currency) { return currencySymbol(currency) + Number(amount || 0).toLocaleString('en-GB', {minimumFractionDigits:2}); }
+
 // ─── INIT ─────────────────────────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', async () => {
   const res = await fetch('/api/me');
@@ -86,7 +89,7 @@ async function loadEmpTable() {
     tr.innerHTML = `
       <td><strong>${esc(emp.name)}</strong></td>
       <td><span class="badge ${typeBadge}">${typeLabel}</span></td>
-      <td>${emp.annual_salary > 0 ? '£' + parseFloat(emp.annual_salary).toFixed(2) + '/yr' : '—'}</td>
+      <td>${emp.annual_salary > 0 ? fmtMoney(emp.annual_salary, emp.currency) + '/yr' : '—'}</td>
       <td><span class="badge ${emp.active ? 'badge-green' : 'badge-grey'}">${emp.active ? 'Active' : 'Inactive'}</span></td>
       <td style="text-align:right">
         <button class="btn btn-ghost btn-sm" onclick='openEmpModal(${JSON.stringify(emp)})'>Edit</button>
@@ -102,6 +105,7 @@ function openEmpModal(emp = null) {
   document.getElementById('empId').value = emp ? emp.id : '';
   document.getElementById('empName').value = emp ? emp.name : '';
   document.getElementById('empType').value = emp ? (emp.employment_type || 'payroll') : 'payroll';
+  document.getElementById('empCurrency').value = emp ? (emp.currency || 'GBP') : 'GBP';
   document.getElementById('empAnnualSalary').value = emp ? emp.annual_salary : 0;
   document.getElementById('empModalTitle').textContent = emp ? 'Edit Employee' : 'Add Employee';
   openModal('empModal');
@@ -111,6 +115,7 @@ async function saveEmployee() {
   const id = document.getElementById('empId').value;
   const name = document.getElementById('empName').value.trim();
   const employment_type = document.getElementById('empType').value;
+  const currency = document.getElementById('empCurrency').value;
   const annual_salary = parseFloat(document.getElementById('empAnnualSalary').value) || 0;
   if (!name) return alert('Name is required');
 
@@ -118,13 +123,13 @@ async function saveEmployee() {
     await fetch(`/api/employees/${id}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name, employment_type, annual_salary, active: 1 })
+      body: JSON.stringify({ name, employment_type, annual_salary, currency, active: 1 })
     });
   } else {
     await fetch('/api/employees', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name, employment_type, annual_salary })
+      body: JSON.stringify({ name, employment_type, annual_salary, currency })
     });
   }
   closeModal('empModal');
@@ -760,18 +765,23 @@ async function loadSalaryPage() {
     if (!Array.isArray(data)) throw new Error('Unexpected response from server');
     const rows = empFilter ? data.filter(e => String(e.employee_id) === empFilter) : data;
 
-    // ── Totals strip ──
-    const totalAnnual   = rows.reduce((a, b) => a + (parseFloat(b.annual_salary) || 0), 0);
-    const totalPaid     = rows.reduce((a, b) => a + (parseFloat(b.total_paid) || 0), 0);
-    const totalDeduct   = rows.reduce((a, b) => a + (parseFloat(b.excess_deduction) || 0), 0);
-    const totalRemain   = rows.reduce((a, b) => a + (parseFloat(b.net_remaining) || 0), 0);
-
-    document.getElementById('salaryTotals').innerHTML = `
-      <div class="stat-card blue"><div class="stat-label">Total Payroll ${year}</div><div class="stat-value">£${fmtK(totalAnnual)}</div></div>
-      <div class="stat-card green"><div class="stat-label">Total Paid</div><div class="stat-value">£${fmtK(totalPaid)}</div></div>
-      <div class="stat-card red"><div class="stat-label">Day-Off Deductions</div><div class="stat-value">£${fmtK(totalDeduct)}</div></div>
-      <div class="stat-card yellow"><div class="stat-label">Outstanding</div><div class="stat-value">£${fmtK(totalRemain)}</div></div>
-    `;
+    // ── Totals strip (grouped by currency) ──
+    const currencies = [...new Set(rows.map(r => r.currency || 'GBP'))];
+    const totalHtml = currencies.map(c => {
+      const sub = rows.filter(r => (r.currency || 'GBP') === c);
+      const s = currencySymbol(c);
+      const tAnnual  = sub.reduce((a, b) => a + (parseFloat(b.annual_salary) || 0), 0);
+      const tPaid    = sub.reduce((a, b) => a + (parseFloat(b.total_paid) || 0), 0);
+      const tDeduct  = sub.reduce((a, b) => a + (parseFloat(b.excess_deduction) || 0), 0);
+      const tRemain  = sub.reduce((a, b) => a + (parseFloat(b.net_remaining) || 0), 0);
+      const label    = currencies.length > 1 ? ` (${c})` : '';
+      return `
+        <div class="stat-card blue"><div class="stat-label">Total Payroll ${year}${label}</div><div class="stat-value">${s}${fmtK(tAnnual)}</div></div>
+        <div class="stat-card green"><div class="stat-label">Total Paid${label}</div><div class="stat-value">${s}${fmtK(tPaid)}</div></div>
+        <div class="stat-card red"><div class="stat-label">Day-Off Deductions${label}</div><div class="stat-value">${s}${fmtK(tDeduct)}</div></div>
+        <div class="stat-card yellow"><div class="stat-label">Outstanding${label}</div><div class="stat-value">${s}${fmtK(tRemain)}</div></div>`;
+    }).join('');
+    document.getElementById('salaryTotals').innerHTML = totalHtml;
 
     // ── Per-employee cards ──
     if (!rows.length) {
@@ -791,6 +801,8 @@ async function loadSalaryPage() {
       const payments        = Array.isArray(emp.payments) ? emp.payments : [];
       const officeDeductions = Array.isArray(emp.office_deductions) ? emp.office_deductions : [];
       const officeTotal     = parseFloat(emp.total_office_deductions) || 0;
+      const cur             = emp.currency || 'GBP';
+      const sym             = currencySymbol(cur);
 
       const initials = (emp.name || '?').split(' ').map(w => w[0]).join('').slice(0,2).toUpperCase();
       const typeLabel = emp.employment_type === 'self_employed' ? 'Self-Employed' : 'Payroll';
@@ -803,7 +815,7 @@ async function loadSalaryPage() {
       const progress = `
         <div class="salary-progress-wrap">
           <div class="salary-progress-labels">
-            <span>Paid: £${totalPaidEmp.toLocaleString('en-GB', {minimumFractionDigits:2})}</span>
+            <span>Paid: ${sym}${totalPaidEmp.toLocaleString('en-GB', {minimumFractionDigits:2})}</span>
             <span>${pctPaid}% of annual salary paid</span>
           </div>
           <div class="salary-progress-bar">${fill}</div>
@@ -814,18 +826,18 @@ async function loadSalaryPage() {
         ? payments.map(p => `
           <div class="salary-payment-row">
             <span class="salary-payment-month">${MONTHS[p.payment_month] || p.payment_month} ${p.payment_year}</span>
-            <span class="salary-payment-amount">+£${parseFloat(p.amount || 0).toLocaleString('en-GB', {minimumFractionDigits:2})}</span>
+            <span class="salary-payment-amount">+${sym}${parseFloat(p.amount || 0).toLocaleString('en-GB', {minimumFractionDigits:2})}</span>
             <span class="salary-payment-notes">${esc(p.notes || '')}</span>
             <button class="btn btn-danger btn-sm" onclick="deleteSalaryPayment(${p.id})">Del</button>
           </div>`).join('')
         : `<div style="color:var(--muted);font-size:0.85rem;padding:8px 0">No payments logged yet.</div>`;
 
       const deductNote = excessDays > 0
-        ? `<div class="salary-stat danger"><div class="salary-stat-label">Day-Off Deduction</div><div class="salary-stat-value">−£${excessDeduction.toLocaleString('en-GB', {minimumFractionDigits:2})}</div></div>`
-        : `<div class="salary-stat success"><div class="salary-stat-label">Day-Off Deduction</div><div class="salary-stat-value">£0.00</div></div>`;
+        ? `<div class="salary-stat danger"><div class="salary-stat-label">Day-Off Deduction</div><div class="salary-stat-value">−${sym}${excessDeduction.toLocaleString('en-GB', {minimumFractionDigits:2})}</div></div>`
+        : `<div class="salary-stat success"><div class="salary-stat-label">Day-Off Deduction</div><div class="salary-stat-value">${sym}0.00</div></div>`;
 
       const officeNote = officeTotal > 0
-        ? `<div class="salary-stat danger"><div class="salary-stat-label">Office Items</div><div class="salary-stat-value">−£${officeTotal.toLocaleString('en-GB', {minimumFractionDigits:2})}</div></div>`
+        ? `<div class="salary-stat danger"><div class="salary-stat-label">Office Items</div><div class="salary-stat-value">−${sym}${officeTotal.toLocaleString('en-GB', {minimumFractionDigits:2})}</div></div>`
         : '';
 
       const netClass = isOverpaid ? ' danger' : '';
@@ -837,20 +849,21 @@ async function loadSalaryPage() {
             <div class="salary-name">${esc(emp.name || '')}</div>
             <div class="salary-sub">
               <span class="badge ${typeBadge}" style="font-size:0.68rem">${typeLabel}</span>
+              &nbsp;<span class="badge badge-grey" style="font-size:0.68rem">${cur}</span>
               &nbsp;${allowanceLabel} &nbsp;·&nbsp; Rate: (annual ÷ 12) ÷ working days/month
             </div>
           </div>
           <div class="salary-header-right">
             <div class="salary-annual-label">Annual Salary</div>
-            <div class="salary-annual">£${annualSalary.toLocaleString('en-GB', {minimumFractionDigits:2})}</div>
+            <div class="salary-annual">${sym}${annualSalary.toLocaleString('en-GB', {minimumFractionDigits:2})}</div>
           </div>
           <button class="btn btn-ghost btn-sm" onclick="openSalaryPaymentModal(${emp.employee_id})">+ Payment</button>
         </div>
         <div class="salary-card-body">
           ${progress}
           <div class="salary-stats-row">
-            <div class="salary-stat primary"><div class="salary-stat-label">Annual Salary</div><div class="salary-stat-value">£${annualSalary.toLocaleString('en-GB', {minimumFractionDigits:2})}</div></div>
-            <div class="salary-stat success"><div class="salary-stat-label">Total Paid</div><div class="salary-stat-value">£${totalPaidEmp.toLocaleString('en-GB', {minimumFractionDigits:2})}</div></div>
+            <div class="salary-stat primary"><div class="salary-stat-label">Annual Salary</div><div class="salary-stat-value">${sym}${annualSalary.toLocaleString('en-GB', {minimumFractionDigits:2})}</div></div>
+            <div class="salary-stat success"><div class="salary-stat-label">Total Paid</div><div class="salary-stat-value">${sym}${totalPaidEmp.toLocaleString('en-GB', {minimumFractionDigits:2})}</div></div>
             <div class="salary-stat ${excessDays > 0 ? 'warning' : ''}"><div class="salary-stat-label">Days Off (${year})</div><div class="salary-stat-value">${totalDaysOff} / ${allowanceDays}</div></div>
             ${deductNote}
             ${officeNote}
@@ -869,7 +882,7 @@ async function loadSalaryPage() {
                 ${officeDeductions.map(od => `
                   <div class="salary-payment-row" style="background:#fff8f8;border-color:#fca5a5">
                     <span class="salary-payment-month">${od.deduction_date || ''}</span>
-                    <span style="font-weight:800;color:var(--danger)">−£${parseFloat(od.amount || 0).toLocaleString('en-GB',{minimumFractionDigits:2})}</span>
+                    <span style="font-weight:800;color:var(--danger)">−${sym}${parseFloat(od.amount || 0).toLocaleString('en-GB',{minimumFractionDigits:2})}</span>
                     <span class="salary-payment-notes">${esc(od.description || '')}</span>
                     ${od.notes ? `<span style="color:var(--muted);font-size:0.75rem">${esc(od.notes)}</span>` : ''}
                     <button class="btn btn-danger btn-sm" onclick="deleteOfficeDeduction(${od.id})">Del</button>
@@ -882,7 +895,7 @@ async function loadSalaryPage() {
               <div class="salary-net-remaining-label">Net Remaining to Pay (${year})</div>
               <div style="font-size:0.75rem;color:var(--muted);margin-top:2px">Annual − Paid − Day-Off Deductions − Office Items</div>
             </div>
-            <div class="salary-net-remaining-value">${isOverpaid ? '−' : ''}£${Math.abs(netRemaining).toLocaleString('en-GB', {minimumFractionDigits:2})}</div>
+            <div class="salary-net-remaining-value">${isOverpaid ? '−' : ''}${sym}${Math.abs(netRemaining).toLocaleString('en-GB', {minimumFractionDigits:2})}</div>
           </div>
         </div>
       </div>`;
