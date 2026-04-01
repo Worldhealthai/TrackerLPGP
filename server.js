@@ -436,7 +436,7 @@ app.get('/api/salary-overview', requireAuth, async (req, res) => {
     const dayCalc    = await calcExcessDeductions(emp.id, year, annualSal, allowance);
 
     const { rows: officeRows } = await q(
-      'SELECT * FROM office_deductions WHERE employee_id = ? ORDER BY deduction_date DESC',
+      'SELECT *, deduction_date::TEXT AS deduction_date FROM office_deductions WHERE employee_id = ? ORDER BY deduction_date DESC',
       [emp.id]
     );
     const totalOffice = officeRows.reduce((a, b) => a + parseFloat(b.amount), 0);
