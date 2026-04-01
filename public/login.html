@@ -3,13 +3,22 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Employee Tracker – Login</title>
+  <title>EmpTracker – Sign In</title>
   <link rel="stylesheet" href="style.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 </head>
 <body>
   <div class="login-wrap">
     <div class="login-card">
-      <h1>Employee Tracker</h1>
+      <div class="login-logo">
+        <div class="login-logo-icon">⏱</div>
+        <div>
+          <div style="font-size:1.25rem;font-weight:800;letter-spacing:-0.5px;color:#0f172a">Emp<span style="color:#6366f1">Tracker</span></div>
+          <div style="font-size:0.75rem;color:#64748b;margin-top:1px">Employee Time Management</div>
+        </div>
+      </div>
+
       <p>Sign in to access the management panel</p>
 
       <div id="loginError" class="alert alert-error hidden"></div>
@@ -17,24 +26,29 @@
       <form id="loginForm">
         <div class="form-group" style="margin-bottom:14px">
           <label>Username</label>
-          <input type="text" id="username" autocomplete="username" required>
+          <input type="text" id="username" autocomplete="username" placeholder="Enter username" required>
         </div>
-        <div class="form-group" style="margin-bottom:22px">
+        <div class="form-group" style="margin-bottom:24px">
           <label>Password</label>
-          <input type="password" id="password" autocomplete="current-password" required>
+          <input type="password" id="password" autocomplete="current-password" placeholder="Enter password" required>
         </div>
-        <button type="submit" class="btn btn-primary" style="width:100%;justify-content:center">
-          Sign In
-        </button>
+        <button type="submit" class="login-submit">Sign In →</button>
       </form>
+
+      <p style="text-align:center;margin-top:20px;font-size:0.75rem;color:#94a3b8">
+        Secured with JWT · Session expires after 8 hours
+      </p>
     </div>
   </div>
 
   <script>
     document.getElementById('loginForm').addEventListener('submit', async e => {
       e.preventDefault();
+      const btn = e.target.querySelector('button');
       const err = document.getElementById('loginError');
       err.classList.add('hidden');
+      btn.textContent = 'Signing in…';
+      btn.disabled = true;
 
       const res = await fetch('/api/login', {
         method: 'POST',
@@ -50,6 +64,8 @@
       } else {
         err.textContent = data.error;
         err.classList.remove('hidden');
+        btn.textContent = 'Sign In →';
+        btn.disabled = false;
       }
     });
   </script>

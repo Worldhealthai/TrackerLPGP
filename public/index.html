@@ -3,8 +3,10 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Employee Tracker</title>
+  <title>EmpTracker</title>
   <link rel="stylesheet" href="style.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 </head>
 <body>
 <div class="app" id="app">
@@ -12,21 +14,26 @@
   <!-- SIDEBAR -->
   <nav class="sidebar">
     <div class="sidebar-logo">
-      <h2>EmpTracker</h2>
-      <span id="userLabel"></span>
+      <div class="sidebar-logo-row">
+        <div class="sidebar-logo-icon">⏱</div>
+        <h2>Emp<span>Tracker</span></h2>
+      </div>
+      <div id="userLabel"></div>
     </div>
     <div class="sidebar-nav">
+      <div class="nav-section-label">Main</div>
       <div class="nav-item active" data-page="dashboard"><span class="icon">📊</span> Dashboard</div>
       <div class="nav-item" data-page="tracking"><span class="icon">⏱️</span> Daily Tracking</div>
+      <div class="nav-item" data-page="calendar"><span class="icon">📅</span> Calendar</div>
+      <div class="nav-section-label">Management</div>
       <div class="nav-item" data-page="employees"><span class="icon">👥</span> Employees</div>
       <div class="nav-item" data-page="reports"><span class="icon">📋</span> Reports</div>
-      <div class="nav-item" data-page="calendar"><span class="icon">📅</span> Calendar</div>
       <div class="nav-item admin-only hidden" data-page="admins"><span class="icon">🔐</span> Admin Users</div>
     </div>
     <div class="sidebar-footer">
-      <div style="margin-bottom:10px;font-size:0.75rem">
-        Shift: 8hrs &nbsp;|&nbsp; Break: 40min allowed<br>
-        Payroll: 20 days/yr &nbsp;|&nbsp; Self-Emp: 5 days/yr
+      <div class="sidebar-footer-info">
+        Shift: 8 hrs &nbsp;·&nbsp; Break: 40 min<br>
+        Payroll: 20 days/yr &nbsp;·&nbsp; Self-Emp: 5 days/yr
       </div>
       <button class="btn btn-ghost btn-sm" id="logoutBtn" style="width:100%;justify-content:center">Sign Out</button>
     </div>
@@ -36,7 +43,9 @@
   <div class="main">
     <div class="topbar">
       <h1 id="pageTitle">Dashboard</h1>
-      <span id="todayDate" style="color:var(--muted);font-size:0.88rem"></span>
+      <div class="topbar-right">
+        <span id="todayDate"></span>
+      </div>
     </div>
     <div class="content">
 
