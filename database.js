@@ -107,6 +107,19 @@ async function runMigrations() {
     )
   `);
 
+  await sql(`
+    CREATE TABLE IF NOT EXISTS office_deductions (
+      id SERIAL PRIMARY KEY,
+      employee_id INT NOT NULL REFERENCES employees(id) ON DELETE CASCADE,
+      description TEXT NOT NULL,
+      amount NUMERIC(12,2) NOT NULL,
+      deduction_date DATE NOT NULL DEFAULT CURRENT_DATE,
+      notes TEXT DEFAULT '',
+      created_by INT,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `);
+
   const rows = await sql('SELECT COUNT(*) AS c FROM admins');
   if (parseInt(rows[0].c) === 0) {
     const hash = bcrypt.hashSync('admin123', 10);

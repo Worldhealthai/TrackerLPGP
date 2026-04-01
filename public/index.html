@@ -103,7 +103,7 @@
               <thead>
                 <tr>
                   <th>Date</th><th>Break</th><th>Phone</th><th>Wasted</th><th>Late</th>
-                  <th>Day Off</th><th>Manual Adj</th><th>Deduct (min)</th><th>Amount</th><th>Notes</th><th></th>
+                  <th>Day Off</th><th>Manual Adj</th><th>Ref. Mins</th><th>Ref. Amount ⓘ</th><th>Notes</th><th></th>
                 </tr>
               </thead>
               <tbody id="trackTable"></tbody>
@@ -432,6 +432,44 @@
     <div style="display:flex;gap:10px;justify-content:flex-end">
       <button class="btn btn-ghost" onclick="closeModal('adminModal')">Cancel</button>
       <button class="btn btn-primary" onclick="saveAdmin()">Create Account</button>
+    </div>
+  </div>
+</div>
+
+<!-- ══ MODAL: Office Deduction ══ -->
+<div class="modal-overlay" id="officeDeductModal">
+  <div class="modal">
+    <div class="modal-header">
+      <h2>Log Office Item / Deduction</h2>
+      <button class="modal-close" onclick="closeModal('officeDeductModal')">✕</button>
+    </div>
+    <p style="font-size:0.82rem;color:var(--muted);margin-bottom:18px">
+      e.g. laptop taken home, equipment, advance. This amount is deducted directly from their remaining salary balance.
+    </p>
+    <input type="hidden" id="odEmpId">
+    <div class="form-row">
+      <div class="form-group">
+        <label>Description</label>
+        <input type="text" id="odDescription" placeholder="e.g. MacBook Pro taken home">
+      </div>
+      <div class="form-group">
+        <label>Amount (£)</label>
+        <input type="number" id="odAmount" min="0" step="0.01" placeholder="e.g. 1200">
+      </div>
+    </div>
+    <div class="form-row">
+      <div class="form-group">
+        <label>Date</label>
+        <input type="date" id="odDate">
+      </div>
+      <div class="form-group">
+        <label>Notes (optional)</label>
+        <input type="text" id="odNotes" placeholder="Optional details">
+      </div>
+    </div>
+    <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:8px">
+      <button class="btn btn-ghost" onclick="closeModal('officeDeductModal')">Cancel</button>
+      <button class="btn btn-danger" onclick="saveOfficeDeduction()">Deduct from Salary</button>
     </div>
   </div>
 </div>

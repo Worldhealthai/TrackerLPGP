@@ -283,13 +283,15 @@ app.get('/api/employees/:id/year-stats', requireAuth, async (req, res) => {
 
 // ─── DAILY RECORDS ───────────────────────────────────────────────────────────
 
-function calcTimeDeduction(record, dailyRate) {
+// Time deductions (phone/late/wasted/break) are REFERENCE ONLY — never deducted from salary.
+// Only day-off excess and office deductions affect actual salary balance.
+function calcTimeReference(record, dailyRate) {
   const excessBreak = Math.max(0, record.break_minutes - ALLOWED_BREAK_MINUTES);
-  const deductibleMins = excessBreak + record.phone_minutes + record.wasted_minutes + record.late_minutes;
+  const totalMins = excessBreak + record.phone_minutes + record.wasted_minutes + record.late_minutes;
   const ratePerMin = dailyRate / (SHIFT_HOURS * 60);
   return {
-    deductible_minutes: deductibleMins,
-    deduction_amount: parseFloat((deductibleMins * ratePerMin).toFixed(2))
+    ref_minutes: totalMins,
+    ref_amount:  parseFloat((totalMins * ratePerMin).toFixed(2))
   };
 }
 
@@ -312,19 +314,15 @@ app.get('/api/records/:employeeId', requireAuth, async (req, res) => {
   const { rows } = await q(sql, params);
   const enriched = rows.map(r => {
     const dayOffVal = parseFloat(r.is_day_off) || 0;
-    const calc = calcTimeDeduction(r, r.daily_rate);
+    const ref = calcTimeReference(r, r.daily_rate);
     const adjMins = r.manual_adj || 0;
-    const totalDeductMins = calc.deductible_minutes + adjMins;
-    const ratePerMin = r.daily_rate / (SHIFT_HOURS * 60);
     return {
       ...r,
-      is_day_off: dayOffVal,
-      day_off_label: dayOffVal === 1 ? 'Full Day' : dayOffVal === 0.5 ? 'Half Day' : null,
-      deductible_minutes: calc.deductible_minutes,
-      deduction_amount: calc.deduction_amount,
-      manual_adj_minutes: adjMins,
-      total_deductible_minutes: totalDeductMins,
-      total_deduction: parseFloat((totalDeductMins * ratePerMin).toFixed(2))
+      is_day_off:          dayOffVal,
+      day_off_label:       dayOffVal === 1 ? 'Full Day' : dayOffVal === 0.5 ? 'Half Day' : null,
+      ref_minutes:         ref.ref_minutes + adjMins,
+      ref_amount:          parseFloat((ref.ref_amount).toFixed(2)), // reference only, not deducted
+      manual_adj_minutes:  adjMins
     };
   });
   res.json(enriched);
@@ -436,24 +434,32 @@ app.get('/api/salary-overview', requireAuth, async (req, res) => {
     const allowance  = DAY_OFF_ALLOWANCE[emp.employment_type] || 20;
     const annualSal  = parseFloat(emp.annual_salary) || 0;
     const dayCalc    = await calcExcessDeductions(emp.id, year, annualSal, allowance);
-    const totalPaid  = payments.reduce((a, b) => a + parseFloat(b.amount), 0);
-    const netRemaining = parseFloat((annualSal - totalPaid - dayCalc.excess_deduction).toFixed(2));
-    const pctPaid    = annualSal > 0 ? Math.min(100, Math.round((totalPaid / annualSal) * 100)) : 0;
+
+    const { rows: officeRows } = await q(
+      'SELECT * FROM office_deductions WHERE employee_id = ? ORDER BY deduction_date DESC',
+      [emp.id]
+    );
+    const totalOffice = officeRows.reduce((a, b) => a + parseFloat(b.amount), 0);
+    const totalPaid   = payments.reduce((a, b) => a + parseFloat(b.amount), 0);
+    const netRemaining = parseFloat((annualSal - totalPaid - dayCalc.excess_deduction - totalOffice).toFixed(2));
+    const pctPaid     = annualSal > 0 ? Math.min(100, Math.round((totalPaid / annualSal) * 100)) : 0;
 
     return {
-      employee_id:      emp.id,
-      name:             emp.name,
-      employment_type:  emp.employment_type,
-      annual_salary:    annualSal,
+      employee_id:       emp.id,
+      name:              emp.name,
+      employment_type:   emp.employment_type,
+      annual_salary:     annualSal,
       payments,
-      total_paid:       parseFloat(totalPaid.toFixed(2)),
-      total_days_off:   dayCalc.total_days_off,
-      allowance_days:   allowance,
-      excess_days:      dayCalc.excess_days,
-      excess_deduction: dayCalc.excess_deduction,
-      breakdown:        dayCalc.breakdown,
-      net_remaining:    netRemaining,
-      pct_paid:         pctPaid
+      office_deductions: officeRows,
+      total_office_deductions: parseFloat(totalOffice.toFixed(2)),
+      total_paid:        parseFloat(totalPaid.toFixed(2)),
+      total_days_off:    dayCalc.total_days_off,
+      allowance_days:    allowance,
+      excess_days:       dayCalc.excess_days,
+      excess_deduction:  dayCalc.excess_deduction,
+      breakdown:         dayCalc.breakdown,
+      net_remaining:     netRemaining,
+      pct_paid:          pctPaid
     };
   }));
 
@@ -508,15 +514,12 @@ app.get('/api/summary', requireAuth, async (req, res) => {
     const excessDays = dayCalc.excess_days;
     const excessDayDeduction = dayCalc.excess_deduction;
 
-    // Period totals (time-based only)
-    let totalDeductMins = 0;
-    let totalTimeDeduction = 0;
-    let periodDaysOff = 0;
+    // Period totals — time items are reference only, never deducted from salary
+    let refMins = 0, refAmount = 0, periodDaysOff = 0;
     records.forEach(r => {
-      const calc = calcTimeDeduction(r, emp.daily_rate);
-      const totalMin = calc.deductible_minutes + (r.manual_adj || 0);
-      totalDeductMins += totalMin;
-      totalTimeDeduction += totalMin * (emp.daily_rate / (SHIFT_HOURS * 60));
+      const ref = calcTimeReference(r, emp.daily_rate);
+      refMins   += ref.ref_minutes + (r.manual_adj || 0);
+      refAmount += ref.ref_amount;
       if (parseFloat(r.is_day_off) > 0) periodDaysOff += parseFloat(r.is_day_off);
     });
 
@@ -525,30 +528,64 @@ app.get('/api/summary', requireAuth, async (req, res) => {
       'SELECT COALESCE(SUM(amount), 0) AS total_paid FROM monthly_payments WHERE employee_id = ? AND payment_year = ?',
       [emp.id, year]
     );
-    const totalPaid = parseFloat(payRows[0].total_paid) || 0;
-    const remaining = parseFloat((emp.annual_salary - totalPaid).toFixed(2));
+    const { rows: offRows } = await q(
+      'SELECT COALESCE(SUM(amount), 0) AS total FROM office_deductions WHERE employee_id = ?',
+      [emp.id]
+    );
+    const totalPaid    = parseFloat(payRows[0].total_paid) || 0;
+    const totalOffice  = parseFloat(offRows[0].total) || 0;
+    const remaining    = parseFloat((parseFloat(emp.annual_salary) - totalPaid - excessDayDeduction - totalOffice).toFixed(2));
 
     return {
-      employee_id: emp.id,
-      name: emp.name,
-      employment_type: emp.employment_type,
-      daily_rate: emp.daily_rate,
-      annual_salary: emp.annual_salary,
-      record_count: records.length,
-      period_days_off: periodDaysOff,
-      total_deductible_minutes: totalDeductMins,
-      total_time_deduction: parseFloat(totalTimeDeduction.toFixed(2)),
-      year_days_off: totalYearDaysOff,
-      allowance_days: allowance,
-      excess_days: excessDays,
+      employee_id:          emp.id,
+      name:                 emp.name,
+      employment_type:      emp.employment_type,
+      daily_rate:           emp.daily_rate,
+      annual_salary:        emp.annual_salary,
+      record_count:         records.length,
+      period_days_off:      periodDaysOff,
+      ref_minutes:          refMins,
+      ref_time_amount:      parseFloat(refAmount.toFixed(2)), // reference only
+      year_days_off:        totalYearDaysOff,
+      allowance_days:       allowance,
+      excess_days:          excessDays,
       excess_day_deduction: excessDayDeduction,
-      total_deduction: parseFloat((totalTimeDeduction + excessDayDeduction).toFixed(2)),
-      total_paid_year: totalPaid,
-      salary_remaining: remaining
+      office_deductions:    totalOffice,
+      total_deduction:      parseFloat((excessDayDeduction + totalOffice).toFixed(2)), // actual deductions only
+      total_paid_year:      totalPaid,
+      salary_remaining:     remaining
     };
   }));
 
   res.json(summary);
+});
+
+// ─── OFFICE DEDUCTIONS ───────────────────────────────────────────────────────
+
+app.get('/api/office-deductions/:employeeId', requireAuth, async (req, res) => {
+  const { rows } = await q(
+    `SELECT od.*, od.deduction_date::TEXT AS deduction_date, ad.username AS created_by_name
+     FROM office_deductions od LEFT JOIN admins ad ON ad.id = od.created_by
+     WHERE od.employee_id = ? ORDER BY od.deduction_date DESC, od.created_at DESC`,
+    [req.params.employeeId]
+  );
+  res.json(rows);
+});
+
+app.post('/api/office-deductions', requireAuth, async (req, res) => {
+  const { employee_id, description, amount, deduction_date, notes } = req.body;
+  if (!employee_id || !description || !amount)
+    return res.status(400).json({ error: 'employee_id, description and amount required' });
+  const { rows } = await q(
+    'INSERT INTO office_deductions (employee_id, description, amount, deduction_date, notes, created_by) VALUES (?, ?, ?, ?, ?, ?) RETURNING id',
+    [employee_id, description, amount, deduction_date || new Date().toISOString().slice(0,10), notes || '', req.admin.id]
+  );
+  res.json({ id: rows[0].id });
+});
+
+app.delete('/api/office-deductions/:id', requireAuth, async (req, res) => {
+  await q('DELETE FROM office_deductions WHERE id = ?', [req.params.id]);
+  res.json({ success: true });
 });
 
 // ─── START ────────────────────────────────────────────────────────────────────

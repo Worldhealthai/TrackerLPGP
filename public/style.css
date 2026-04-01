@@ -653,14 +653,14 @@ tbody tr:hover td strong { color: var(--primary); }
 .alert-info    { background: var(--info-light);    color: #0c4a6e; border: 1px solid #7dd3fc; }
 
 .deduction-box {
-  background: linear-gradient(135deg, #fff5f5, #fef2f2);
-  border: 1px solid #fca5a5;
+  background: linear-gradient(135deg, #f0f4ff, #eef2ff);
+  border: 1px solid #c7d2fe;
   border-radius: 10px;
   padding: 18px;
   margin-top: 16px;
 }
 .deduction-box h3 {
-  color: var(--danger);
+  color: var(--primary);
   font-size: 0.88rem;
   margin-bottom: 10px;
   font-weight: 700;
@@ -676,10 +676,10 @@ tbody tr:hover td strong { color: var(--primary); }
 }
 .deduction-row.total {
   font-weight: 700;
-  border-top: 1px dashed #fca5a5;
+  border-top: 1px dashed #c7d2fe;
   padding-top: 10px;
   margin-top: 6px;
-  color: var(--danger);
+  color: var(--primary);
   font-size: 0.92rem;
 }
 

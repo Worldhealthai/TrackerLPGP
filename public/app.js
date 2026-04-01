@@ -261,7 +261,7 @@ async function loadEmployeeRecords() {
   // Stats bar
   const statsBar = document.getElementById('empStatsBar');
   if (records.length && emp) {
-    const totalDeduct = records.reduce((a, b) => a + b.total_deduction, 0);
+    const refTotal = records.reduce((a, b) => a + (b.ref_amount || 0), 0);
     const fullDays = records.filter(r => r.is_day_off === 1).length;
     const halfDays = records.filter(r => r.is_day_off === 0.5).length;
     statsBar.innerHTML = `
@@ -271,7 +271,7 @@ async function loadEmployeeRecords() {
       <div class="stat-card yellow"><div class="stat-label">Late Arrivals</div><div class="stat-value">${records.reduce((a,b)=>a+b.late_minutes,0)}m</div></div>
       <div class="stat-card red"><div class="stat-label">Full Days Off</div><div class="stat-value">${fullDays}</div></div>
       <div class="stat-card red"><div class="stat-label">Half Days Off</div><div class="stat-value">${halfDays}</div></div>
-      <div class="stat-card red"><div class="stat-label">Time Deductions</div><div class="stat-value">£${totalDeduct.toFixed(2)}</div></div>
+      <div class="stat-card" style="border-color:#e0e7ff"><div class="stat-label" style="color:var(--primary)">Ref. Potential (not deducted)</div><div class="stat-value" style="color:var(--primary);font-size:1.3rem">£${refTotal.toFixed(2)}</div></div>
     `;
     statsBar.classList.remove('hidden');
   } else {
@@ -304,8 +304,8 @@ async function loadEmployeeRecords() {
           ${r.manual_adj_minutes !== 0 ? `<span class="badge ${r.manual_adj_minutes > 0 ? 'badge-red' : 'badge-green'}">${adjSign}${r.manual_adj_minutes}m</span>` : ''}
           <button class="btn btn-ghost btn-sm" onclick="openAdjModal(${r.employee_id},'${r.record_date}')">Adj</button>
         </td>
-        <td><strong>${r.total_deductible_minutes}m</strong></td>
-        <td class="${r.total_deduction > 0 ? 'text-danger fw-bold' : ''}">£${r.total_deduction.toFixed(2)}</td>
+        <td style="color:var(--muted)">${r.ref_minutes || 0}m</td>
+        <td style="color:var(--primary);font-size:0.8rem" title="Reference only — not deducted from salary">£${(r.ref_amount||0).toFixed(2)} <span style="opacity:0.5;font-size:0.68rem">ref</span></td>
         <td style="max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(r.notes||'')}">${esc(r.notes||'')||'—'}</td>
         <td style="white-space:nowrap">
           <button class="btn btn-ghost btn-sm" onclick="openEditRecord(${r.id},${r.employee_id},'${r.record_date}',${r.break_minutes},${r.phone_minutes},${r.wasted_minutes},${r.late_minutes},${r.is_day_off},\`${esc(r.notes||'')}\`)">Edit</button>
@@ -391,12 +391,12 @@ function updatePreview() {
     const total = excessBreak + phone + wasted + late;
     if (total === 0) { box.classList.add('hidden'); return; }
 
-    html = `<h3>Deduction Preview</h3>`;
+    html = `<h3>Reference Preview <span style="font-size:0.72rem;font-weight:500;opacity:0.7">(for your records — not deducted from salary)</span></h3>`;
     if (excessBreak > 0) html += `<div class="deduction-row"><span>Excess break (${brk}m – ${ALLOWED_BREAK}m)</span><span>${excessBreak}m / £${(excessBreak*ratePerMin).toFixed(2)}</span></div>`;
     if (phone > 0)  html += `<div class="deduction-row"><span>Phone time</span><span>${phone}m / £${(phone*ratePerMin).toFixed(2)}</span></div>`;
     if (wasted > 0) html += `<div class="deduction-row"><span>Wasted time</span><span>${wasted}m / £${(wasted*ratePerMin).toFixed(2)}</span></div>`;
     if (late > 0)   html += `<div class="deduction-row"><span>Late arrival</span><span>${late}m / £${(late*ratePerMin).toFixed(2)}</span></div>`;
-    html += `<div class="deduction-row total"><span>Total</span><span>${total}m / £${(total*ratePerMin).toFixed(2)}</span></div>`;
+    html += `<div class="deduction-row total"><span>Total (reference only)</span><span>${total}m / £${(total*ratePerMin).toFixed(2)}</span></div>`;
   }
   box.innerHTML = html;
   box.classList.remove('hidden');
@@ -794,10 +794,14 @@ async function loadSalaryPage() {
         </div>`).join('')
       : `<div style="color:var(--muted);font-size:0.85rem;padding:8px 0">No payments logged yet.</div>`;
 
-    // Excess days deduction note
     const deductNote = emp.excess_days > 0
       ? `<div class="salary-stat danger"><div class="salary-stat-label">Day-Off Deduction</div><div class="salary-stat-value">−£${emp.excess_deduction.toLocaleString('en-GB', {minimumFractionDigits:2})}</div></div>`
       : `<div class="salary-stat success"><div class="salary-stat-label">Day-Off Deduction</div><div class="salary-stat-value">£0.00</div></div>`;
+
+    const officeTotal = emp.total_office_deductions || 0;
+    const officeNote = officeTotal > 0
+      ? `<div class="salary-stat danger"><div class="salary-stat-label">Office Items</div><div class="salary-stat-value">−£${officeTotal.toLocaleString('en-GB', {minimumFractionDigits:2})}</div></div>`
+      : '';
 
     const netClass = isOverpaid ? ' danger' : '';
 
@@ -824,13 +828,34 @@ async function loadSalaryPage() {
           <div class="salary-stat success"><div class="salary-stat-label">Total Paid</div><div class="salary-stat-value">£${emp.total_paid.toLocaleString('en-GB', {minimumFractionDigits:2})}</div></div>
           <div class="salary-stat ${emp.excess_days > 0 ? 'warning' : ''}"><div class="salary-stat-label">Days Off (${year})</div><div class="salary-stat-value">${emp.total_days_off} / ${emp.allowance_days}</div></div>
           ${deductNote}
+          ${officeNote}
         </div>
+
         <button class="salary-payments-toggle" onclick="togglePaymentsList(this)">▶ Payment History (${emp.payments.length})</button>
         <div class="salary-payments-list">${payList}</div>
+
+        <div style="margin-top:14px">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+            <span style="font-size:0.78rem;font-weight:700;text-transform:uppercase;letter-spacing:0.5px;color:var(--muted)">Office Items / Deductions (${(emp.office_deductions||[]).length})</span>
+            <button class="btn btn-ghost btn-sm" onclick="openOfficeDeductModal(${emp.employee_id})">+ Add Item</button>
+          </div>
+          ${(emp.office_deductions||[]).length ? `
+            <div style="display:flex;flex-direction:column;gap:6px">
+              ${(emp.office_deductions||[]).map(od => `
+                <div class="salary-payment-row" style="background:#fff8f8;border-color:#fca5a5">
+                  <span class="salary-payment-month">${od.deduction_date}</span>
+                  <span style="font-weight:800;color:var(--danger)">−£${parseFloat(od.amount).toLocaleString('en-GB',{minimumFractionDigits:2})}</span>
+                  <span class="salary-payment-notes">${esc(od.description)}</span>
+                  ${od.notes ? `<span style="color:var(--muted);font-size:0.75rem">${esc(od.notes)}</span>` : ''}
+                  <button class="btn btn-danger btn-sm" onclick="deleteOfficeDeduction(${od.id})">Del</button>
+                </div>`).join('')}
+            </div>` : `<div style="color:var(--muted);font-size:0.82rem;padding:4px 0">No items logged.</div>`}
+        </div>
+
         <div class="salary-net-remaining${netClass}">
           <div>
             <div class="salary-net-remaining-label">Net Remaining to Pay (${year})</div>
-            <div style="font-size:0.75rem;color:var(--muted);margin-top:2px">Annual − Paid − Day-Off Deductions</div>
+            <div style="font-size:0.75rem;color:var(--muted);margin-top:2px">Annual − Paid − Day-Off Deductions − Office Items</div>
           </div>
           <div class="salary-net-remaining-value">${isOverpaid ? '−' : ''}£${Math.abs(emp.net_remaining).toLocaleString('en-GB', {minimumFractionDigits:2})}</div>
         </div>
@@ -882,6 +907,39 @@ async function saveSalaryPayment() {
 async function deleteSalaryPayment(id) {
   if (!confirm('Delete this payment?')) return;
   await fetch(`/api/payments/${id}`, { method: 'DELETE' });
+  loadSalaryPage();
+}
+
+function openOfficeDeductModal(empId) {
+  document.getElementById('odEmpId').value = empId;
+  document.getElementById('odDescription').value = '';
+  document.getElementById('odAmount').value = '';
+  document.getElementById('odDate').value = today();
+  document.getElementById('odNotes').value = '';
+  openModal('officeDeductModal');
+}
+
+async function saveOfficeDeduction() {
+  const employee_id   = document.getElementById('odEmpId').value;
+  const description   = document.getElementById('odDescription').value.trim();
+  const amount        = document.getElementById('odAmount').value;
+  const deduction_date = document.getElementById('odDate').value;
+  const notes         = document.getElementById('odNotes').value;
+  if (!description) return alert('Description is required');
+  if (!amount || parseFloat(amount) <= 0) return alert('Enter a valid amount');
+  const res = await fetch('/api/office-deductions', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ employee_id, description, amount, deduction_date, notes })
+  });
+  if (!res.ok) { const e = await res.json(); return alert(e.error); }
+  closeModal('officeDeductModal');
+  loadSalaryPage();
+}
+
+async function deleteOfficeDeduction(id) {
+  if (!confirm('Remove this deduction?')) return;
+  await fetch(`/api/office-deductions/${id}`, { method: 'DELETE' });
   loadSalaryPage();
 }
 
