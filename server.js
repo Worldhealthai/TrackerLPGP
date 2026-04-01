@@ -152,20 +152,25 @@ app.get('/api/employees/all', requireAuth, async (req, res) => {
 });
 
 app.post('/api/employees', requireAuth, async (req, res) => {
-  const { name, daily_rate, employment_type, annual_salary } = req.body;
+  const { name, employment_type, annual_salary } = req.body;
   if (!name) return res.status(400).json({ error: 'Name required' });
+  // Derive daily rate from annual salary (260 working days/year)
+  const annualSal = parseFloat(annual_salary) || 0;
+  const daily_rate = parseFloat((annualSal / 260).toFixed(4));
   const { rows } = await q(
     'INSERT INTO employees (name, daily_rate, employment_type, annual_salary) VALUES (?, ?, ?, ?) RETURNING id',
-    [name, daily_rate || 0, employment_type || 'payroll', annual_salary || 0]
+    [name, daily_rate, employment_type || 'payroll', annualSal]
   );
-  res.json({ id: rows[0].id, name, daily_rate: daily_rate || 0 });
+  res.json({ id: rows[0].id, name, daily_rate });
 });
 
 app.put('/api/employees/:id', requireAuth, async (req, res) => {
-  const { name, daily_rate, active, employment_type, annual_salary } = req.body;
+  const { name, active, employment_type, annual_salary } = req.body;
+  const annualSal = parseFloat(annual_salary) || 0;
+  const daily_rate = parseFloat((annualSal / 260).toFixed(4));
   await q(
     'UPDATE employees SET name=?, daily_rate=?, active=?, employment_type=?, annual_salary=? WHERE id=?',
-    [name, daily_rate, active !== undefined ? active : 1, employment_type || 'payroll', annual_salary || 0, req.params.id]
+    [name, daily_rate, active !== undefined ? active : 1, employment_type || 'payroll', annualSal, req.params.id]
   );
   res.json({ success: true });
 });

@@ -87,8 +87,7 @@ async function loadEmpTable() {
     tr.innerHTML = `
       <td><strong>${esc(emp.name)}</strong></td>
       <td><span class="badge ${typeBadge}">${typeLabel}</span></td>
-      <td>$${parseFloat(emp.daily_rate).toFixed(2)}/day</td>
-      <td>${emp.annual_salary > 0 ? '$' + parseFloat(emp.annual_salary).toFixed(2) + '/yr' : '—'}</td>
+      <td>${emp.annual_salary > 0 ? '£' + parseFloat(emp.annual_salary).toFixed(2) + '/yr' : '—'}</td>
       <td><span class="badge ${emp.active ? 'badge-green' : 'badge-grey'}">${emp.active ? 'Active' : 'Inactive'}</span></td>
       <td style="text-align:right">
         <button class="btn btn-ghost btn-sm" onclick='openEmpModal(${JSON.stringify(emp)})'>Edit</button>
@@ -104,7 +103,6 @@ function openEmpModal(emp = null) {
   document.getElementById('empId').value = emp ? emp.id : '';
   document.getElementById('empName').value = emp ? emp.name : '';
   document.getElementById('empType').value = emp ? (emp.employment_type || 'payroll') : 'payroll';
-  document.getElementById('empRate').value = emp ? emp.daily_rate : 0;
   document.getElementById('empAnnualSalary').value = emp ? emp.annual_salary : 0;
   document.getElementById('empModalTitle').textContent = emp ? 'Edit Employee' : 'Add Employee';
   openModal('empModal');
@@ -113,7 +111,6 @@ function openEmpModal(emp = null) {
 async function saveEmployee() {
   const id = document.getElementById('empId').value;
   const name = document.getElementById('empName').value.trim();
-  const daily_rate = parseFloat(document.getElementById('empRate').value) || 0;
   const employment_type = document.getElementById('empType').value;
   const annual_salary = parseFloat(document.getElementById('empAnnualSalary').value) || 0;
   if (!name) return alert('Name is required');
@@ -122,13 +119,13 @@ async function saveEmployee() {
     await fetch(`/api/employees/${id}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name, daily_rate, employment_type, annual_salary, active: 1 })
+      body: JSON.stringify({ name, employment_type, annual_salary, active: 1 })
     });
   } else {
     await fetch('/api/employees', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name, daily_rate, employment_type, annual_salary })
+      body: JSON.stringify({ name, employment_type, annual_salary })
     });
   }
   closeModal('empModal');
@@ -167,7 +164,7 @@ async function loadDashboard() {
     <div class="stat-card blue"><div class="stat-label">Employees</div><div class="stat-value">${summary.length}</div></div>
     <div class="stat-card"><div class="stat-label">Days Tracked</div><div class="stat-value">${summary.reduce((a,b)=>a+b.record_count,0)}</div></div>
     <div class="stat-card yellow"><div class="stat-label">Excess Days Off (Year)</div><div class="stat-value">${totalExcess}</div></div>
-    <div class="stat-card red"><div class="stat-label">Total Deductions</div><div class="stat-value">$${totalDeduction.toFixed(2)}</div></div>
+    <div class="stat-card red"><div class="stat-label">Total Deductions</div><div class="stat-value">£${totalDeduction.toFixed(2)}</div></div>
   `;
 
   const tbody = document.getElementById('dashTable');
@@ -182,9 +179,9 @@ async function loadDashboard() {
       <td><span class="badge ${typeBadge}">${typeLabel}</span></td>
       <td class="${daysColor}">${row.year_days_off} / ${row.allowance_days}</td>
       <td>${row.excess_days > 0 ? `<span class="badge badge-red">${row.excess_days} excess</span>` : '<span class="badge badge-green">OK</span>'}</td>
-      <td>$${row.total_time_deduction.toFixed(2)}</td>
-      <td class="${row.excess_day_deduction > 0 ? 'text-danger fw-bold' : ''}">$${row.excess_day_deduction.toFixed(2)}</td>
-      <td class="${row.total_deduction > 0 ? 'text-danger fw-bold' : ''}">$${row.total_deduction.toFixed(2)}</td>
+      <td>£${row.total_time_deduction.toFixed(2)}</td>
+      <td class="${row.excess_day_deduction > 0 ? 'text-danger fw-bold' : ''}">£${row.excess_day_deduction.toFixed(2)}</td>
+      <td class="${row.total_deduction > 0 ? 'text-danger fw-bold' : ''}">£${row.total_deduction.toFixed(2)}</td>
       <td><button class="btn btn-ghost btn-sm" onclick="goToTracking(${row.employee_id})">View</button></td>
     `;
     tbody.appendChild(tr);
@@ -239,7 +236,7 @@ async function loadEmployeeRecords() {
     banner.innerHTML = `<strong>${typeLabel} — Days Off This Year:</strong>
       ${used} used / ${allowance} allowed
       ${excess > 0
-        ? ` &nbsp;|&nbsp; <strong>${excess} excess day(s) = $${yearStats.excess_deduction.toFixed(2)} deduction</strong>`
+        ? ` &nbsp;|&nbsp; <strong>${excess} excess day(s) = £${yearStats.excess_deduction.toFixed(2)} deduction</strong>`
         : ` &nbsp;|&nbsp; ${remaining} days remaining`}`;
     banner.classList.remove('hidden');
   }
@@ -257,7 +254,7 @@ async function loadEmployeeRecords() {
       <div class="stat-card yellow"><div class="stat-label">Late Arrivals</div><div class="stat-value">${records.reduce((a,b)=>a+b.late_minutes,0)}m</div></div>
       <div class="stat-card red"><div class="stat-label">Full Days Off</div><div class="stat-value">${fullDays}</div></div>
       <div class="stat-card red"><div class="stat-label">Half Days Off</div><div class="stat-value">${halfDays}</div></div>
-      <div class="stat-card red"><div class="stat-label">Time Deductions</div><div class="stat-value">$${totalDeduct.toFixed(2)}</div></div>
+      <div class="stat-card red"><div class="stat-label">Time Deductions</div><div class="stat-value">£${totalDeduct.toFixed(2)}</div></div>
     `;
     statsBar.classList.remove('hidden');
   } else {
@@ -291,7 +288,7 @@ async function loadEmployeeRecords() {
           <button class="btn btn-ghost btn-sm" onclick="openAdjModal(${r.employee_id},'${r.record_date}')">Adj</button>
         </td>
         <td><strong>${r.total_deductible_minutes}m</strong></td>
-        <td class="${r.total_deduction > 0 ? 'text-danger fw-bold' : ''}">$${r.total_deduction.toFixed(2)}</td>
+        <td class="${r.total_deduction > 0 ? 'text-danger fw-bold' : ''}">£${r.total_deduction.toFixed(2)}</td>
         <td style="max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(r.notes||'')}">${esc(r.notes||'')||'—'}</td>
         <td style="white-space:nowrap">
           <button class="btn btn-ghost btn-sm" onclick="openEditRecord(${r.id},${r.employee_id},'${r.record_date}',${r.break_minutes},${r.phone_minutes},${r.wasted_minutes},${r.late_minutes},${r.is_day_off},\`${esc(r.notes||'')}\`)">Edit</button>
@@ -376,11 +373,11 @@ function updatePreview() {
     if (total === 0) { box.classList.add('hidden'); return; }
 
     html = `<h3>Deduction Preview</h3>`;
-    if (excessBreak > 0) html += `<div class="deduction-row"><span>Excess break (${brk}m – ${ALLOWED_BREAK}m)</span><span>${excessBreak}m / $${(excessBreak*ratePerMin).toFixed(2)}</span></div>`;
-    if (phone > 0)  html += `<div class="deduction-row"><span>Phone time</span><span>${phone}m / $${(phone*ratePerMin).toFixed(2)}</span></div>`;
-    if (wasted > 0) html += `<div class="deduction-row"><span>Wasted time</span><span>${wasted}m / $${(wasted*ratePerMin).toFixed(2)}</span></div>`;
-    if (late > 0)   html += `<div class="deduction-row"><span>Late arrival</span><span>${late}m / $${(late*ratePerMin).toFixed(2)}</span></div>`;
-    html += `<div class="deduction-row total"><span>Total</span><span>${total}m / $${(total*ratePerMin).toFixed(2)}</span></div>`;
+    if (excessBreak > 0) html += `<div class="deduction-row"><span>Excess break (${brk}m – ${ALLOWED_BREAK}m)</span><span>${excessBreak}m / £${(excessBreak*ratePerMin).toFixed(2)}</span></div>`;
+    if (phone > 0)  html += `<div class="deduction-row"><span>Phone time</span><span>${phone}m / £${(phone*ratePerMin).toFixed(2)}</span></div>`;
+    if (wasted > 0) html += `<div class="deduction-row"><span>Wasted time</span><span>${wasted}m / £${(wasted*ratePerMin).toFixed(2)}</span></div>`;
+    if (late > 0)   html += `<div class="deduction-row"><span>Late arrival</span><span>${late}m / £${(late*ratePerMin).toFixed(2)}</span></div>`;
+    html += `<div class="deduction-row total"><span>Total</span><span>${total}m / £${(total*ratePerMin).toFixed(2)}</span></div>`;
   }
   box.innerHTML = html;
   box.classList.remove('hidden');
@@ -480,9 +477,9 @@ async function loadPaymentsSection(empId, emp) {
   const remaining = emp.annual_salary - totalPaid;
 
   document.getElementById('salaryInfo').innerHTML = `
-    <div class="stat-card blue"><div class="stat-label">Annual Salary</div><div class="stat-value">$${parseFloat(emp.annual_salary).toFixed(2)}</div></div>
-    <div class="stat-card green"><div class="stat-label">Paid This Year</div><div class="stat-value">$${totalPaid.toFixed(2)}</div></div>
-    <div class="stat-card ${remaining > 0 ? 'red' : 'green'}"><div class="stat-label">Remaining</div><div class="stat-value">$${remaining.toFixed(2)}</div></div>
+    <div class="stat-card blue"><div class="stat-label">Annual Salary</div><div class="stat-value">£${parseFloat(emp.annual_salary).toFixed(2)}</div></div>
+    <div class="stat-card green"><div class="stat-label">Paid This Year</div><div class="stat-value">£${totalPaid.toFixed(2)}</div></div>
+    <div class="stat-card ${remaining > 0 ? 'red' : 'green'}"><div class="stat-label">Remaining</div><div class="stat-value">£${remaining.toFixed(2)}</div></div>
   `;
 
   const tbody = document.getElementById('paymentsTable');
@@ -494,7 +491,7 @@ async function loadPaymentsSection(empId, emp) {
     const tr = document.createElement('tr');
     tr.innerHTML = `
       <td>${MONTHS[p.payment_month]} ${p.payment_year}</td>
-      <td class="fw-bold">$${parseFloat(p.amount).toFixed(2)}</td>
+      <td class="fw-bold">£${parseFloat(p.amount).toFixed(2)}</td>
       <td>${esc(p.notes || '') || '—'}</td>
       <td><button class="btn btn-danger btn-sm" onclick="deletePayment(${p.id})">Del</button></td>`;
     tbody.appendChild(tr);
@@ -560,7 +557,7 @@ async function loadReport() {
       <div class="card-header"><span class="card-title">Summary: ${from} to ${to}</span></div>
       <div class="stats-grid">
         <div class="stat-card blue"><div class="stat-label">Employees</div><div class="stat-value">${filtered.length}</div></div>
-        <div class="stat-card red"><div class="stat-label">Total Deductions</div><div class="stat-value">$${grandTotal.toFixed(2)}</div></div>
+        <div class="stat-card red"><div class="stat-label">Total Deductions</div><div class="stat-value">£${grandTotal.toFixed(2)}</div></div>
       </div>
     </div>`;
 
@@ -577,15 +574,15 @@ async function loadReport() {
             <span class="badge ${emp.employment_type === 'self_employed' ? 'badge-yellow' : 'badge-blue'}" style="margin-left:8px">${typeLabel}</span>
           </div>
           <div style="font-size:0.85rem;color:var(--muted)">
-            $${emp.daily_rate}/day
-            ${emp.annual_salary > 0 ? ` &nbsp;|&nbsp; Salary: $${emp.annual_salary.toFixed(2)}/yr &nbsp;|&nbsp; Paid: $${emp.total_paid_year.toFixed(2)} &nbsp;|&nbsp; <strong>Remaining: $${emp.salary_remaining.toFixed(2)}</strong>` : ''}
+            £${emp.daily_rate}/day
+            ${emp.annual_salary > 0 ? ` &nbsp;|&nbsp; Salary: £${emp.annual_salary.toFixed(2)}/yr &nbsp;|&nbsp; Paid: £${emp.total_paid_year.toFixed(2)} &nbsp;|&nbsp; <strong>Remaining: £${emp.salary_remaining.toFixed(2)}</strong>` : ''}
           </div>
         </div>
         <div style="margin-bottom:12px;display:flex;gap:20px;flex-wrap:wrap;font-size:0.88rem">
           <span>Days off this year: <strong>${emp.year_days_off} / ${emp.allowance_days}</strong></span>
-          ${emp.excess_days > 0 ? `<span class="text-danger"><strong>${emp.excess_days} excess day(s) = $${emp.excess_day_deduction.toFixed(2)} deduction</strong></span>` : '<span class="text-success">Within allowance</span>'}
-          <span>Time deductions: <strong>$${emp.total_time_deduction.toFixed(2)}</strong></span>
-          <span class="text-danger fw-bold">Total deduction: $${emp.total_deduction.toFixed(2)}</span>
+          ${emp.excess_days > 0 ? `<span class="text-danger"><strong>${emp.excess_days} excess day(s) = £${emp.excess_day_deduction.toFixed(2)} deduction</strong></span>` : '<span class="text-success">Within allowance</span>'}
+          <span>Time deductions: <strong>£${emp.total_time_deduction.toFixed(2)}</strong></span>
+          <span class="text-danger fw-bold">Total deduction: £${emp.total_deduction.toFixed(2)}</span>
         </div>
         <div class="table-wrap">
           <table>
@@ -604,7 +601,7 @@ async function loadReport() {
         <td>${dayOffLabel}</td>
         <td>${r.manual_adj_minutes!==0?`${adjSign}${r.manual_adj_minutes}m`:'—'}</td>
         <td><strong>${r.total_deductible_minutes}m</strong></td>
-        <td class="${r.total_deduction>0?'text-danger':''}">$${r.total_deduction.toFixed(2)}</td>
+        <td class="${r.total_deduction>0?'text-danger':''}">£${r.total_deduction.toFixed(2)}</td>
         <td>${esc(r.notes||'')||'—'}</td>
       </tr>`;
     });
