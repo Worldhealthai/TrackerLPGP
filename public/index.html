@@ -261,6 +261,12 @@
     </div>
     <input type="hidden" id="recId">
     <input type="hidden" id="recEmpId">
+    <div id="recEmpRow" class="form-group hidden" style="margin-bottom:16px">
+      <label>Employee</label>
+      <select id="recEmpSelect" onchange="document.getElementById('recEmpId').value=this.value;updatePreview()">
+        <option value="">-- Select Employee --</option>
+      </select>
+    </div>
     <div class="form-row">
       <div class="form-group">
         <label>Date</label>

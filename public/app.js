@@ -309,6 +309,7 @@ function openRecordModal() {
   if (!empId) return alert('Please select an employee first');
   document.getElementById('recId').value = '';
   document.getElementById('recEmpId').value = empId;
+  document.getElementById('recEmpRow').classList.add('hidden');
   document.getElementById('recDate').value = today();
   document.getElementById('recBreak').value = 40;
   document.getElementById('recPhone').value = 0;
@@ -326,6 +327,7 @@ function openRecordModal() {
 function openEditRecord(id, empId, date, brk, phone, wasted, late, dayOff, notes) {
   document.getElementById('recId').value = id;
   document.getElementById('recEmpId').value = empId;
+  document.getElementById('recEmpRow').classList.add('hidden');
   document.getElementById('recDate').value = date;
   document.getElementById('recBreak').value = brk;
   document.getElementById('recPhone').value = phone;
@@ -982,9 +984,8 @@ function openDayModal(dateStr, entries) {
 }
 
 function openRecordModalForDate(dateStr) {
-  const empId = document.getElementById('trackEmp').value || '';
   document.getElementById('recId').value = '';
-  document.getElementById('recEmpId').value = empId;
+  document.getElementById('recEmpId').value = '';
   document.getElementById('recDate').value = dateStr;
   document.getElementById('recBreak').value = 40;
   document.getElementById('recPhone').value = 0;
@@ -994,6 +995,18 @@ function openRecordModalForDate(dateStr) {
   document.getElementById('recNotes').value = '';
   document.getElementById('recFields').style.display = 'none';
   document.getElementById('recordModalTitle').textContent = 'Book Day Off – ' + dateStr;
+
+  // Show employee selector and populate it
+  const empRow = document.getElementById('recEmpRow');
+  const empSel = document.getElementById('recEmpSelect');
+  empSel.innerHTML = '<option value="">-- Select Employee --</option>';
+  employees.forEach(e => {
+    const opt = document.createElement('option');
+    opt.value = e.id; opt.textContent = e.name;
+    empSel.appendChild(opt);
+  });
+  empRow.classList.remove('hidden');
+
   updatePreview();
   openModal('recordModal');
 }
