@@ -212,9 +212,10 @@ app.get('/api/employees/:id/year-stats', requireAuth, async (req, res) => {
   res.json({
     year: parseInt(year),
     total_days_off: totalDaysOff,
-    allowance,
+    allowance_days: allowance,
     remaining_allowance: Math.max(0, allowance - totalDaysOff),
     excess_days: excessDays,
+    daily_rate: parseFloat(emp.daily_rate),
     excess_deduction: parseFloat((excessDays * emp.daily_rate).toFixed(2)),
     employment_type: emp.employment_type
   });

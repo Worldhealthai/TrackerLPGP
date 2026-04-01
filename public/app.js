@@ -227,18 +227,39 @@ async function loadEmployeeRecords() {
   // Days-off allowance banner
   const banner = document.getElementById('daysOffBanner');
   if (emp) {
-    const allowance = yearStats.allowance_days;
-    const used = yearStats.total_days_off;
-    const remaining = yearStats.remaining_allowance;
-    const excess = yearStats.excess_days;
-    const typeLabel = emp.employment_type === 'self_employed' ? 'Self-Employed' : 'Payroll';
-    const bannerClass = excess > 0 ? 'alert alert-error' : 'alert alert-success';
-    banner.className = bannerClass;
-    banner.innerHTML = `<strong>${typeLabel} — Days Off This Year:</strong>
-      ${used} used / ${allowance} allowed
-      ${excess > 0
-        ? ` &nbsp;|&nbsp; <strong>${excess} excess day(s) = £${yearStats.excess_deduction.toFixed(2)} deduction</strong>`
-        : ` &nbsp;|&nbsp; ${remaining} days remaining`}`;
+    const allowance  = yearStats.allowance_days;
+    const used       = yearStats.total_days_off;
+    const remaining  = yearStats.remaining_allowance;
+    const excess     = yearStats.excess_days;
+    const dailyRate  = yearStats.daily_rate || emp.daily_rate || 0;
+    const deduction  = yearStats.excess_deduction || 0;
+    const typeLabel  = emp.employment_type === 'self_employed' ? 'Self-Employed' : 'Payroll';
+
+    if (excess > 0) {
+      banner.className = 'alert alert-error';
+      banner.innerHTML = `
+        <div style="display:flex;flex-direction:column;gap:6px;width:100%">
+          <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px">
+            <span><strong>${typeLabel} — Days Off ${yearStats.year}:</strong>
+              ${used} used / ${allowance} allowed &nbsp;·&nbsp;
+              <strong>${excess} excess day(s)</strong>
+            </span>
+            <span style="font-size:1rem;font-weight:800;color:var(--danger)">−£${deduction.toFixed(2)} deduction</span>
+          </div>
+          <div style="font-size:0.78rem;opacity:0.85;background:rgba(255,255,255,0.5);border-radius:6px;padding:6px 10px;display:inline-flex;gap:6px;align-items:center;flex-wrap:wrap">
+            <span>📐 Breakdown:</span>
+            <span>${used} days used − ${allowance} days free = <strong>${excess} excess day(s)</strong></span>
+            <span>·</span>
+            <span>£${dailyRate.toFixed(2)}/day (annual ÷ 260)</span>
+            <span>·</span>
+            <span><strong>${excess} × £${dailyRate.toFixed(2)} = £${deduction.toFixed(2)}</strong></span>
+          </div>
+        </div>`;
+    } else {
+      banner.className = 'alert alert-success';
+      banner.innerHTML = `<strong>${typeLabel} — Days Off ${yearStats.year}:</strong>
+        ${used} used / ${allowance} allowed &nbsp;|&nbsp; <strong>${remaining} day(s) remaining</strong>`;
+    }
     banner.classList.remove('hidden');
   }
 
