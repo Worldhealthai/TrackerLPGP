@@ -20,6 +20,7 @@
       <div class="nav-item" data-page="tracking"><span class="icon">⏱️</span> Daily Tracking</div>
       <div class="nav-item" data-page="employees"><span class="icon">👥</span> Employees</div>
       <div class="nav-item" data-page="reports"><span class="icon">📋</span> Reports</div>
+      <div class="nav-item" data-page="calendar"><span class="icon">📅</span> Calendar</div>
       <div class="nav-item admin-only hidden" data-page="admins"><span class="icon">🔐</span> Admin Users</div>
     </div>
     <div class="sidebar-footer">
@@ -163,6 +164,39 @@
         <div id="reportContent">
           <div class="empty-state"><div class="icon">📋</div><div>Select a date range and generate a report.</div></div>
         </div>
+      </div>
+
+      <!-- ══ CALENDAR ══ -->
+      <div class="page" id="page-calendar">
+        <div class="filter-bar" style="align-items:center">
+          <button class="btn btn-ghost" onclick="calPrevMonth()">‹ Prev</button>
+          <h2 id="calMonthLabel" style="flex:1;text-align:center;font-size:1.1rem;margin:0"></h2>
+          <button class="btn btn-ghost" onclick="calNextMonth()">Next ›</button>
+          <div class="form-group" style="margin:0;min-width:160px">
+            <select id="calEmpFilter" onchange="loadCalendar()">
+              <option value="">All Employees</option>
+            </select>
+          </div>
+        </div>
+
+        <!-- Legend -->
+        <div style="display:flex;gap:16px;margin-bottom:14px;font-size:0.83rem;flex-wrap:wrap">
+          <span><span class="cal-chip chip-full">Full Day</span> Full day off</span>
+          <span><span class="cal-chip chip-half">Half Day</span> Half day off</span>
+          <span style="color:var(--muted)">Click a date to book / manage days off</span>
+        </div>
+
+        <!-- Calendar grid -->
+        <div class="cal-grid-wrap">
+          <div class="cal-header-row">
+            <div>Mon</div><div>Tue</div><div>Wed</div><div>Thu</div>
+            <div>Fri</div><div>Sat</div><div>Sun</div>
+          </div>
+          <div class="cal-grid" id="calGrid"></div>
+        </div>
+
+        <!-- Days-off summary strip -->
+        <div id="calSummary" class="hidden" style="margin-top:18px"></div>
       </div>
 
       <!-- ══ ADMINS ══ -->
@@ -363,6 +397,21 @@
     <div style="display:flex;gap:10px;justify-content:flex-end">
       <button class="btn btn-ghost" onclick="closeModal('adminModal')">Cancel</button>
       <button class="btn btn-primary" onclick="saveAdmin()">Create Account</button>
+    </div>
+  </div>
+</div>
+
+<!-- ══ MODAL: Day Detail ══ -->
+<div class="modal-overlay" id="dayModal">
+  <div class="modal">
+    <div class="modal-header">
+      <h2 id="dayModalTitle">Day Off Details</h2>
+      <button class="modal-close" onclick="closeModal('dayModal')">✕</button>
+    </div>
+    <div id="dayModalContent" style="margin-bottom:20px"></div>
+    <div style="display:flex;gap:10px;justify-content:flex-end">
+      <button class="btn btn-ghost" onclick="closeModal('dayModal')">Close</button>
+      <button class="btn btn-primary" id="dayModalBookBtn">+ Book Day Off</button>
     </div>
   </div>
 </div>

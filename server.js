@@ -349,6 +349,27 @@ app.delete('/api/payments/:id', requireAuth, async (req, res) => {
   res.json({ success: true });
 });
 
+// ─── CALENDAR ────────────────────────────────────────────────────────────────
+
+app.get('/api/calendar', requireAuth, async (req, res) => {
+  const year  = parseInt(req.query.year)  || new Date().getFullYear();
+  const month = parseInt(req.query.month) || (new Date().getMonth() + 1);
+  const from  = `${year}-${String(month).padStart(2,'0')}-01`;
+  const lastDay = new Date(year, month, 0).getDate();
+  const to    = `${year}-${String(month).padStart(2,'0')}-${String(lastDay).padStart(2,'0')}`;
+
+  const { rows } = await q(`
+    SELECT r.record_date::TEXT AS record_date, r.is_day_off, r.notes, r.id AS record_id,
+           e.id AS employee_id, e.name AS employee_name, e.employment_type
+    FROM daily_records r
+    JOIN employees e ON e.id = r.employee_id
+    WHERE r.record_date >= ? AND r.record_date <= ? AND r.is_day_off > 0
+    ORDER BY r.record_date, e.name
+  `, [from, to]);
+
+  res.json(rows);
+});
+
 // ─── SUMMARY REPORT ──────────────────────────────────────────────────────────
 
 app.get('/api/summary', requireAuth, async (req, res) => {

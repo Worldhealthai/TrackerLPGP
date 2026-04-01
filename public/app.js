@@ -47,22 +47,23 @@ function navigate(page) {
   document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
   document.getElementById('page-' + page).classList.add('active');
   document.querySelector(`[data-page="${page}"]`).classList.add('active');
-  const titles = { dashboard:'Dashboard', tracking:'Daily Tracking', employees:'Employees', reports:'Reports', admins:'Admin Users' };
+  const titles = { dashboard:'Dashboard', tracking:'Daily Tracking', employees:'Employees', reports:'Reports', calendar:'Calendar', admins:'Admin Users' };
   document.getElementById('pageTitle').textContent = titles[page] || page;
   if (page === 'employees') loadEmpTable();
   if (page === 'admins') loadAdmins();
+  if (page === 'calendar') loadCalendar();
 }
 
 // ─── EMPLOYEES ───────────────────────────────────────────────────────────────
 async function loadEmployees() {
   const res = await fetch('/api/employees');
   employees = await res.json();
-  ['trackEmp', 'repEmp'].forEach(id => {
+  ['trackEmp', 'repEmp', 'calEmpFilter'].forEach(id => {
     const sel = document.getElementById(id);
     const prev = sel.value;
-    sel.innerHTML = id === 'repEmp'
-      ? '<option value="">All Employees</option>'
-      : '<option value="">-- Select Employee --</option>';
+    if (id === 'repEmp') sel.innerHTML = '<option value="">All Employees</option>';
+    else if (id === 'calEmpFilter') sel.innerHTML = '<option value="">All Employees</option>';
+    else sel.innerHTML = '<option value="">-- Select Employee --</option>';
     employees.forEach(e => {
       const opt = document.createElement('option');
       opt.value = e.id; opt.textContent = e.name; sel.appendChild(opt);
@@ -402,13 +403,17 @@ async function saveRecord() {
   });
   if (!res.ok) { const e = await res.json(); return alert(e.error); }
   closeModal('recordModal');
-  loadEmployeeRecords();
+  const calPage = document.getElementById('page-calendar');
+  if (calPage && calPage.classList.contains('active')) loadCalendar();
+  else loadEmployeeRecords();
 }
 
 async function deleteRecord(id) {
   if (!confirm('Delete this record?')) return;
   await fetch(`/api/records/${id}`, { method: 'DELETE' });
-  loadEmployeeRecords();
+  const calPage = document.getElementById('page-calendar');
+  if (calPage && calPage.classList.contains('active')) loadCalendar();
+  else loadEmployeeRecords();
 }
 
 // ─── ADJUSTMENTS ─────────────────────────────────────────────────────────────
@@ -663,6 +668,178 @@ async function resetPw(id) {
     body: JSON.stringify({ password: pw })
   });
   alert('Password updated');
+}
+
+// ─── CALENDAR ────────────────────────────────────────────────────────────────
+let calYear  = new Date().getFullYear();
+let calMonth = new Date().getMonth() + 1; // 1-based
+let calData  = []; // raw rows from /api/calendar
+
+async function loadCalendar() {
+  document.getElementById('calMonthLabel').textContent =
+    `${MONTHS[calMonth]} ${calYear}`;
+
+  const empFilter = document.getElementById('calEmpFilter').value;
+  const res = await fetch(`/api/calendar?year=${calYear}&month=${calMonth}`);
+  calData = await res.json();
+
+  // Group by date
+  const byDate = {};
+  calData.forEach(r => {
+    const key = r.record_date;
+    if (!byDate[key]) byDate[key] = [];
+    byDate[key].push(r);
+  });
+
+  // Build grid
+  const grid = document.getElementById('calGrid');
+  grid.innerHTML = '';
+
+  // First day of month (0=Sun … 6=Sat) — shift so Mon=0
+  const firstDow = (new Date(calYear, calMonth - 1, 1).getDay() + 6) % 7;
+  const daysInMonth = new Date(calYear, calMonth, 0).getDate();
+  const prevDays  = new Date(calYear, calMonth - 1, 0).getDate();
+  const todayStr  = today();
+
+  // Fill leading blanks from previous month
+  for (let i = 0; i < firstDow; i++) {
+    const d = prevDays - firstDow + i + 1;
+    const cell = document.createElement('div');
+    cell.className = 'cal-cell other-month';
+    cell.innerHTML = `<div class="cal-date">${d}</div>`;
+    grid.appendChild(cell);
+  }
+
+  // Days of this month
+  for (let d = 1; d <= daysInMonth; d++) {
+    const dateStr = `${calYear}-${String(calMonth).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+    const dow = (new Date(calYear, calMonth - 1, d).getDay() + 6) % 7; // Mon=0
+    const entries = (byDate[dateStr] || []).filter(r =>
+      !empFilter || String(r.employee_id) === empFilter
+    );
+
+    const cell = document.createElement('div');
+    const classes = ['cal-cell'];
+    if (dateStr === todayStr) classes.push('today');
+    if (dow >= 5) classes.push('weekend');
+    if (entries.length) classes.push('has-offs');
+    cell.className = classes.join(' ');
+
+    const maxShow = 3;
+    const chips = entries.slice(0, maxShow).map(r => {
+      const cls = parseFloat(r.is_day_off) === 1 ? 'chip-full' : 'chip-half';
+      return `<span class="cal-chip ${cls}">${esc(r.employee_name)}</span>`;
+    }).join('');
+    const more = entries.length > maxShow
+      ? `<div class="cal-more">+${entries.length - maxShow} more</div>` : '';
+
+    cell.innerHTML = `<div class="cal-date">${d}</div><div class="cal-chips">${chips}${more}</div>`;
+    cell.addEventListener('click', () => openDayModal(dateStr, entries));
+    grid.appendChild(cell);
+  }
+
+  // Trailing blanks
+  const totalCells = firstDow + daysInMonth;
+  const trailing = (7 - (totalCells % 7)) % 7;
+  for (let i = 1; i <= trailing; i++) {
+    const cell = document.createElement('div');
+    cell.className = 'cal-cell other-month';
+    cell.innerHTML = `<div class="cal-date">${i}</div>`;
+    grid.appendChild(cell);
+  }
+
+  // Summary strip: days with offs
+  renderCalSummary(byDate, empFilter);
+}
+
+function renderCalSummary(byDate, empFilter) {
+  const summary = document.getElementById('calSummary');
+  const dates = Object.keys(byDate).sort();
+  if (!dates.length) { summary.classList.add('hidden'); return; }
+
+  let html = '';
+  dates.forEach(date => {
+    const entries = byDate[date].filter(r =>
+      !empFilter || String(r.employee_id) === empFilter
+    );
+    if (!entries.length) return;
+    const chips = entries.map(r => {
+      const cls = parseFloat(r.is_day_off) === 1 ? 'chip-full' : 'chip-half';
+      const label = parseFloat(r.is_day_off) === 1 ? 'Full' : 'Half';
+      return `<span class="cal-off-item"><span class="cal-chip ${cls}">${label}</span> ${esc(r.employee_name)}</span>`;
+    }).join('');
+    html += `<div class="cal-summary-card">
+      <h4>${formatDate(date)}</h4>
+      <div class="cal-off-list">${chips}</div>
+    </div>`;
+  });
+
+  if (html) {
+    summary.innerHTML = `<h3 style="margin-bottom:12px;font-size:0.95rem;color:var(--muted)">Days Off This Month</h3>` + html;
+    summary.classList.remove('hidden');
+  } else {
+    summary.classList.add('hidden');
+  }
+}
+
+function openDayModal(dateStr, entries) {
+  document.getElementById('dayModalTitle').textContent = formatDate(dateStr);
+
+  let content = '';
+  if (entries.length) {
+    content = entries.map(r => {
+      const label = parseFloat(r.is_day_off) === 1 ? 'Full Day' : 'Half Day';
+      const cls   = parseFloat(r.is_day_off) === 1 ? 'chip-full' : 'chip-half';
+      const typeLabel = r.employment_type === 'self_employed' ? 'Self-Emp' : 'Payroll';
+      return `<div class="day-off-entry">
+        <span class="cal-chip ${cls}">${label}</span>
+        <strong>${esc(r.employee_name)}</strong>
+        <span class="badge badge-grey" style="font-size:0.72rem">${typeLabel}</span>
+        ${r.notes ? `<span style="color:var(--muted);font-size:0.8rem">${esc(r.notes)}</span>` : ''}
+        <button class="btn btn-danger btn-sm" style="margin-left:auto" onclick="deleteRecord(${r.record_id});closeModal('dayModal')">Remove</button>
+      </div>`;
+    }).join('');
+  } else {
+    content = `<p style="color:var(--muted);font-size:0.88rem">No days off recorded for this date.</p>`;
+  }
+  document.getElementById('dayModalContent').innerHTML = content;
+
+  // Book button: pre-fill record modal with this date & day-off
+  document.getElementById('dayModalBookBtn').onclick = () => {
+    closeModal('dayModal');
+    openRecordModalForDate(dateStr);
+  };
+
+  openModal('dayModal');
+}
+
+function openRecordModalForDate(dateStr) {
+  const empId = document.getElementById('trackEmp').value || '';
+  document.getElementById('recId').value = '';
+  document.getElementById('recEmpId').value = empId;
+  document.getElementById('recDate').value = dateStr;
+  document.getElementById('recBreak').value = 40;
+  document.getElementById('recPhone').value = 0;
+  document.getElementById('recWasted').value = 0;
+  document.getElementById('recLate').value = 0;
+  document.getElementById('recDayOff').value = '1';
+  document.getElementById('recNotes').value = '';
+  document.getElementById('recFields').style.display = 'none';
+  document.getElementById('recordModalTitle').textContent = 'Book Day Off – ' + dateStr;
+  updatePreview();
+  openModal('recordModal');
+}
+
+function calPrevMonth() {
+  calMonth--;
+  if (calMonth < 1) { calMonth = 12; calYear--; }
+  loadCalendar();
+}
+
+function calNextMonth() {
+  calMonth++;
+  if (calMonth > 12) { calMonth = 1; calYear++; }
+  loadCalendar();
 }
 
 // ─── HELPERS ─────────────────────────────────────────────────────────────────
