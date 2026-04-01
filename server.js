@@ -81,6 +81,72 @@ const SHIFT_HOURS = 8;
 const ALLOWED_BREAK_MINUTES = 40;
 const DAY_OFF_ALLOWANCE = { payroll: 20, self_employed: 5 };
 
+// Count Mon–Fri days in a given month (no bank holidays — add if needed)
+function workingDaysInMonth(year, month) {
+  const daysInMonth = new Date(year, month, 0).getDate();
+  let count = 0;
+  for (let d = 1; d <= daysInMonth; d++) {
+    const dow = new Date(year, month - 1, d).getDay();
+    if (dow >= 1 && dow <= 5) count++;
+  }
+  return count;
+}
+
+// Daily rate for a specific month: (annual ÷ 12) ÷ working days in that month
+function dailyRateForMonth(annualSalary, year, month) {
+  return (annualSalary / 12) / workingDaysInMonth(year, month);
+}
+
+// Walk day-off records in date order; first N days are free (allowance),
+// excess days are charged at the daily rate of the month they fall in.
+async function calcExcessDeductions(empId, year, annualSalary, allowance) {
+  const { rows } = await q(`
+    SELECT record_date::TEXT AS record_date, is_day_off
+    FROM daily_records
+    WHERE employee_id = ? AND EXTRACT(YEAR FROM record_date) = ? AND is_day_off > 0
+    ORDER BY record_date ASC
+  `, [empId, year]);
+
+  let daysUsed = 0;
+  let excessDays = 0;
+  let totalDeduction = 0;
+  const monthBreakdown = {};
+
+  for (const r of rows) {
+    const val = parseFloat(r.is_day_off);
+    const freeRemaining = Math.max(0, allowance - daysUsed);
+    const excessHere   = Math.max(0, val - freeRemaining);
+    daysUsed += val;
+
+    if (excessHere > 0) {
+      const [y, m] = r.record_date.split('-').map(Number);
+      const wDays  = workingDaysInMonth(y, m);
+      const rate   = dailyRateForMonth(annualSalary, y, m);
+      const amount = excessHere * rate;
+      totalDeduction += amount;
+      excessDays     += excessHere;
+
+      const key = `${y}-${String(m).padStart(2, '0')}`;
+      if (!monthBreakdown[key]) {
+        monthBreakdown[key] = { year: y, month: m, working_days: wDays, rate: parseFloat(rate.toFixed(4)), days: 0, deduction: 0 };
+      }
+      monthBreakdown[key].days      += excessHere;
+      monthBreakdown[key].deduction += amount;
+    }
+  }
+
+  // Round deduction column in breakdown
+  const breakdown = Object.values(monthBreakdown)
+    .map(b => ({ ...b, deduction: parseFloat(b.deduction.toFixed(2)) }));
+
+  return {
+    total_days_off:   daysUsed,
+    excess_days:      parseFloat(excessDays.toFixed(1)),
+    excess_deduction: parseFloat(totalDeduction.toFixed(2)),
+    breakdown
+  };
+}
+
 // ─── AUTH ────────────────────────────────────────────────────────────────────
 
 app.post('/api/login', async (req, res) => {
@@ -194,30 +260,24 @@ app.delete('/api/employees/:id', requireAuth, async (req, res) => {
 // ─── YEAR STATS (days-off allowance) ─────────────────────────────────────────
 
 app.get('/api/employees/:id/year-stats', requireAuth, async (req, res) => {
-  const year = req.query.year || new Date().getFullYear();
+  const year = parseInt(req.query.year || new Date().getFullYear());
   const { rows: empRows } = await q('SELECT * FROM employees WHERE id = ?', [req.params.id]);
   if (!empRows[0]) return res.status(404).json({ error: 'Not found' });
   const emp = empRows[0];
 
-  const { rows } = await q(`
-    SELECT COALESCE(SUM(is_day_off), 0) AS total_days_off
-    FROM daily_records
-    WHERE employee_id = ? AND EXTRACT(YEAR FROM record_date) = ?
-  `, [req.params.id, year]);
-
-  const totalDaysOff = parseFloat(rows[0].total_days_off) || 0;
   const allowance = DAY_OFF_ALLOWANCE[emp.employment_type] || 20;
-  const excessDays = Math.max(0, totalDaysOff - allowance);
+  const annualSalary = parseFloat(emp.annual_salary) || 0;
+  const calc = await calcExcessDeductions(req.params.id, year, annualSalary, allowance);
 
   res.json({
-    year: parseInt(year),
-    total_days_off: totalDaysOff,
-    allowance_days: allowance,
-    remaining_allowance: Math.max(0, allowance - totalDaysOff),
-    excess_days: excessDays,
-    daily_rate: parseFloat(emp.daily_rate),
-    excess_deduction: parseFloat((excessDays * emp.daily_rate).toFixed(2)),
-    employment_type: emp.employment_type
+    year,
+    total_days_off:     calc.total_days_off,
+    allowance_days:     allowance,
+    remaining_allowance: Math.max(0, allowance - calc.total_days_off),
+    excess_days:        calc.excess_days,
+    excess_deduction:   calc.excess_deduction,
+    breakdown:          calc.breakdown,
+    employment_type:    emp.employment_type
   });
 });
 
@@ -373,35 +433,27 @@ app.get('/api/salary-overview', requireAuth, async (req, res) => {
       [emp.id, year]
     );
 
-    const { rows: daysRows } = await q(`
-      SELECT COALESCE(SUM(is_day_off), 0) AS total_days_off
-      FROM daily_records WHERE employee_id = ? AND EXTRACT(YEAR FROM record_date) = ?
-    `, [emp.id, year]);
-
-    const totalDaysOff = parseFloat(daysRows[0].total_days_off) || 0;
-    const allowance   = DAY_OFF_ALLOWANCE[emp.employment_type] || 20;
-    const excessDays  = Math.max(0, totalDaysOff - allowance);
-    const dailyRate   = parseFloat(emp.annual_salary) / 260;
-    const excessDeduction = parseFloat((excessDays * dailyRate).toFixed(2));
-    const totalPaid   = payments.reduce((a, b) => a + parseFloat(b.amount), 0);
-    const netRemaining = parseFloat((parseFloat(emp.annual_salary) - totalPaid - excessDeduction).toFixed(2));
-    const pctPaid = emp.annual_salary > 0
-      ? Math.min(100, Math.round((totalPaid / parseFloat(emp.annual_salary)) * 100)) : 0;
+    const allowance  = DAY_OFF_ALLOWANCE[emp.employment_type] || 20;
+    const annualSal  = parseFloat(emp.annual_salary) || 0;
+    const dayCalc    = await calcExcessDeductions(emp.id, year, annualSal, allowance);
+    const totalPaid  = payments.reduce((a, b) => a + parseFloat(b.amount), 0);
+    const netRemaining = parseFloat((annualSal - totalPaid - dayCalc.excess_deduction).toFixed(2));
+    const pctPaid    = annualSal > 0 ? Math.min(100, Math.round((totalPaid / annualSal) * 100)) : 0;
 
     return {
-      employee_id:    emp.id,
-      name:           emp.name,
-      employment_type: emp.employment_type,
-      annual_salary:  parseFloat(emp.annual_salary),
-      daily_rate:     parseFloat(dailyRate.toFixed(4)),
+      employee_id:      emp.id,
+      name:             emp.name,
+      employment_type:  emp.employment_type,
+      annual_salary:    annualSal,
       payments,
-      total_paid:     parseFloat(totalPaid.toFixed(2)),
-      total_days_off: totalDaysOff,
-      allowance_days: allowance,
-      excess_days:    excessDays,
-      excess_deduction: excessDeduction,
-      net_remaining:  netRemaining,
-      pct_paid:       pctPaid
+      total_paid:       parseFloat(totalPaid.toFixed(2)),
+      total_days_off:   dayCalc.total_days_off,
+      allowance_days:   allowance,
+      excess_days:      dayCalc.excess_days,
+      excess_deduction: dayCalc.excess_deduction,
+      breakdown:        dayCalc.breakdown,
+      net_remaining:    netRemaining,
+      pct_paid:         pctPaid
     };
   }));
 
@@ -448,15 +500,13 @@ app.get('/api/summary', requireAuth, async (req, res) => {
     if (to)   { sql += ' AND r.record_date <= ?'; params.push(to); }
     const { rows: records } = await q(sql, params);
 
-    // Year-level day-off stats
-    const { rows: yearRows } = await q(`
-      SELECT COALESCE(SUM(is_day_off), 0) AS total_days_off
-      FROM daily_records WHERE employee_id = ? AND EXTRACT(YEAR FROM record_date) = ?
-    `, [emp.id, year]);
-    const totalYearDaysOff = parseFloat(yearRows[0].total_days_off) || 0;
+    // Year-level day-off stats (per-month daily rate)
     const allowance = DAY_OFF_ALLOWANCE[emp.employment_type] || 20;
-    const excessDays = Math.max(0, totalYearDaysOff - allowance);
-    const excessDayDeduction = parseFloat((excessDays * emp.daily_rate).toFixed(2));
+    const annualSal = parseFloat(emp.annual_salary) || 0;
+    const dayCalc = await calcExcessDeductions(emp.id, year, annualSal, allowance);
+    const totalYearDaysOff = dayCalc.total_days_off;
+    const excessDays = dayCalc.excess_days;
+    const excessDayDeduction = dayCalc.excess_deduction;
 
     // Period totals (time-based only)
     let totalDeductMins = 0;

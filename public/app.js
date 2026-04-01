@@ -237,6 +237,11 @@ async function loadEmployeeRecords() {
 
     if (excess > 0) {
       banner.className = 'alert alert-error';
+      const breakdown = yearStats.breakdown || [];
+      const breakdownHtml = breakdown.map(b =>
+        `<span>${MONTHS[b.month]}: ${b.days}d × £${parseFloat(b.rate).toFixed(2)} = <strong>£${b.deduction.toFixed(2)}</strong>
+         <small style="opacity:0.7">(${b.working_days} working days)</small></span>`
+      ).join('<span style="opacity:0.4">·</span>');
       banner.innerHTML = `
         <div style="display:flex;flex-direction:column;gap:6px;width:100%">
           <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px">
@@ -246,13 +251,13 @@ async function loadEmployeeRecords() {
             </span>
             <span style="font-size:1rem;font-weight:800;color:var(--danger)">−£${deduction.toFixed(2)} deduction</span>
           </div>
-          <div style="font-size:0.78rem;opacity:0.85;background:rgba(255,255,255,0.5);border-radius:6px;padding:6px 10px;display:inline-flex;gap:6px;align-items:center;flex-wrap:wrap">
-            <span>📐 Breakdown:</span>
-            <span>${used} days used − ${allowance} days free = <strong>${excess} excess day(s)</strong></span>
-            <span>·</span>
-            <span>£${dailyRate.toFixed(2)}/day (annual ÷ 260)</span>
-            <span>·</span>
-            <span><strong>${excess} × £${dailyRate.toFixed(2)} = £${deduction.toFixed(2)}</strong></span>
+          <div style="font-size:0.78rem;opacity:0.85;background:rgba(255,255,255,0.5);border-radius:6px;padding:6px 10px;display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+            <span>📐</span>
+            <span>${used} used − ${allowance} free = <strong>${excess} excess</strong></span>
+            <span style="opacity:0.4">·</span>
+            <span>Rate = annual ÷ 12 ÷ working days in month</span>
+            <span style="opacity:0.4">·</span>
+            ${breakdownHtml}
           </div>
         </div>`;
     } else {
