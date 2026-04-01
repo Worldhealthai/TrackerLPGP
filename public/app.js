@@ -569,79 +569,113 @@ async function deletePayment(id) {
 // ─── REPORTS ─────────────────────────────────────────────────────────────────
 async function loadReport() {
   const from = document.getElementById('repFrom').value;
-  const to = document.getElementById('repTo').value;
+  const to   = document.getElementById('repTo').value;
   const empId = document.getElementById('repEmp').value;
-  if (!from || !to) return alert('Please select a date range');
-
-  const params = new URLSearchParams({ from, to });
-  const summaryRes = await fetch('/api/summary?' + params);
-  const summary = await summaryRes.json();
-  const filtered = empId ? summary.filter(e => e.employee_id === parseInt(empId)) : summary;
   const container = document.getElementById('reportContent');
 
-  if (!filtered.length) {
-    container.innerHTML = `<div class="empty-state"><div class="icon">📋</div><div>No data found.</div></div>`;
-    return;
-  }
+  if (!from || !to) return alert('Please select a date range');
 
-  const grandTotal = filtered.reduce((a, b) => a + b.total_deduction, 0);
-  let html = `
-    <div class="card" style="margin-bottom:16px">
-      <div class="card-header"><span class="card-title">Summary: ${from} to ${to}</span></div>
-      <div class="stats-grid">
-        <div class="stat-card blue"><div class="stat-label">Employees</div><div class="stat-value">${filtered.length}</div></div>
-        <div class="stat-card red"><div class="stat-label">Total Deductions</div><div class="stat-value">£${grandTotal.toFixed(2)}</div></div>
-      </div>
-    </div>`;
+  container.innerHTML = `<div class="empty-state"><div class="icon">⏳</div><div>Generating report…</div></div>`;
 
-  for (const emp of filtered) {
-    const typeLabel = emp.employment_type === 'self_employed' ? 'Self-Employed (5 days/yr)' : 'Payroll (20 days/yr)';
-    const recRes = await fetch(`/api/records/${emp.employee_id}?from=${from}&to=${to}`);
-    const records = await recRes.json();
+  try {
+    const params = new URLSearchParams({ from, to });
+    const summaryRes = await fetch('/api/summary?' + params);
+    if (!summaryRes.ok) {
+      const err = await summaryRes.json().catch(() => ({}));
+      throw new Error(err.error || `Server error ${summaryRes.status}`);
+    }
+    const summary = await summaryRes.json();
+    if (!Array.isArray(summary)) throw new Error(summary.error || 'Unexpected response from server');
 
-    html += `
-      <div class="card" style="margin-bottom:16px">
-        <div class="card-header">
-          <div>
-            <span class="card-title">${esc(emp.name)}</span>
-            <span class="badge ${emp.employment_type === 'self_employed' ? 'badge-yellow' : 'badge-blue'}" style="margin-left:8px">${typeLabel}</span>
-          </div>
-          <div style="font-size:0.85rem;color:var(--muted)">
-            £${emp.daily_rate}/day
-            ${emp.annual_salary > 0 ? ` &nbsp;|&nbsp; Salary: £${emp.annual_salary.toFixed(2)}/yr &nbsp;|&nbsp; Paid: £${emp.total_paid_year.toFixed(2)} &nbsp;|&nbsp; <strong>Remaining: £${emp.salary_remaining.toFixed(2)}</strong>` : ''}
-          </div>
+    const filtered = empId ? summary.filter(e => e.employee_id === parseInt(empId)) : summary;
+
+    if (!filtered.length) {
+      container.innerHTML = `<div class="empty-state"><div class="icon">📋</div><div>No records found for the selected range.</div></div>`;
+      return;
+    }
+
+    const grandTotal   = filtered.reduce((a, b) => a + (b.total_deduction || 0), 0);
+    const grandTimeDeduct = filtered.reduce((a, b) => a + (b.total_time_deduction || 0), 0);
+    const grandDayDeduct  = filtered.reduce((a, b) => a + (b.excess_day_deduction || 0), 0);
+
+    let html = `
+      <div class="card" style="margin-bottom:20px">
+        <div class="card-header"><span class="card-title">Report: ${from} → ${to}</span></div>
+        <div class="stats-grid">
+          <div class="stat-card blue"><div class="stat-label">Employees</div><div class="stat-value">${filtered.length}</div></div>
+          <div class="stat-card yellow"><div class="stat-label">Time Deductions</div><div class="stat-value">£${grandTimeDeduct.toFixed(2)}</div></div>
+          <div class="stat-card yellow"><div class="stat-label">Day-Off Deductions</div><div class="stat-value">£${grandDayDeduct.toFixed(2)}</div></div>
+          <div class="stat-card red"><div class="stat-label">Total Deductions</div><div class="stat-value">£${grandTotal.toFixed(2)}</div></div>
         </div>
-        <div style="margin-bottom:12px;display:flex;gap:20px;flex-wrap:wrap;font-size:0.88rem">
-          <span>Days off this year: <strong>${emp.year_days_off} / ${emp.allowance_days}</strong></span>
-          ${emp.excess_days > 0 ? `<span class="text-danger"><strong>${emp.excess_days} excess day(s) = £${emp.excess_day_deduction.toFixed(2)} deduction</strong></span>` : '<span class="text-success">Within allowance</span>'}
-          <span>Time deductions: <strong>£${emp.total_time_deduction.toFixed(2)}</strong></span>
-          <span class="text-danger fw-bold">Total deduction: £${emp.total_deduction.toFixed(2)}</span>
-        </div>
-        <div class="table-wrap">
-          <table>
-            <thead><tr><th>Date</th><th>Break</th><th>Phone</th><th>Wasted</th><th>Late</th><th>Day Off</th><th>Manual Adj</th><th>Deduct (min)</th><th>Amount</th><th>Notes</th></tr></thead>
-            <tbody>`;
+      </div>`;
 
-    records.forEach(r => {
-      const adjSign = r.manual_adj_minutes > 0 ? '+' : '';
-      const dayOffLabel = r.is_day_off === 1 ? 'Full Day' : r.is_day_off === 0.5 ? 'Half Day' : '—';
-      html += `<tr${r.is_day_off > 0 ? ' class="day-off-row"' : ''}>
-        <td>${r.record_date}</td>
-        <td>${r.break_minutes}m${Math.max(0,r.break_minutes-ALLOWED_BREAK)>0?` <span class="badge badge-red">+${Math.max(0,r.break_minutes-ALLOWED_BREAK)}m</span>`:''}</td>
-        <td>${r.phone_minutes>0?r.phone_minutes+'m':'—'}</td>
-        <td>${r.wasted_minutes>0?r.wasted_minutes+'m':'—'}</td>
-        <td>${r.late_minutes>0?r.late_minutes+'m':'—'}</td>
-        <td>${dayOffLabel}</td>
-        <td>${r.manual_adj_minutes!==0?`${adjSign}${r.manual_adj_minutes}m`:'—'}</td>
-        <td><strong>${r.total_deductible_minutes}m</strong></td>
-        <td class="${r.total_deduction>0?'text-danger':''}">£${r.total_deduction.toFixed(2)}</td>
-        <td>${esc(r.notes||'')||'—'}</td>
-      </tr>`;
-    });
+    for (const emp of filtered) {
+      const typeLabel  = emp.employment_type === 'self_employed' ? 'Self-Employed (5 days/yr)' : 'Payroll (20 days/yr)';
+      const typeBadge  = emp.employment_type === 'self_employed' ? 'badge-yellow' : 'badge-blue';
+      const annualSal  = parseFloat(emp.annual_salary) || 0;
+      const totalPaid  = parseFloat(emp.total_paid_year) || 0;
+      const remaining  = parseFloat(emp.salary_remaining) || 0;
+      const excessDeduct = parseFloat(emp.excess_day_deduction) || 0;
 
-    html += `</tbody></table></div></div>`;
+      const recRes = await fetch(`/api/records/${emp.employee_id}?from=${from}&to=${to}`);
+      if (!recRes.ok) continue;
+      const records = await recRes.json();
+
+      html += `
+        <div class="card" style="margin-bottom:16px">
+          <div class="card-header">
+            <div>
+              <span class="card-title">${esc(emp.name)}</span>
+              <span class="badge ${typeBadge}" style="margin-left:8px">${typeLabel}</span>
+            </div>
+            ${annualSal > 0 ? `<div style="font-size:0.82rem;color:var(--muted);text-align:right">
+              Salary: £${annualSal.toLocaleString('en-GB',{minimumFractionDigits:2})} &nbsp;·&nbsp;
+              Paid: £${totalPaid.toLocaleString('en-GB',{minimumFractionDigits:2})} &nbsp;·&nbsp;
+              <strong>Remaining: £${remaining.toLocaleString('en-GB',{minimumFractionDigits:2})}</strong>
+            </div>` : ''}
+          </div>
+          <div style="margin-bottom:14px;display:flex;gap:16px;flex-wrap:wrap;font-size:0.86rem">
+            <span>Days off this year: <strong>${emp.year_days_off} / ${emp.allowance_days}</strong></span>
+            ${emp.excess_days > 0
+              ? `<span class="text-danger fw-bold">${emp.excess_days} excess = £${excessDeduct.toFixed(2)} deduction</span>`
+              : '<span class="text-success">Within allowance ✓</span>'}
+            <span>Time deductions: <strong>£${(emp.total_time_deduction||0).toFixed(2)}</strong></span>
+            <span class="text-danger fw-bold">Total: £${(emp.total_deduction||0).toFixed(2)}</span>
+          </div>`;
+
+      if (records.length) {
+        html += `<div class="table-wrap"><table>
+          <thead><tr><th>Date</th><th>Break</th><th>Phone</th><th>Wasted</th><th>Late</th><th>Day Off</th><th>Adj</th><th>Mins</th><th>Amount</th><th>Notes</th></tr></thead>
+          <tbody>`;
+        records.forEach(r => {
+          const adjSign    = r.manual_adj_minutes > 0 ? '+' : '';
+          const dayOffLabel = r.is_day_off === 1 ? '<span class="badge badge-red">Full</span>'
+                            : r.is_day_off === 0.5 ? '<span class="badge badge-yellow">Half</span>' : '—';
+          html += `<tr${r.is_day_off > 0 ? ' class="day-off-row"' : ''}>
+            <td><strong>${r.record_date}</strong></td>
+            <td>${r.break_minutes}m${Math.max(0,r.break_minutes-ALLOWED_BREAK)>0?` <span class="badge badge-red">+${Math.max(0,r.break_minutes-ALLOWED_BREAK)}m</span>`:''}</td>
+            <td>${r.phone_minutes>0?r.phone_minutes+'m':'—'}</td>
+            <td>${r.wasted_minutes>0?r.wasted_minutes+'m':'—'}</td>
+            <td>${r.late_minutes>0?r.late_minutes+'m':'—'}</td>
+            <td>${dayOffLabel}</td>
+            <td>${r.manual_adj_minutes!==0?`${adjSign}${r.manual_adj_minutes}m`:'—'}</td>
+            <td><strong>${r.total_deductible_minutes}m</strong></td>
+            <td class="${(r.total_deduction||0)>0?'text-danger fw-bold':''}">£${(r.total_deduction||0).toFixed(2)}</td>
+            <td style="max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(r.notes||'')||'—'}</td>
+          </tr>`;
+        });
+        html += `</tbody></table></div>`;
+      } else {
+        html += `<div style="color:var(--muted);font-size:0.85rem;padding:8px 0">No daily records in this period.</div>`;
+      }
+      html += `</div>`;
+    }
+
+    container.innerHTML = html;
+
+  } catch (e) {
+    container.innerHTML = `<div class="alert alert-error">Failed to generate report: ${esc(e.message)}</div>`;
   }
-  container.innerHTML = html;
 }
 
 // ─── ADMINS ──────────────────────────────────────────────────────────────────
