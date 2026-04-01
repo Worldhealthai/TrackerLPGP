@@ -22,8 +22,6 @@ document.addEventListener('DOMContentLoaded', async () => {
   }
 
   const m = thisMonth();
-  document.getElementById('dashFrom').value = m.from;
-  document.getElementById('dashTo').value = m.to;
   document.getElementById('repFrom').value = m.from;
   document.getElementById('repTo').value = m.to;
   document.getElementById('trackMonth').value = m.from.slice(0, 7);
@@ -149,23 +147,15 @@ async function toggleEmpActive(id, active) {
 
 // ─── DASHBOARD ───────────────────────────────────────────────────────────────
 async function loadDashboard() {
-  const from = document.getElementById('dashFrom').value;
-  const to = document.getElementById('dashTo').value;
-  const params = new URLSearchParams();
-  if (from) params.append('from', from);
-  if (to) params.append('to', to);
-
-  const res = await fetch('/api/summary?' + params);
+  const year = new Date().getFullYear();
+  const res = await fetch(`/api/summary?from=${year}-01-01&to=${year}-12-31`);
   const summary = await res.json();
 
   const totalDeduction = summary.reduce((a, b) => a + b.total_deduction, 0);
-  const totalExcess = summary.reduce((a, b) => a + b.excess_days, 0);
 
   document.getElementById('dashStats').innerHTML = `
-    <div class="stat-card blue"><div class="stat-label">Employees</div><div class="stat-value">${summary.length}</div></div>
-    <div class="stat-card"><div class="stat-label">Days Tracked</div><div class="stat-value">${summary.reduce((a,b)=>a+b.record_count,0)}</div></div>
-    <div class="stat-card yellow"><div class="stat-label">Excess Days Off (Year)</div><div class="stat-value">${totalExcess}</div></div>
-    <div class="stat-card red"><div class="stat-label">Total Deductions</div><div class="stat-value">£${totalDeduction.toFixed(2)}</div></div>
+    <div class="stat-card blue"><div class="stat-label">Active Employees</div><div class="stat-value">${summary.length}</div></div>
+    <div class="stat-card red"><div class="stat-label">Total Deductions (${year})</div><div class="stat-value">£${totalDeduction.toFixed(2)}</div></div>
   `;
 
   const tbody = document.getElementById('dashTable');
