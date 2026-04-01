@@ -170,9 +170,9 @@ async function loadDashboard() {
       <td><span class="badge ${typeBadge}">${typeLabel}</span></td>
       <td class="${daysColor}">${row.year_days_off} / ${row.allowance_days}</td>
       <td>${row.excess_days > 0 ? `<span class="badge badge-red">${row.excess_days} excess</span>` : '<span class="badge badge-green">OK</span>'}</td>
-      <td>£${row.total_time_deduction.toFixed(2)}</td>
-      <td class="${row.excess_day_deduction > 0 ? 'text-danger fw-bold' : ''}">£${row.excess_day_deduction.toFixed(2)}</td>
-      <td class="${row.total_deduction > 0 ? 'text-danger fw-bold' : ''}">£${row.total_deduction.toFixed(2)}</td>
+      <td style="color:var(--primary)">£${(row.ref_time_amount||0).toFixed(2)}</td>
+      <td class="${row.excess_day_deduction > 0 ? 'text-danger fw-bold' : ''}">£${(row.excess_day_deduction||0).toFixed(2)}</td>
+      <td class="${row.total_deduction > 0 ? 'text-danger fw-bold' : ''}">£${(row.total_deduction||0).toFixed(2)}</td>
       <td><button class="btn btn-ghost btn-sm" onclick="goToTracking(${row.employee_id})">View</button></td>
     `;
     tbody.appendChild(tr);
