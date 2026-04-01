@@ -360,6 +360,53 @@ app.delete('/api/payments/:id', requireAuth, async (req, res) => {
   res.json({ success: true });
 });
 
+// ─── SALARY OVERVIEW ─────────────────────────────────────────────────────────
+
+app.get('/api/salary-overview', requireAuth, async (req, res) => {
+  const year = parseInt(req.query.year) || new Date().getFullYear();
+  const { rows: employees } = await q('SELECT * FROM employees WHERE active = 1 ORDER BY name');
+
+  const overview = await Promise.all(employees.map(async emp => {
+    const { rows: payments } = await q(
+      'SELECT * FROM monthly_payments WHERE employee_id = ? AND payment_year = ? ORDER BY payment_month',
+      [emp.id, year]
+    );
+
+    const { rows: daysRows } = await q(`
+      SELECT COALESCE(SUM(is_day_off), 0) AS total_days_off
+      FROM daily_records WHERE employee_id = ? AND EXTRACT(YEAR FROM record_date) = ?
+    `, [emp.id, year]);
+
+    const totalDaysOff = parseFloat(daysRows[0].total_days_off) || 0;
+    const allowance   = DAY_OFF_ALLOWANCE[emp.employment_type] || 20;
+    const excessDays  = Math.max(0, totalDaysOff - allowance);
+    const dailyRate   = parseFloat(emp.annual_salary) / 260;
+    const excessDeduction = parseFloat((excessDays * dailyRate).toFixed(2));
+    const totalPaid   = payments.reduce((a, b) => a + parseFloat(b.amount), 0);
+    const netRemaining = parseFloat((parseFloat(emp.annual_salary) - totalPaid - excessDeduction).toFixed(2));
+    const pctPaid = emp.annual_salary > 0
+      ? Math.min(100, Math.round((totalPaid / parseFloat(emp.annual_salary)) * 100)) : 0;
+
+    return {
+      employee_id:    emp.id,
+      name:           emp.name,
+      employment_type: emp.employment_type,
+      annual_salary:  parseFloat(emp.annual_salary),
+      daily_rate:     parseFloat(dailyRate.toFixed(4)),
+      payments,
+      total_paid:     parseFloat(totalPaid.toFixed(2)),
+      total_days_off: totalDaysOff,
+      allowance_days: allowance,
+      excess_days:    excessDays,
+      excess_deduction: excessDeduction,
+      net_remaining:  netRemaining,
+      pct_paid:       pctPaid
+    };
+  }));
+
+  res.json(overview);
+});
+
 // ─── CALENDAR ────────────────────────────────────────────────────────────────
 
 app.get('/api/calendar', requireAuth, async (req, res) => {

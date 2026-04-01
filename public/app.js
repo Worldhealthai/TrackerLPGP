@@ -47,23 +47,23 @@ function navigate(page) {
   document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
   document.getElementById('page-' + page).classList.add('active');
   document.querySelector(`[data-page="${page}"]`).classList.add('active');
-  const titles = { dashboard:'Dashboard', tracking:'Daily Tracking', employees:'Employees', reports:'Reports', calendar:'Calendar', admins:'Admin Users' };
+  const titles = { dashboard:'Dashboard', tracking:'Daily Tracking', salary:'Salary Tracker', employees:'Employees', reports:'Reports', calendar:'Calendar', admins:'Admin Users' };
   document.getElementById('pageTitle').textContent = titles[page] || page;
   if (page === 'employees') loadEmpTable();
   if (page === 'admins') loadAdmins();
   if (page === 'calendar') loadCalendar();
+  if (page === 'salary') loadSalaryPage();
 }
 
 // ─── EMPLOYEES ───────────────────────────────────────────────────────────────
 async function loadEmployees() {
   const res = await fetch('/api/employees');
   employees = await res.json();
-  ['trackEmp', 'repEmp', 'calEmpFilter'].forEach(id => {
+  ['trackEmp', 'repEmp', 'calEmpFilter', 'salaryEmpFilter'].forEach(id => {
     const sel = document.getElementById(id);
     const prev = sel.value;
-    if (id === 'repEmp') sel.innerHTML = '<option value="">All Employees</option>';
-    else if (id === 'calEmpFilter') sel.innerHTML = '<option value="">All Employees</option>';
-    else sel.innerHTML = '<option value="">-- Select Employee --</option>';
+    if (id === 'trackEmp') sel.innerHTML = '<option value="">-- Select Employee --</option>';
+    else sel.innerHTML = '<option value="">All Employees</option>';
     employees.forEach(e => {
       const opt = document.createElement('option');
       opt.value = e.id; opt.textContent = e.name; sel.appendChild(opt);
@@ -668,6 +668,174 @@ async function resetPw(id) {
     body: JSON.stringify({ password: pw })
   });
   alert('Password updated');
+}
+
+// ─── SALARY PAGE ─────────────────────────────────────────────────────────────
+
+function initSalaryYearSelect() {
+  const sel = document.getElementById('salaryYear');
+  if (sel.options.length > 1) return;
+  const now = new Date().getFullYear();
+  for (let y = now; y >= now - 4; y--) {
+    const opt = document.createElement('option');
+    opt.value = y; opt.textContent = y;
+    sel.appendChild(opt);
+  }
+  sel.value = now;
+}
+
+async function loadSalaryPage() {
+  initSalaryYearSelect();
+  const year   = document.getElementById('salaryYear').value || new Date().getFullYear();
+  const empFilter = document.getElementById('salaryEmpFilter').value;
+
+  const res  = await fetch(`/api/salary-overview?year=${year}`);
+  const data = await res.json();
+  const rows = empFilter ? data.filter(e => String(e.employee_id) === empFilter) : data;
+
+  // ── Totals strip ──
+  const totalAnnual   = rows.reduce((a, b) => a + b.annual_salary, 0);
+  const totalPaid     = rows.reduce((a, b) => a + b.total_paid, 0);
+  const totalDeduct   = rows.reduce((a, b) => a + b.excess_deduction, 0);
+  const totalRemain   = rows.reduce((a, b) => a + b.net_remaining, 0);
+
+  document.getElementById('salaryTotals').innerHTML = `
+    <div class="stat-card blue"><div class="stat-label">Total Payroll ${year}</div><div class="stat-value">£${fmtK(totalAnnual)}</div></div>
+    <div class="stat-card green"><div class="stat-label">Total Paid</div><div class="stat-value">£${fmtK(totalPaid)}</div></div>
+    <div class="stat-card red"><div class="stat-label">Day-Off Deductions</div><div class="stat-value">£${fmtK(totalDeduct)}</div></div>
+    <div class="stat-card yellow"><div class="stat-label">Outstanding</div><div class="stat-value">£${fmtK(totalRemain)}</div></div>
+  `;
+
+  // ── Per-employee cards ──
+  const container = document.getElementById('salaryCards');
+  if (!rows.length) {
+    container.innerHTML = `<div class="empty-state"><div class="icon">💰</div><div>No employees with salary data.</div></div>`;
+    return;
+  }
+
+  container.innerHTML = rows.map(emp => {
+    const initials = emp.name.split(' ').map(w => w[0]).join('').slice(0,2).toUpperCase();
+    const typeLabel = emp.employment_type === 'self_employed' ? 'Self-Employed' : 'Payroll';
+    const typeBadge = emp.employment_type === 'self_employed' ? 'badge-yellow' : 'badge-blue';
+    const allowanceLabel = emp.employment_type === 'self_employed' ? '5 days/yr free' : '20 days/yr free';
+    const isOverpaid = emp.net_remaining < 0;
+
+    // Progress bar
+    const fill = `<div class="salary-progress-fill${isOverpaid ? ' overpaid' : ''}" style="width:${emp.pct_paid}%"></div>`;
+    const progress = `
+      <div class="salary-progress-wrap">
+        <div class="salary-progress-labels">
+          <span>Paid: £${emp.total_paid.toLocaleString('en-GB', {minimumFractionDigits:2})}</span>
+          <span>${emp.pct_paid}% of annual salary paid</span>
+        </div>
+        <div class="salary-progress-bar">${fill}</div>
+      </div>`;
+
+    // Payments list
+    const payList = emp.payments.length
+      ? emp.payments.map(p => `
+        <div class="salary-payment-row">
+          <span class="salary-payment-month">${MONTHS[p.payment_month]} ${p.payment_year}</span>
+          <span class="salary-payment-amount">+£${parseFloat(p.amount).toLocaleString('en-GB', {minimumFractionDigits:2})}</span>
+          <span class="salary-payment-notes">${esc(p.notes || '')}</span>
+          <button class="btn btn-danger btn-sm" onclick="deleteSalaryPayment(${p.id})">Del</button>
+        </div>`).join('')
+      : `<div style="color:var(--muted);font-size:0.85rem;padding:8px 0">No payments logged yet.</div>`;
+
+    // Excess days deduction note
+    const deductNote = emp.excess_days > 0
+      ? `<div class="salary-stat danger"><div class="salary-stat-label">Day-Off Deduction</div><div class="salary-stat-value">−£${emp.excess_deduction.toLocaleString('en-GB', {minimumFractionDigits:2})}</div></div>`
+      : `<div class="salary-stat success"><div class="salary-stat-label">Day-Off Deduction</div><div class="salary-stat-value">£0.00</div></div>`;
+
+    const netClass = isOverpaid ? ' danger' : '';
+
+    return `<div class="salary-card">
+      <div class="salary-card-header">
+        <div class="salary-avatar">${initials}</div>
+        <div>
+          <div class="salary-name">${esc(emp.name)}</div>
+          <div class="salary-sub">
+            <span class="badge ${typeBadge}" style="font-size:0.68rem">${typeLabel}</span>
+            &nbsp;${allowanceLabel} &nbsp;·&nbsp; Daily rate: £${emp.daily_rate.toFixed(2)}
+          </div>
+        </div>
+        <div class="salary-header-right">
+          <div class="salary-annual-label">Annual Salary</div>
+          <div class="salary-annual">£${parseFloat(emp.annual_salary).toLocaleString('en-GB', {minimumFractionDigits:2})}</div>
+        </div>
+        <button class="btn btn-ghost btn-sm" onclick="openSalaryPaymentModal(${emp.employee_id})">+ Payment</button>
+      </div>
+      <div class="salary-card-body">
+        ${progress}
+        <div class="salary-stats-row">
+          <div class="salary-stat primary"><div class="salary-stat-label">Annual Salary</div><div class="salary-stat-value">£${parseFloat(emp.annual_salary).toLocaleString('en-GB', {minimumFractionDigits:2})}</div></div>
+          <div class="salary-stat success"><div class="salary-stat-label">Total Paid</div><div class="salary-stat-value">£${emp.total_paid.toLocaleString('en-GB', {minimumFractionDigits:2})}</div></div>
+          <div class="salary-stat ${emp.excess_days > 0 ? 'warning' : ''}"><div class="salary-stat-label">Days Off (${year})</div><div class="salary-stat-value">${emp.total_days_off} / ${emp.allowance_days}</div></div>
+          ${deductNote}
+        </div>
+        <button class="salary-payments-toggle" onclick="togglePaymentsList(this)">▶ Payment History (${emp.payments.length})</button>
+        <div class="salary-payments-list">${payList}</div>
+        <div class="salary-net-remaining${netClass}">
+          <div>
+            <div class="salary-net-remaining-label">Net Remaining to Pay (${year})</div>
+            <div style="font-size:0.75rem;color:var(--muted);margin-top:2px">Annual − Paid − Day-Off Deductions</div>
+          </div>
+          <div class="salary-net-remaining-value">${isOverpaid ? '−' : ''}£${Math.abs(emp.net_remaining).toLocaleString('en-GB', {minimumFractionDigits:2})}</div>
+        </div>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function togglePaymentsList(btn) {
+  const list = btn.nextElementSibling;
+  const open = list.classList.toggle('open');
+  btn.textContent = (open ? '▼' : '▶') + btn.textContent.slice(1);
+}
+
+function openSalaryPaymentModal(empId = '') {
+  const now = new Date();
+  // Populate employee dropdown
+  const sel = document.getElementById('spEmpId');
+  sel.innerHTML = '';
+  employees.forEach(e => {
+    const opt = document.createElement('option');
+    opt.value = e.id; opt.textContent = e.name; sel.appendChild(opt);
+  });
+  if (empId) sel.value = empId;
+  document.getElementById('spYear').value  = now.getFullYear();
+  document.getElementById('spMonth').value = now.getMonth() + 1;
+  document.getElementById('spAmount').value = '';
+  document.getElementById('spNotes').value  = '';
+  openModal('salaryPayModal');
+}
+
+async function saveSalaryPayment() {
+  const employee_id   = document.getElementById('spEmpId').value;
+  const payment_year  = document.getElementById('spYear').value;
+  const payment_month = document.getElementById('spMonth').value;
+  const amount        = document.getElementById('spAmount').value;
+  const notes         = document.getElementById('spNotes').value;
+  if (!amount || parseFloat(amount) <= 0) return alert('Enter a valid amount');
+  const res = await fetch('/api/payments', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ employee_id, payment_year, payment_month, amount, notes })
+  });
+  if (!res.ok) { const e = await res.json(); return alert(e.error); }
+  closeModal('salaryPayModal');
+  loadSalaryPage();
+}
+
+async function deleteSalaryPayment(id) {
+  if (!confirm('Delete this payment?')) return;
+  await fetch(`/api/payments/${id}`, { method: 'DELETE' });
+  loadSalaryPage();
+}
+
+function fmtK(n) {
+  if (n >= 1000) return (n / 1000).toFixed(1) + 'k';
+  return n.toFixed(2);
 }
 
 // ─── CALENDAR ────────────────────────────────────────────────────────────────
