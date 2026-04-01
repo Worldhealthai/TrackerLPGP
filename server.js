@@ -3,7 +3,7 @@ const cookieParser = require('cookie-parser');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const path = require('path');
-const { pool, initDb } = require('./database');
+const { sql, initDb } = require('./database');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -58,10 +58,12 @@ function requireAuth(req, res, next) {
   }
 }
 
-function q(sql, params = []) {
+// neon() returns rows array directly; wrap in { rows } for consistent usage throughout
+async function q(rawSql, params = []) {
   let i = 0;
-  const pgSql = sql.replace(/\?/g, () => `$${++i}`);
-  return pool.query(pgSql, params);
+  const pgSql = rawSql.replace(/\?/g, () => `$${++i}`);
+  const rows = await sql(pgSql, params);
+  return { rows };
 }
 
 const SHIFT_HOURS = 8;
