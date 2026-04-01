@@ -242,10 +242,23 @@ app.post('/api/employees', requireAuth, async (req, res) => {
 });
 
 app.put('/api/employees/:id', requireAuth, async (req, res) => {
-  const { name, active, employment_type, annual_salary, currency } = req.body;
+  const { name, active, employment_type, annual_salary, currency, salary_reason, salary_effective } = req.body;
   const annualSal = parseFloat(annual_salary) || 0;
   const daily_rate = parseFloat((annualSal / 260).toFixed(4));
   const cur = ['GBP','AED'].includes(currency) ? currency : 'GBP';
+
+  // If salary changed, log old salary to history before updating
+  const { rows: current } = await q('SELECT annual_salary, currency FROM employees WHERE id = ?', [req.params.id]);
+  if (current[0] && parseFloat(current[0].annual_salary) !== annualSal) {
+    await q(
+      'INSERT INTO salary_history (employee_id, annual_salary, currency, effective_from, reason, created_by) VALUES (?, ?, ?, ?, ?, ?)',
+      [req.params.id, annualSal, cur,
+       salary_effective || new Date().toISOString().slice(0,10),
+       salary_reason || '',
+       req.admin.id]
+    );
+  }
+
   await q(
     'UPDATE employees SET name=?, daily_rate=?, active=?, employment_type=?, annual_salary=?, currency=? WHERE id=?',
     [name, daily_rate, active !== undefined ? active : 1, employment_type || 'payroll', annualSal, cur, req.params.id]
@@ -441,6 +454,10 @@ app.get('/api/salary-overview', requireAuth, async (req, res) => {
         'SELECT *, deduction_date::TEXT AS deduction_date FROM office_deductions WHERE employee_id = ? ORDER BY office_deductions.deduction_date DESC',
         [emp.id]
       );
+      const { rows: salaryHistory } = await q(
+        'SELECT *, effective_from::TEXT AS effective_from FROM salary_history WHERE employee_id = ? ORDER BY effective_from DESC, created_at DESC',
+        [emp.id]
+      );
       const totalOffice = officeRows.reduce((a, b) => a + parseFloat(b.amount), 0);
       const totalPaid   = payments.reduce((a, b) => a + parseFloat(b.amount), 0);
       const netRemaining = parseFloat((annualSal - totalPaid - dayCalc.excess_deduction - totalOffice).toFixed(2));
@@ -452,6 +469,7 @@ app.get('/api/salary-overview', requireAuth, async (req, res) => {
         employment_type:   emp.employment_type,
         currency:          emp.currency || 'GBP',
         annual_salary:     annualSal,
+        salary_history:    salaryHistory,
         payments,
         office_deductions: officeRows,
         total_office_deductions: parseFloat(totalOffice.toFixed(2)),
@@ -592,6 +610,34 @@ app.post('/api/office-deductions', requireAuth, async (req, res) => {
 
 app.delete('/api/office-deductions/:id', requireAuth, async (req, res) => {
   await q('DELETE FROM office_deductions WHERE id = ?', [req.params.id]);
+  res.json({ success: true });
+});
+
+// ─── SALARY HISTORY ──────────────────────────────────────────────────────────
+
+app.get('/api/salary-history/:employeeId', requireAuth, async (req, res) => {
+  const { rows } = await q(
+    `SELECT sh.*, sh.effective_from::TEXT AS effective_from, ad.username AS created_by_name
+     FROM salary_history sh LEFT JOIN admins ad ON ad.id = sh.created_by
+     WHERE sh.employee_id = ? ORDER BY sh.effective_from DESC, sh.created_at DESC`,
+    [req.params.employeeId]
+  );
+  res.json(rows);
+});
+
+app.post('/api/salary-history', requireAuth, async (req, res) => {
+  const { employee_id, annual_salary, currency, effective_from, reason } = req.body;
+  if (!employee_id || !annual_salary) return res.status(400).json({ error: 'employee_id and annual_salary required' });
+  const cur = ['GBP','AED'].includes(currency) ? currency : 'GBP';
+  const { rows } = await q(
+    'INSERT INTO salary_history (employee_id, annual_salary, currency, effective_from, reason, created_by) VALUES (?, ?, ?, ?, ?, ?) RETURNING id',
+    [employee_id, parseFloat(annual_salary), cur, effective_from || new Date().toISOString().slice(0,10), reason || '', req.admin.id]
+  );
+  res.json({ id: rows[0].id });
+});
+
+app.delete('/api/salary-history/:id', requireAuth, async (req, res) => {
+  await q('DELETE FROM salary_history WHERE id = ?', [req.params.id]);
   res.json({ success: true });
 });
 

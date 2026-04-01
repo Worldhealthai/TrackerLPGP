@@ -107,7 +107,18 @@ function openEmpModal(emp = null) {
   document.getElementById('empType').value = emp ? (emp.employment_type || 'payroll') : 'payroll';
   document.getElementById('empCurrency').value = emp ? (emp.currency || 'GBP') : 'GBP';
   document.getElementById('empAnnualSalary').value = emp ? emp.annual_salary : 0;
+  document.getElementById('empSalaryEffective').value = today();
+  document.getElementById('empSalaryReason').value = '';
+  document.getElementById('salaryChangeFields').classList.add('hidden');
   document.getElementById('empModalTitle').textContent = emp ? 'Edit Employee' : 'Add Employee';
+
+  // Show raise fields when salary value changes
+  const salaryInput = document.getElementById('empAnnualSalary');
+  const originalSalary = emp ? parseFloat(emp.annual_salary) : 0;
+  salaryInput.oninput = () => {
+    const changed = parseFloat(salaryInput.value) !== originalSalary && !!emp;
+    document.getElementById('salaryChangeFields').classList.toggle('hidden', !changed);
+  };
   openModal('empModal');
 }
 
@@ -117,13 +128,15 @@ async function saveEmployee() {
   const employment_type = document.getElementById('empType').value;
   const currency = document.getElementById('empCurrency').value;
   const annual_salary = parseFloat(document.getElementById('empAnnualSalary').value) || 0;
+  const salary_reason = document.getElementById('empSalaryReason').value.trim();
+  const salary_effective = document.getElementById('empSalaryEffective').value;
   if (!name) return alert('Name is required');
 
   if (id) {
     await fetch(`/api/employees/${id}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name, employment_type, annual_salary, currency, active: 1 })
+      body: JSON.stringify({ name, employment_type, annual_salary, currency, active: 1, salary_reason, salary_effective })
     });
   } else {
     await fetch('/api/employees', {
@@ -800,6 +813,7 @@ async function loadSalaryPage() {
       const pctPaid         = parseFloat(emp.pct_paid) || 0;
       const payments        = Array.isArray(emp.payments) ? emp.payments : [];
       const officeDeductions = Array.isArray(emp.office_deductions) ? emp.office_deductions : [];
+      const salaryHistory   = Array.isArray(emp.salary_history) ? emp.salary_history : [];
       const officeTotal     = parseFloat(emp.total_office_deductions) || 0;
       const cur             = emp.currency || 'GBP';
       const sym             = currencySymbol(cur);
@@ -889,6 +903,20 @@ async function loadSalaryPage() {
                   </div>`).join('')}
               </div>` : `<div style="color:var(--muted);font-size:0.82rem;padding:4px 0">No items logged.</div>`}
           </div>
+
+          ${salaryHistory.length ? `
+          <div style="margin-top:14px">
+            <button class="salary-payments-toggle" onclick="togglePaymentsList(this)">▶ Salary History / Raises (${salaryHistory.length})</button>
+            <div class="salary-payments-list">
+              ${salaryHistory.map(h => `
+                <div class="salary-payment-row" style="background:#f0fdf4;border-color:#86efac">
+                  <span class="salary-payment-month">${h.effective_from || ''}</span>
+                  <span style="font-weight:700;color:#16a34a">${currencySymbol(h.currency || cur)}${parseFloat(h.annual_salary || 0).toLocaleString('en-GB',{minimumFractionDigits:2})}/yr</span>
+                  <span class="salary-payment-notes">${esc(h.reason || '')}</span>
+                  <button class="btn btn-danger btn-sm" onclick="deleteSalaryHistory(${h.id})">Del</button>
+                </div>`).join('')}
+            </div>
+          </div>` : ''}
 
           <div class="salary-net-remaining${netClass}">
             <div>
@@ -982,6 +1010,12 @@ async function saveOfficeDeduction() {
 async function deleteOfficeDeduction(id) {
   if (!confirm('Remove this deduction?')) return;
   await fetch(`/api/office-deductions/${id}`, { method: 'DELETE' });
+  loadSalaryPage();
+}
+
+async function deleteSalaryHistory(id) {
+  if (!confirm('Remove this salary history entry?')) return;
+  await fetch(`/api/salary-history/${id}`, { method: 'DELETE' });
   loadSalaryPage();
 }
 
