@@ -9,9 +9,12 @@ types.setTypeParser(1184, v => (v ? v.slice(0, 19) : v));
 // Return NUMERIC/DECIMAL as JS numbers
 types.setTypeParser(1700, v => parseFloat(v));
 
+// Vercel built-in Postgres sets POSTGRES_URL; external Neon sets DATABASE_URL
+const connectionString = process.env.DATABASE_URL || process.env.POSTGRES_URL;
+
 const pool = new Pool({
-  connectionString: process.env.DATABASE_URL,
-  ssl: process.env.DATABASE_URL ? { rejectUnauthorized: false } : false,
+  connectionString,
+  ssl: connectionString ? { rejectUnauthorized: false } : false,
   max: 3 // keep pool small for serverless
 });
 

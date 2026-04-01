@@ -32,7 +32,9 @@ app.get('/', async (req, res, next) => {
     return res.status(503).send(`<!DOCTYPE html><html><head><title>Setup Required</title>
       <style>body{font-family:sans-serif;max-width:600px;margin:80px auto;padding:20px}
       h1{color:#d93025}code{background:#f1f3f4;padding:2px 8px;border-radius:4px}</style></head>
-      <body><h1>Database Not Connected</h1>${hint}</body></html>`);
+      <body><h1>Database Not Connected</h1>${hint}
+      <p>In your <strong>Vercel dashboard</strong>: go to <strong>Storage → Create Database → Postgres</strong>, connect it to this project, then redeploy.</p>
+      </body></html>`);
   }
   const token = req.cookies.token;
   if (!token) return res.redirect('/login.html');
@@ -45,8 +47,8 @@ app.use(express.static(path.join(__dirname, 'public')));
 app.use('/api', async (req, res, next) => {
   await dbReady;
   if (dbInitError) {
-    const msg = !process.env.DATABASE_URL
-      ? 'DATABASE_URL environment variable is not set. Add your Neon connection string in Vercel → Settings → Environment Variables.'
+    const msg = !(process.env.DATABASE_URL || process.env.POSTGRES_URL)
+      ? 'No database connected. In Vercel: go to Storage → Create Database → Postgres → connect to this project → redeploy.'
       : `Database connection failed: ${dbInitError.message}`;
     return res.status(503).json({ error: msg });
   }
