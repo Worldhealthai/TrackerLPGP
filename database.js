@@ -1,21 +1,17 @@
 const { Pool, types } = require('pg');
 const bcrypt = require('bcryptjs');
 
-// Return DATE columns as 'YYYY-MM-DD' strings (not JS Date objects)
 types.setTypeParser(1082, v => v);
-// Return TIMESTAMP/TIMESTAMPTZ as truncated strings
 types.setTypeParser(1114, v => (v ? v.slice(0, 19) : v));
 types.setTypeParser(1184, v => (v ? v.slice(0, 19) : v));
-// Return NUMERIC/DECIMAL as JS numbers
 types.setTypeParser(1700, v => parseFloat(v));
 
-// Vercel built-in Postgres sets POSTGRES_URL; external Neon sets DATABASE_URL
 const connectionString = process.env.DATABASE_URL || process.env.POSTGRES_URL;
 
 const pool = new Pool({
   connectionString,
   ssl: connectionString ? { rejectUnauthorized: false } : false,
-  max: 3 // keep pool small for serverless
+  max: 3
 });
 
 async function initDb() {
@@ -41,6 +37,13 @@ async function initDb() {
       )
     `);
 
+    // New columns — safe to run on existing tables
+    await client.query(`
+      ALTER TABLE employees
+        ADD COLUMN IF NOT EXISTS employment_type TEXT NOT NULL DEFAULT 'payroll',
+        ADD COLUMN IF NOT EXISTS annual_salary NUMERIC(12,2) NOT NULL DEFAULT 0
+    `);
+
     await client.query(`
       CREATE TABLE IF NOT EXISTS daily_records (
         id SERIAL PRIMARY KEY,
@@ -50,12 +53,24 @@ async function initDb() {
         phone_minutes INT NOT NULL DEFAULT 0,
         wasted_minutes INT NOT NULL DEFAULT 0,
         late_minutes INT NOT NULL DEFAULT 0,
-        is_day_off INT NOT NULL DEFAULT 0,
+        is_day_off NUMERIC(3,1) NOT NULL DEFAULT 0,
         notes TEXT DEFAULT '',
         created_by INT,
         updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
         UNIQUE(employee_id, record_date)
       )
+    `);
+
+    // Migrate is_day_off from INT → NUMERIC(3,1) if the table already existed
+    await client.query(`
+      DO $$ BEGIN
+        IF (SELECT data_type FROM information_schema.columns
+            WHERE table_name='daily_records' AND column_name='is_day_off') = 'integer' THEN
+          ALTER TABLE daily_records
+            ALTER COLUMN is_day_off TYPE NUMERIC(3,1)
+            USING is_day_off::NUMERIC(3,1);
+        END IF;
+      END $$
     `);
 
     await client.query(`
@@ -70,7 +85,19 @@ async function initDb() {
       )
     `);
 
-    // Seed default admin if none exist
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS monthly_payments (
+        id SERIAL PRIMARY KEY,
+        employee_id INT NOT NULL REFERENCES employees(id) ON DELETE CASCADE,
+        payment_year INT NOT NULL,
+        payment_month INT NOT NULL,
+        amount NUMERIC(12,2) NOT NULL,
+        notes TEXT DEFAULT '',
+        created_by INT,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `);
+
     const { rows } = await client.query('SELECT COUNT(*) AS c FROM admins');
     if (parseInt(rows[0].c) === 0) {
       const hash = bcrypt.hashSync('admin123', 10);
