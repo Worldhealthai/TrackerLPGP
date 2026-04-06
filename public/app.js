@@ -533,16 +533,30 @@ async function loadPaymentsSection(empId, emp) {
   section.classList.remove('hidden');
 
   const year = new Date().getFullYear();
-  const res = await fetch(`/api/payments/${empId}?year=${year}`);
-  const payments = await res.json();
+  const sym  = currencySymbol(emp.currency || 'GBP');
 
-  const totalPaid = payments.reduce((a, b) => a + parseFloat(b.amount), 0);
-  const remaining = emp.annual_salary - totalPaid;
+  // Fetch payments, year-stats (day-off deductions), and office deductions in parallel
+  const [paymentsRes, yearStatsRes, officeRes] = await Promise.all([
+    fetch(`/api/payments/${empId}?year=${year}`),
+    fetch(`/api/employees/${empId}/year-stats?year=${year}`),
+    fetch(`/api/office-deductions/${empId}`)
+  ]);
+  const payments   = paymentsRes.ok   ? await paymentsRes.json()   : [];
+  const yearStats  = yearStatsRes.ok  ? await yearStatsRes.json()  : {};
+  const officeRows = officeRes.ok     ? await officeRes.json()     : [];
+
+  const annual       = parseFloat(emp.annual_salary) || 0;
+  const totalPaid    = payments.reduce((a, b) => a + parseFloat(b.amount || 0), 0);
+  const dayOffDeduct = parseFloat(yearStats.excess_deduction) || 0;
+  const officeDeduct = officeRows.reduce((a, b) => a + parseFloat(b.amount || 0), 0);
+  const remaining    = annual - totalPaid - dayOffDeduct - officeDeduct;
 
   document.getElementById('salaryInfo').innerHTML = `
-    <div class="stat-card blue"><div class="stat-label">Annual Salary</div><div class="stat-value">£${parseFloat(emp.annual_salary).toFixed(2)}</div></div>
-    <div class="stat-card green"><div class="stat-label">Paid This Year</div><div class="stat-value">£${totalPaid.toFixed(2)}</div></div>
-    <div class="stat-card ${remaining > 0 ? 'red' : 'green'}"><div class="stat-label">Remaining</div><div class="stat-value">£${remaining.toFixed(2)}</div></div>
+    <div class="stat-card blue"><div class="stat-label">Annual Salary</div><div class="stat-value">${sym}${annual.toLocaleString('en-GB',{minimumFractionDigits:2})}</div></div>
+    <div class="stat-card green"><div class="stat-label">Paid This Year</div><div class="stat-value">${sym}${totalPaid.toLocaleString('en-GB',{minimumFractionDigits:2})}</div></div>
+    ${dayOffDeduct > 0 ? `<div class="stat-card red"><div class="stat-label">Day-Off Deductions</div><div class="stat-value">−${sym}${dayOffDeduct.toLocaleString('en-GB',{minimumFractionDigits:2})}</div></div>` : ''}
+    ${officeDeduct > 0 ? `<div class="stat-card red"><div class="stat-label">Office Items</div><div class="stat-value">−${sym}${officeDeduct.toLocaleString('en-GB',{minimumFractionDigits:2})}</div></div>` : ''}
+    <div class="stat-card ${remaining < 0 ? 'green' : 'red'}"><div class="stat-label">Remaining to Pay</div><div class="stat-value">${remaining < 0 ? '+' : ''}${sym}${Math.abs(remaining).toLocaleString('en-GB',{minimumFractionDigits:2})}</div></div>
   `;
 
   const tbody = document.getElementById('paymentsTable');
@@ -554,7 +568,7 @@ async function loadPaymentsSection(empId, emp) {
     const tr = document.createElement('tr');
     tr.innerHTML = `
       <td>${MONTHS[p.payment_month]} ${p.payment_year}</td>
-      <td class="fw-bold">£${parseFloat(p.amount).toFixed(2)}</td>
+      <td class="fw-bold">${sym}${parseFloat(p.amount).toLocaleString('en-GB',{minimumFractionDigits:2})}</td>
       <td>${esc(p.notes || '') || '—'}</td>
       <td><button class="btn btn-danger btn-sm" onclick="deletePayment(${p.id})">Del</button></td>`;
     tbody.appendChild(tr);
