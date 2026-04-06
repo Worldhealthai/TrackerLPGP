@@ -455,7 +455,7 @@ app.get('/api/salary-overview', requireAuth, async (req, res) => {
         [emp.id]
       );
       const { rows: salaryHistory } = await q(
-        'SELECT *, effective_from::TEXT AS effective_from FROM salary_history WHERE employee_id = ? ORDER BY effective_from DESC, created_at DESC',
+        'SELECT *, effective_from::TEXT AS effective_from FROM salary_history WHERE employee_id = ? ORDER BY salary_history.effective_from DESC, created_at DESC',
         [emp.id]
       );
       const totalOffice = officeRows.reduce((a, b) => a + parseFloat(b.amount), 0);
