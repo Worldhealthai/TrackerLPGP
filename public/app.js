@@ -30,8 +30,17 @@ document.addEventListener('DOMContentLoaded', async () => {
   document.getElementById('trackMonth').value = m.from.slice(0, 7);
 
   document.querySelectorAll('.nav-item').forEach(el => {
+    el.addEventListener('click', () => { navigate(el.dataset.page); closeMobileNav(); });
+  });
+
+  // Mobile bottom nav
+  document.querySelectorAll('.bottom-nav-item').forEach(el => {
     el.addEventListener('click', () => navigate(el.dataset.page));
   });
+
+  // Hamburger / drawer
+  document.getElementById('hamburgerBtn').addEventListener('click', toggleMobileNav);
+  document.getElementById('navOverlay').addEventListener('click', closeMobileNav);
 
   document.getElementById('logoutBtn').addEventListener('click', async () => {
     await fetch('/api/logout', { method: 'POST' });
@@ -42,12 +51,25 @@ document.addEventListener('DOMContentLoaded', async () => {
   loadDashboard();
 });
 
+function toggleMobileNav() {
+  const open = document.querySelector('.sidebar').classList.toggle('open');
+  document.getElementById('hamburgerBtn').classList.toggle('open', open);
+  document.getElementById('navOverlay').classList.toggle('open', open);
+}
+function closeMobileNav() {
+  document.querySelector('.sidebar').classList.remove('open');
+  document.getElementById('hamburgerBtn').classList.remove('open');
+  document.getElementById('navOverlay').classList.remove('open');
+}
+
 // ─── NAVIGATION ──────────────────────────────────────────────────────────────
 function navigate(page) {
   document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
   document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+  document.querySelectorAll('.bottom-nav-item').forEach(n => n.classList.remove('active'));
   document.getElementById('page-' + page).classList.add('active');
-  document.querySelector(`[data-page="${page}"]`).classList.add('active');
+  document.querySelector(`.nav-item[data-page="${page}"]`)?.classList.add('active');
+  document.querySelector(`.bottom-nav-item[data-page="${page}"]`)?.classList.add('active');
   const titles = { dashboard:'Dashboard', tracking:'Daily Tracking', salary:'Salary Tracker', employees:'Employees', reports:'Reports', calendar:'Calendar', admins:'Admin Users' };
   document.getElementById('pageTitle').textContent = titles[page] || page;
   if (page === 'employees') loadEmpTable();

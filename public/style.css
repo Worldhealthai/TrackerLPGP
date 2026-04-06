@@ -880,14 +880,214 @@ tbody tr:hover td strong { color: var(--primary); }
 ::-webkit-scrollbar-thumb:hover { background: var(--muted-light); }
 
 /* ══════════════════════════════════════════
-   RESPONSIVE
+   HAMBURGER BUTTON (hidden on desktop)
+══════════════════════════════════════════ */
+.hamburger {
+  display: none;
+  flex-direction: column;
+  gap: 5px;
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 6px;
+  border-radius: 8px;
+  margin-right: 8px;
+  flex-shrink: 0;
+}
+.hamburger span {
+  display: block;
+  width: 22px;
+  height: 2px;
+  background: var(--text);
+  border-radius: 2px;
+  transition: all 0.22s;
+}
+.hamburger.open span:nth-child(1) { transform: translateY(7px) rotate(45deg); }
+.hamburger.open span:nth-child(2) { opacity: 0; }
+.hamburger.open span:nth-child(3) { transform: translateY(-7px) rotate(-45deg); }
+
+/* ══════════════════════════════════════════
+   MOBILE NAV OVERLAY
+══════════════════════════════════════════ */
+.nav-overlay {
+  display: none;
+  position: fixed;
+  inset: 0;
+  background: rgba(15,23,42,0.5);
+  z-index: 99;
+  backdrop-filter: blur(2px);
+}
+.nav-overlay.open { display: block; }
+
+/* ══════════════════════════════════════════
+   BOTTOM TAB BAR (hidden on desktop)
+══════════════════════════════════════════ */
+.bottom-nav {
+  display: none;
+  position: fixed;
+  bottom: 0; left: 0; right: 0;
+  height: 62px;
+  background: #fff;
+  border-top: 1px solid var(--border);
+  box-shadow: 0 -4px 20px rgba(0,0,0,0.08);
+  z-index: 90;
+  align-items: stretch;
+  justify-content: space-around;
+}
+.bottom-nav-item {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  cursor: pointer;
+  padding: 6px 4px 4px;
+  position: relative;
+  transition: background 0.15s;
+  -webkit-tap-highlight-color: transparent;
+}
+.bottom-nav-item::before {
+  content: '';
+  position: absolute;
+  top: 0; left: 20%; right: 20%;
+  height: 2px;
+  border-radius: 0 0 2px 2px;
+  background: var(--primary);
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+.bottom-nav-item.active::before { opacity: 1; }
+.bottom-nav-icon { font-size: 1.3rem; line-height: 1; }
+.bottom-nav-label {
+  font-size: 0.6rem;
+  font-weight: 600;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+}
+.bottom-nav-item.active .bottom-nav-label { color: var(--primary); }
+
+/* ══════════════════════════════════════════
+   RESPONSIVE — MOBILE (≤768px)
 ══════════════════════════════════════════ */
 @media (max-width: 768px) {
-  .sidebar { transform: translateX(-100%); }
-  .main { margin-left: 0; }
-  .stats-grid { grid-template-columns: repeat(2, 1fr); }
-  .content { padding: 16px; }
-  .filter-bar { padding: 12px 14px; }
+  /* Show hamburger + bottom nav, hide parts of sidebar */
+  .hamburger { display: flex; }
+  .bottom-nav { display: flex; }
+
+  /* Sidebar becomes a slide-in drawer */
+  .sidebar {
+    transform: translateX(-100%);
+    transition: transform 0.26s ease;
+    z-index: 200;
+    width: 280px;
+  }
+  .sidebar.open { transform: translateX(0); }
+
+  /* Main area: no sidebar offset, account for bottom nav */
+  .main { margin-left: 0; padding-bottom: 62px; }
+
+  /* Topbar adjustments */
+  .topbar { padding: 0 16px; height: 56px; }
+  .topbar h1 { font-size: 1rem; }
+  #todayDate { display: none; }
+
+  /* Content padding */
+  .content { padding: 14px; }
+
+  /* Stats grid: 2 columns */
+  .stats-grid { grid-template-columns: repeat(2, 1fr); gap: 10px; margin-bottom: 16px; }
+  .stat-card { padding: 14px 14px; }
+  .stat-card .stat-value { font-size: 1.5rem; }
+
+  /* Filter bar: vertical stack */
+  .filter-bar {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 10px;
+    padding: 14px;
+  }
+  .filter-bar .form-group,
+  .filter-bar select,
+  .filter-bar input { width: 100%; }
+
+  /* Form rows: single column */
+  .form-row { grid-template-columns: 1fr; gap: 12px; }
+
+  /* Tables: horizontal scroll, no text wrap */
+  .table-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+  table { min-width: 600px; }
+  td, th { padding: 10px 12px; font-size: 0.8rem; }
+
+  /* Cards */
+  .card { padding: 16px; }
+  .card-header { flex-wrap: wrap; gap: 10px; }
+
+  /* Modals: slide up as bottom sheet */
+  .modal-overlay { align-items: flex-end; padding: 0; }
+  .modal {
+    width: 100%;
+    max-width: 100%;
+    max-height: 92vh;
+    border-radius: 20px 20px 0 0;
+    padding: 24px 20px;
+    animation: slideUpMobile 0.28s ease;
+  }
+  .modal-header { margin-bottom: 18px; }
+
+  /* Buttons: larger touch targets */
+  .btn { padding: 11px 18px; font-size: 0.9rem; }
+  .btn-sm { padding: 8px 14px; font-size: 0.8rem; }
+
+  /* Salary page */
+  .salary-card-header { padding: 14px 16px; gap: 10px; }
+  .salary-card-body { padding: 14px 16px; }
+  .salary-annual { font-size: 1.1rem; }
+  .salary-header-right { margin-left: auto; }
+  .salary-stats-row { grid-template-columns: repeat(2, 1fr); gap: 8px; }
+  .salary-stat { padding: 10px 12px; }
+  .salary-stat-value { font-size: 0.92rem; }
+  .salary-net-remaining { flex-direction: column; gap: 6px; align-items: flex-start; }
+  .salary-net-remaining-value { font-size: 1.2rem; }
+
+  /* Payment rows: stack on small screens */
+  .salary-payment-row { flex-wrap: wrap; gap: 6px; }
+  .salary-payment-month { width: auto; }
+
+  /* Calendar: horizontal scroll */
+  .cal-grid-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+  .cal-header-row, .cal-grid { min-width: 480px; }
+  .cal-cell { min-height: 64px; padding: 5px 6px; }
+  .cal-chip { font-size: 0.6rem; padding: 1px 5px; }
+
+  /* Day off entries stacked */
+  .day-off-entry { flex-wrap: wrap; }
+
+  /* Deduction box */
+  .deduction-box { padding: 14px; }
+
+  /* Section titles */
+  .section-title { margin-top: 18px; }
+
+  /* Empty state */
+  .empty-state { padding: 36px 16px; }
+
+  /* Topbar right: shrink */
+  .topbar-right { gap: 8px; }
+}
+
+/* Extra small (≤380px) */
+@media (max-width: 380px) {
+  .stats-grid { grid-template-columns: repeat(2, 1fr); gap: 8px; }
+  .stat-card .stat-value { font-size: 1.2rem; }
+  .salary-stats-row { grid-template-columns: 1fr 1fr; }
+  .content { padding: 10px; }
+}
+
+@keyframes slideUpMobile {
+  from { transform: translateY(60px); opacity: 0.6; }
+  to   { transform: translateY(0);    opacity: 1; }
 }
 
 /* ══════════════════════════════════════════

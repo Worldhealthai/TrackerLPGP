@@ -43,6 +43,9 @@
   <!-- MAIN -->
   <div class="main">
     <div class="topbar">
+      <button class="hamburger" id="hamburgerBtn" aria-label="Menu">
+        <span></span><span></span><span></span>
+      </button>
       <h1 id="pageTitle">Dashboard</h1>
       <div class="topbar-right">
         <span id="todayDate"></span>
@@ -555,6 +558,18 @@
     </div>
   </div>
 </div>
+
+<!-- Mobile nav overlay -->
+<div class="nav-overlay" id="navOverlay"></div>
+
+<!-- Mobile bottom tab bar -->
+<nav class="bottom-nav" id="bottomNav">
+  <div class="bottom-nav-item active" data-page="dashboard"><span class="bottom-nav-icon">📊</span><span class="bottom-nav-label">Dashboard</span></div>
+  <div class="bottom-nav-item" data-page="tracking"><span class="bottom-nav-icon">⏱️</span><span class="bottom-nav-label">Tracking</span></div>
+  <div class="bottom-nav-item" data-page="calendar"><span class="bottom-nav-icon">📅</span><span class="bottom-nav-label">Calendar</span></div>
+  <div class="bottom-nav-item" data-page="salary"><span class="bottom-nav-icon">💰</span><span class="bottom-nav-label">Salary</span></div>
+  <div class="bottom-nav-item" data-page="employees"><span class="bottom-nav-icon">👥</span><span class="bottom-nav-label">Staff</span></div>
+</nav>
 
 <script src="app.js"></script>
 </body>
