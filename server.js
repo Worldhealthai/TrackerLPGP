@@ -551,11 +551,15 @@ app.get('/api/salary-overview', requireAuth, async (req, res) => {
       const terminationDateStr = emp.termination_date  ? emp.termination_date.toISOString().slice(0,10)  : null;
       const isTerminated       = !emp.active && !!terminationDateStr;
 
+      // Pro-rated only applies if the employee started THIS year (not in a previous year)
+      const startedThisYear = startDateStr && startDateStr.startsWith(String(year));
+
       // For terminated employees: earned = pro-rated from start to termination date
-      // For active employees: full annual salary is the target
+      // For active employees who started this year: show pro-rated reference
+      // For all others: full annual salary is the target, no pro-rated reference
       const earnedPay = isTerminated
         ? calcEarnedPay(annualSal, startDateStr, terminationDateStr)
-        : calcProRatedPay(annualSal, startDateStr);
+        : (startedThisYear ? calcProRatedPay(annualSal, startDateStr) : null);
 
       const totalOffice   = officeRows.reduce((a, b) => a + parseFloat(b.amount), 0);
       const totalPaid     = payments.reduce((a, b) => a + parseFloat(b.amount), 0);

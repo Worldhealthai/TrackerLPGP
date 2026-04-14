@@ -578,10 +578,11 @@ async function loadPaymentsSection(empId, emp) {
   const officeDeduct = officeRows.reduce((a, b) => a + parseFloat(b.amount || 0), 0);
   const remaining    = annual - totalPaid - dayOffDeduct - officeDeduct;
 
-  // Pro-rated calculation (client-side, mirrors server logic for tracking page)
+  // Pro-rated only applies if employee started this year
   const startDate = emp.start_date ? emp.start_date.slice(0,10) : null;
+  const startedThisYear = startDate && startDate.startsWith(String(year));
   let proRatedHtml = '';
-  if (startDate) {
+  if (startedThisYear) {
     const res2 = await fetch(`/api/salary-overview?year=${year}`);
     if (res2.ok) {
       const overview = await res2.json();
