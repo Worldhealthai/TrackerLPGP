@@ -161,6 +161,14 @@
         <!-- Totals strip -->
         <div id="salaryTotals" class="stats-grid" style="margin-bottom:24px"></div>
 
+        <!-- Type tabs -->
+        <div class="salary-tabs">
+          <button class="salary-tab active" data-tab="all"     onclick="setSalaryTab(this)">All</button>
+          <button class="salary-tab"         data-tab="payroll"        onclick="setSalaryTab(this)">Payroll</button>
+          <button class="salary-tab"         data-tab="self_employed"  onclick="setSalaryTab(this)">Self-Employed</button>
+          <button class="salary-tab"         data-tab="terminated"     onclick="setSalaryTab(this)">Terminated</button>
+        </div>
+
         <!-- Per-employee cards -->
         <div id="salaryCards"></div>
       </div>

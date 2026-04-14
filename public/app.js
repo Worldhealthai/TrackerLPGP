@@ -832,6 +832,16 @@ async function resetPw(id) {
 
 // ─── SALARY PAGE ─────────────────────────────────────────────────────────────
 
+function setSalaryTab(btn) {
+  document.querySelectorAll('.salary-tab').forEach(t => t.classList.remove('active'));
+  btn.classList.add('active');
+  loadSalaryPage();
+}
+
+function activeSalaryTab() {
+  return document.querySelector('.salary-tab.active')?.dataset.tab || 'all';
+}
+
 function initSalaryYearSelect() {
   const sel = document.getElementById('salaryYear');
   if (sel.options.length > 1) return;
@@ -866,7 +876,26 @@ async function loadSalaryPage() {
     }
     const data = await res.json();
     if (!Array.isArray(data)) throw new Error('Unexpected response from server');
-    const rows = empFilter ? data.filter(e => String(e.employee_id) === empFilter) : data;
+    // Update tab counts
+    const base = empFilter ? data.filter(e => String(e.employee_id) === empFilter) : data;
+    const counts = {
+      all:          base.filter(e => !e.is_terminated).length,
+      payroll:      base.filter(e => !e.is_terminated && e.employment_type === 'payroll').length,
+      self_employed:base.filter(e => !e.is_terminated && e.employment_type === 'self_employed').length,
+      terminated:   base.filter(e => e.is_terminated).length
+    };
+    document.querySelectorAll('.salary-tab').forEach(t => {
+      const key = t.dataset.tab;
+      const labels = { all:'All', payroll:'Payroll', self_employed:'Self-Employed', terminated:'Terminated' };
+      t.textContent = `${labels[key]} (${counts[key]})`;
+    });
+
+    const tab = activeSalaryTab();
+    let rows = [...base];
+    if (tab === 'terminated')        rows = rows.filter(e => e.is_terminated);
+    else if (tab === 'payroll')      rows = rows.filter(e => !e.is_terminated && e.employment_type === 'payroll');
+    else if (tab === 'self_employed')rows = rows.filter(e => !e.is_terminated && e.employment_type === 'self_employed');
+    else                             rows = rows.filter(e => !e.is_terminated);
 
     // ── Totals strip (grouped by currency, active employees only) ──
     const activeRows = rows.filter(r => !r.is_terminated);

@@ -1257,3 +1257,27 @@ tbody tr:hover td strong { color: var(--primary); }
 
 .terminated-card { opacity: 0.88; }
 .terminated-card .salary-card-header { background: #fafafa; }
+
+/* ── Salary type tabs ── */
+.salary-tabs {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 20px;
+  flex-wrap: wrap;
+}
+.salary-tab {
+  padding: 8px 20px;
+  border: 1.5px solid var(--border);
+  border-radius: 99px;
+  background: var(--card);
+  font-size: 0.82rem;
+  font-weight: 600;
+  font-family: inherit;
+  color: var(--muted);
+  cursor: pointer;
+  transition: all 0.15s;
+  white-space: nowrap;
+}
+.salary-tab:hover { border-color: var(--primary); color: var(--primary); background: var(--primary-light); }
+.salary-tab.active { background: var(--primary); border-color: var(--primary); color: #fff; }
+.salary-tab[data-tab="terminated"].active { background: var(--danger); border-color: var(--danger); }
