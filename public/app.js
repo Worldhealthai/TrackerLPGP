@@ -112,6 +112,7 @@ async function loadEmpTable() {
       <td><strong>${esc(emp.name)}</strong></td>
       <td><span class="badge ${typeBadge}">${typeLabel}</span></td>
       <td>${emp.annual_salary > 0 ? fmtMoney(emp.annual_salary, emp.currency) + '/yr' : '—'}</td>
+      <td>${emp.start_date ? emp.start_date.slice(0,10) : '<span style="color:var(--muted)">—</span>'}</td>
       <td><span class="badge ${emp.active ? 'badge-green' : 'badge-grey'}">${emp.active ? 'Active' : 'Inactive'}</span></td>
       <td style="text-align:right">
         <button class="btn btn-ghost btn-sm" onclick='openEmpModal(${JSON.stringify(emp)})'>Edit</button>
@@ -126,6 +127,7 @@ async function loadEmpTable() {
 function openEmpModal(emp = null) {
   document.getElementById('empId').value = emp ? emp.id : '';
   document.getElementById('empName').value = emp ? emp.name : '';
+  document.getElementById('empStartDate').value = emp ? (emp.start_date || '') : today();
   document.getElementById('empType').value = emp ? (emp.employment_type || 'payroll') : 'payroll';
   document.getElementById('empCurrency').value = emp ? (emp.currency || 'GBP') : 'GBP';
   document.getElementById('empAnnualSalary').value = emp ? emp.annual_salary : 0;
@@ -147,6 +149,7 @@ function openEmpModal(emp = null) {
 async function saveEmployee() {
   const id = document.getElementById('empId').value;
   const name = document.getElementById('empName').value.trim();
+  const start_date = document.getElementById('empStartDate').value || null;
   const employment_type = document.getElementById('empType').value;
   const currency = document.getElementById('empCurrency').value;
   const annual_salary = parseFloat(document.getElementById('empAnnualSalary').value) || 0;
@@ -158,13 +161,13 @@ async function saveEmployee() {
     await fetch(`/api/employees/${id}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name, employment_type, annual_salary, currency, active: 1, salary_reason, salary_effective })
+      body: JSON.stringify({ name, employment_type, annual_salary, currency, active: 1, salary_reason, salary_effective, start_date })
     });
   } else {
     await fetch('/api/employees', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name, employment_type, annual_salary, currency })
+      body: JSON.stringify({ name, employment_type, annual_salary, currency, start_date })
     });
   }
   closeModal('empModal');
@@ -551,13 +554,39 @@ async function loadPaymentsSection(empId, emp) {
   const officeDeduct = officeRows.reduce((a, b) => a + parseFloat(b.amount || 0), 0);
   const remaining    = annual - totalPaid - dayOffDeduct - officeDeduct;
 
+  // Pro-rated calculation (client-side, mirrors server logic for tracking page)
+  const startDate = emp.start_date ? emp.start_date.slice(0,10) : null;
+  let proRatedHtml = '';
+  if (startDate) {
+    const res2 = await fetch(`/api/salary-overview?year=${year}`);
+    if (res2.ok) {
+      const overview = await res2.json();
+      const empData = Array.isArray(overview) ? overview.find(e => e.employee_id === parseInt(empId)) : null;
+      const pr = empData?.pro_rated;
+      if (pr) {
+        proRatedHtml = `
+        <div style="margin-top:14px;background:#f0fdf4;border:1px solid #86efac;border-radius:10px;padding:14px 16px">
+          <div style="font-size:0.72rem;font-weight:700;text-transform:uppercase;letter-spacing:0.5px;color:#16a34a;margin-bottom:8px">Pro-Rated Reference · Started ${pr.start_date}</div>
+          <div style="font-size:0.85rem;display:flex;justify-content:space-between;font-weight:600">
+            <span style="color:var(--muted)">Expected to date</span>
+            <span style="color:#16a34a;font-weight:800">${sym}${pr.total_expected.toLocaleString('en-GB',{minimumFractionDigits:2})}</span>
+          </div>
+        </div>`;
+      }
+    }
+  }
+
   document.getElementById('salaryInfo').innerHTML = `
     <div class="stat-card blue"><div class="stat-label">Annual Salary</div><div class="stat-value">${sym}${annual.toLocaleString('en-GB',{minimumFractionDigits:2})}</div></div>
+    ${startDate ? `<div class="stat-card blue"><div class="stat-label">Start Date</div><div class="stat-value" style="font-size:1.1rem">${startDate}</div></div>` : ''}
     <div class="stat-card green"><div class="stat-label">Paid This Year</div><div class="stat-value">${sym}${totalPaid.toLocaleString('en-GB',{minimumFractionDigits:2})}</div></div>
     ${dayOffDeduct > 0 ? `<div class="stat-card red"><div class="stat-label">Day-Off Deductions</div><div class="stat-value">−${sym}${dayOffDeduct.toLocaleString('en-GB',{minimumFractionDigits:2})}</div></div>` : ''}
     ${officeDeduct > 0 ? `<div class="stat-card red"><div class="stat-label">Office Items</div><div class="stat-value">−${sym}${officeDeduct.toLocaleString('en-GB',{minimumFractionDigits:2})}</div></div>` : ''}
     <div class="stat-card ${remaining < 0 ? 'green' : 'red'}"><div class="stat-label">Remaining to Pay</div><div class="stat-value">${remaining < 0 ? '+' : ''}${sym}${Math.abs(remaining).toLocaleString('en-GB',{minimumFractionDigits:2})}</div></div>
   `;
+
+  // Append pro-rated block below stats
+  if (proRatedHtml) document.getElementById('salaryInfo').insertAdjacentHTML('afterend', proRatedHtml);
 
   const tbody = document.getElementById('paymentsTable');
   const empty = document.getElementById('paymentsEmpty');
@@ -939,6 +968,37 @@ async function loadSalaryPage() {
                   </div>`).join('')}
               </div>` : `<div style="color:var(--muted);font-size:0.82rem;padding:4px 0">No items logged.</div>`}
           </div>
+
+          ${emp.pro_rated ? (() => {
+            const pr = emp.pro_rated;
+            const isSame = pr.full_months_count === 0 && pr.current_month_pay === 0;
+            return `
+          <div style="margin-top:14px;background:#f0fdf4;border:1px solid #86efac;border-radius:10px;padding:14px 16px">
+            <div style="font-size:0.72rem;font-weight:700;text-transform:uppercase;letter-spacing:0.6px;color:#16a34a;margin-bottom:10px">
+              Pro-Rated Pay Reference &nbsp;·&nbsp; Started ${pr.start_date}
+            </div>
+            <div style="display:flex;flex-direction:column;gap:5px;font-size:0.84rem">
+              <div style="display:flex;justify-content:space-between">
+                <span style="color:var(--muted)">First month (${pr.first_month_days}/${pr.first_month_total_days} working days)</span>
+                <span style="font-weight:700">${sym}${pr.first_month_pay.toLocaleString('en-GB',{minimumFractionDigits:2})}</span>
+              </div>
+              ${pr.full_months_count > 0 ? `
+              <div style="display:flex;justify-content:space-between">
+                <span style="color:var(--muted)">${pr.full_months_count} full month${pr.full_months_count > 1 ? 's' : ''} × ${sym}${(annualSalary/12).toLocaleString('en-GB',{minimumFractionDigits:2})}</span>
+                <span style="font-weight:700">${sym}${pr.full_months_pay.toLocaleString('en-GB',{minimumFractionDigits:2})}</span>
+              </div>` : ''}
+              ${!isSame && pr.current_month_pay > 0 ? `
+              <div style="display:flex;justify-content:space-between">
+                <span style="color:var(--muted)">Current month (to date)</span>
+                <span style="font-weight:700">${sym}${pr.current_month_pay.toLocaleString('en-GB',{minimumFractionDigits:2})}</span>
+              </div>` : ''}
+              <div style="display:flex;justify-content:space-between;border-top:1px dashed #86efac;padding-top:8px;margin-top:4px">
+                <span style="font-weight:700;color:#16a34a">Total expected to date</span>
+                <span style="font-weight:800;color:#16a34a;font-size:0.95rem">${sym}${pr.total_expected.toLocaleString('en-GB',{minimumFractionDigits:2})}</span>
+              </div>
+            </div>
+          </div>`;
+          })() : ''}
 
           ${salaryHistory.length ? `
           <div style="margin-top:14px">

@@ -52,7 +52,8 @@ async function runMigrations() {
     ALTER TABLE employees
       ADD COLUMN IF NOT EXISTS employment_type TEXT NOT NULL DEFAULT 'payroll',
       ADD COLUMN IF NOT EXISTS annual_salary NUMERIC(12,2) NOT NULL DEFAULT 0,
-      ADD COLUMN IF NOT EXISTS currency TEXT NOT NULL DEFAULT 'GBP'
+      ADD COLUMN IF NOT EXISTS currency TEXT NOT NULL DEFAULT 'GBP',
+      ADD COLUMN IF NOT EXISTS start_date DATE
   `);
 
   await sql(`

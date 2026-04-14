@@ -174,7 +174,7 @@
           <div class="table-wrap">
             <table>
               <thead>
-                <tr><th>Name</th><th>Type</th><th>Annual Salary</th><th>Status</th><th></th></tr>
+                <tr><th>Name</th><th>Type</th><th>Annual Salary</th><th>Start Date</th><th>Status</th><th></th></tr>
               </thead>
               <tbody id="empTable"></tbody>
             </table>
@@ -352,14 +352,18 @@
         <input type="text" id="empName">
       </div>
       <div class="form-group">
+        <label>Start Date</label>
+        <input type="date" id="empStartDate">
+      </div>
+    </div>
+    <div class="form-row">
+      <div class="form-group">
         <label>Employment Type</label>
         <select id="empType">
           <option value="payroll">Payroll (20 days/year)</option>
           <option value="self_employed">Self-Employed (5 days/year)</option>
         </select>
       </div>
-    </div>
-    <div class="form-row">
       <div class="form-group">
         <label>Currency</label>
         <select id="empCurrency">
@@ -367,6 +371,8 @@
           <option value="AED">AED – UAE Dirham</option>
         </select>
       </div>
+    </div>
+    <div class="form-row">
       <div class="form-group">
         <label>Annual Salary</label>
         <input type="number" id="empAnnualSalary" min="0" step="0.01" value="0">

@@ -92,6 +92,82 @@ function workingDaysInMonth(year, month) {
   return count;
 }
 
+// Count Mon–Fri days from startDay to end of month (inclusive)
+function workingDaysFromDate(year, month, startDay) {
+  const daysInMonth = new Date(year, month, 0).getDate();
+  let count = 0;
+  for (let d = startDay; d <= daysInMonth; d++) {
+    const dow = new Date(year, month - 1, d).getDay();
+    if (dow >= 1 && dow <= 5) count++;
+  }
+  return count;
+}
+
+// Calculate pro-rated pay breakdown for an employee with a start_date
+// Returns full months pay + pro-rated first month + total expected to date
+function calcProRatedPay(annualSalary, startDateStr) {
+  if (!startDateStr || !annualSalary) return null;
+  const start = new Date(startDateStr);
+  const now   = new Date();
+  if (start > now) return null;
+
+  const startY = start.getFullYear();
+  const startM = start.getMonth() + 1; // 1-based
+  const startD = start.getDate();
+  const nowY   = now.getFullYear();
+  const nowM   = now.getMonth() + 1;
+
+  // Pro-rated first month: working days from start day to end of month
+  const totalWDFirst = workingDaysInMonth(startY, startM);
+  const wdFromStart  = workingDaysFromDate(startY, startM, startD);
+  const firstMonthPay = totalWDFirst > 0
+    ? parseFloat(((annualSalary / 12) * (wdFromStart / totalWDFirst)).toFixed(2))
+    : 0;
+
+  // Full months after the start month up to (but not including) current month
+  let fullMonthsCount = 0;
+  let y = startY, m = startM + 1;
+  if (m > 12) { m = 1; y++; }
+  while (y < nowY || (y === nowY && m < nowM)) {
+    fullMonthsCount++;
+    m++;
+    if (m > 12) { m = 1; y++; }
+  }
+  const fullMonthsPay = parseFloat(((annualSalary / 12) * fullMonthsCount).toFixed(2));
+
+  // Pro-rated current month up to today
+  const wdThisMonthTotal = workingDaysInMonth(nowY, nowM);
+  const wdThisMonthSoFar = workingDaysFromDate(nowY, nowM, 1) - workingDaysFromDate(nowY, nowM, now.getDate() + 1);
+  // Simpler: count working days from 1st to today
+  let wdToday = 0;
+  for (let d = 1; d <= now.getDate(); d++) {
+    const dow = new Date(nowY, nowM - 1, d).getDay();
+    if (dow >= 1 && dow <= 5) wdToday++;
+  }
+  const currentMonthPay = wdThisMonthTotal > 0
+    ? parseFloat(((annualSalary / 12) * (wdToday / wdThisMonthTotal)).toFixed(2))
+    : 0;
+
+  // If start month IS current month, first month pay already covers up to today
+  const isSameMonth = startY === nowY && startM === nowM;
+
+  const totalExpected = isSameMonth
+    ? firstMonthPay
+    : parseFloat((firstMonthPay + fullMonthsPay + currentMonthPay).toFixed(2));
+
+  return {
+    start_date:         startDateStr,
+    first_month:        `${startY}-${String(startM).padStart(2,'0')}`,
+    first_month_days:   wdFromStart,
+    first_month_total_days: totalWDFirst,
+    first_month_pay:    firstMonthPay,
+    full_months_count:  fullMonthsCount,
+    full_months_pay:    fullMonthsPay,
+    current_month_pay:  isSameMonth ? 0 : currentMonthPay,
+    total_expected:     totalExpected
+  };
+}
+
 // Daily rate for a specific month: (annual ÷ 12) ÷ working days in that month
 function dailyRateForMonth(annualSalary, year, month) {
   return (annualSalary / 12) / workingDaysInMonth(year, month);
@@ -229,20 +305,20 @@ app.get('/api/employees/all', requireAuth, async (req, res) => {
 });
 
 app.post('/api/employees', requireAuth, async (req, res) => {
-  const { name, employment_type, annual_salary, currency } = req.body;
+  const { name, employment_type, annual_salary, currency, start_date } = req.body;
   if (!name) return res.status(400).json({ error: 'Name required' });
   const annualSal = parseFloat(annual_salary) || 0;
   const daily_rate = parseFloat((annualSal / 260).toFixed(4));
   const cur = ['GBP','AED'].includes(currency) ? currency : 'GBP';
   const { rows } = await q(
-    'INSERT INTO employees (name, daily_rate, employment_type, annual_salary, currency) VALUES (?, ?, ?, ?, ?) RETURNING id',
-    [name, daily_rate, employment_type || 'payroll', annualSal, cur]
+    'INSERT INTO employees (name, daily_rate, employment_type, annual_salary, currency, start_date) VALUES (?, ?, ?, ?, ?, ?) RETURNING id',
+    [name, daily_rate, employment_type || 'payroll', annualSal, cur, start_date || null]
   );
   res.json({ id: rows[0].id, name, daily_rate });
 });
 
 app.put('/api/employees/:id', requireAuth, async (req, res) => {
-  const { name, active, employment_type, annual_salary, currency, salary_reason, salary_effective } = req.body;
+  const { name, active, employment_type, annual_salary, currency, salary_reason, salary_effective, start_date } = req.body;
   const annualSal = parseFloat(annual_salary) || 0;
   const daily_rate = parseFloat((annualSal / 260).toFixed(4));
   const cur = ['GBP','AED'].includes(currency) ? currency : 'GBP';
@@ -260,8 +336,8 @@ app.put('/api/employees/:id', requireAuth, async (req, res) => {
   }
 
   await q(
-    'UPDATE employees SET name=?, daily_rate=?, active=?, employment_type=?, annual_salary=?, currency=? WHERE id=?',
-    [name, daily_rate, active !== undefined ? active : 1, employment_type || 'payroll', annualSal, cur, req.params.id]
+    'UPDATE employees SET name=?, daily_rate=?, active=?, employment_type=?, annual_salary=?, currency=?, start_date=? WHERE id=?',
+    [name, daily_rate, active !== undefined ? active : 1, employment_type || 'payroll', annualSal, cur, start_date || null, req.params.id]
   );
   res.json({ success: true });
 });
@@ -469,6 +545,8 @@ app.get('/api/salary-overview', requireAuth, async (req, res) => {
         employment_type:   emp.employment_type,
         currency:          emp.currency || 'GBP',
         annual_salary:     annualSal,
+        start_date:        emp.start_date ? emp.start_date.toISOString().slice(0,10) : null,
+        pro_rated:         calcProRatedPay(annualSal, emp.start_date ? emp.start_date.toISOString().slice(0,10) : null),
         salary_history:    salaryHistory,
         payments,
         office_deductions: officeRows,
