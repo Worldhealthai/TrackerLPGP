@@ -1254,3 +1254,6 @@ tbody tr:hover td strong { color: var(--primary); }
 .salary-net-remaining-label { font-size: 0.78rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; color: var(--muted); }
 .salary-net-remaining-value { font-size: 1.4rem; font-weight: 800; color: var(--primary); letter-spacing: -0.5px; }
 .salary-net-remaining.danger .salary-net-remaining-value { color: var(--danger); }
+
+.terminated-card { opacity: 0.88; }
+.terminated-card .salary-card-header { background: #fafafa; }

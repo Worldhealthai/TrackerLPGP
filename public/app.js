@@ -105,20 +105,23 @@ async function loadEmpTable() {
     return;
   }
   all.forEach(emp => {
-    const typeLabel = emp.employment_type === 'self_employed' ? 'Self-Employed' : 'Payroll';
-    const typeBadge = emp.employment_type === 'self_employed' ? 'badge-yellow' : 'badge-blue';
+    const typeLabel  = emp.employment_type === 'self_employed' ? 'Self-Employed' : 'Payroll';
+    const typeBadge  = emp.employment_type === 'self_employed' ? 'badge-yellow' : 'badge-blue';
+    const terminated = !emp.active && emp.termination_date;
+    const statusBadge = emp.active ? 'badge-green' : (terminated ? 'badge-red' : 'badge-grey');
+    const statusLabel = emp.active ? 'Active' : (terminated ? `Terminated ${emp.termination_date.slice(0,10)}` : 'Inactive');
     const tr = document.createElement('tr');
     tr.innerHTML = `
       <td><strong>${esc(emp.name)}</strong></td>
       <td><span class="badge ${typeBadge}">${typeLabel}</span></td>
       <td>${emp.annual_salary > 0 ? fmtMoney(emp.annual_salary, emp.currency) + '/yr' : '—'}</td>
       <td>${emp.start_date ? emp.start_date.slice(0,10) : '<span style="color:var(--muted)">—</span>'}</td>
-      <td><span class="badge ${emp.active ? 'badge-green' : 'badge-grey'}">${emp.active ? 'Active' : 'Inactive'}</span></td>
+      <td><span class="badge ${statusBadge}" style="white-space:normal">${esc(statusLabel)}</span></td>
       <td style="text-align:right">
         <button class="btn btn-ghost btn-sm" onclick='openEmpModal(${JSON.stringify(emp)})'>Edit</button>
         ${emp.active
-          ? `<button class="btn btn-danger btn-sm" onclick="toggleEmpActive(${emp.id},0)">Deactivate</button>`
-          : `<button class="btn btn-ghost btn-sm" onclick="toggleEmpActive(${emp.id},1)">Reactivate</button>`}
+          ? `<button class="btn btn-danger btn-sm" onclick="openTerminateModal(${emp.id},'${esc(emp.name)}')">Terminate</button>`
+          : `<button class="btn btn-ghost btn-sm" onclick="reactivateEmployee(${emp.id})">Reactivate</button>`}
       </td>`;
     tbody.appendChild(tr);
   });
@@ -175,15 +178,36 @@ async function saveEmployee() {
   loadEmpTable();
 }
 
-async function toggleEmpActive(id, active) {
-  const res = await fetch('/api/employees/all');
-  const all = await res.json();
-  const emp = all.find(e => e.id === id);
-  await fetch(`/api/employees/${id}`, {
-    method: 'PUT',
+function openTerminateModal(id, name) {
+  document.getElementById('termEmpId').value = id;
+  document.getElementById('termEmpName').textContent = name;
+  document.getElementById('termDate').value = today();
+  document.getElementById('termReason').value = 'Resigned';
+  document.getElementById('termNotes').value = '';
+  openModal('terminateModal');
+}
+
+async function confirmTerminate() {
+  const id     = document.getElementById('termEmpId').value;
+  const date   = document.getElementById('termDate').value;
+  const reason = document.getElementById('termReason').value;
+  const notes  = document.getElementById('termNotes').value.trim();
+  if (!date) return alert('Please select a termination date');
+  const fullReason = notes ? `${reason} — ${notes}` : reason;
+  const res = await fetch(`/api/employees/${id}/terminate`, {
+    method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ ...emp, active })
+    body: JSON.stringify({ termination_date: date, termination_reason: fullReason })
   });
+  if (!res.ok) { const e = await res.json(); return alert(e.error); }
+  closeModal('terminateModal');
+  await loadEmployees();
+  loadEmpTable();
+}
+
+async function reactivateEmployee(id) {
+  if (!confirm('Reactivate this employee? This clears the termination date.')) return;
+  await fetch(`/api/employees/${id}/reactivate`, { method: 'POST' });
   await loadEmployees();
   loadEmpTable();
 }
@@ -843,10 +867,11 @@ async function loadSalaryPage() {
     if (!Array.isArray(data)) throw new Error('Unexpected response from server');
     const rows = empFilter ? data.filter(e => String(e.employee_id) === empFilter) : data;
 
-    // ── Totals strip (grouped by currency) ──
+    // ── Totals strip (grouped by currency, active employees only) ──
+    const activeRows = rows.filter(r => !r.is_terminated);
     const currencies = [...new Set(rows.map(r => r.currency || 'GBP'))];
     const totalHtml = currencies.map(c => {
-      const sub = rows.filter(r => (r.currency || 'GBP') === c);
+      const sub = activeRows.filter(r => (r.currency || 'GBP') === c);
       const s = currencySymbol(c);
       const tAnnual  = sub.reduce((a, b) => a + (parseFloat(b.annual_salary) || 0), 0);
       const tPaid    = sub.reduce((a, b) => a + (parseFloat(b.total_paid) || 0), 0);
@@ -887,6 +912,7 @@ async function loadSalaryPage() {
       const typeLabel = emp.employment_type === 'self_employed' ? 'Self-Employed' : 'Payroll';
       const typeBadge = emp.employment_type === 'self_employed' ? 'badge-yellow' : 'badge-blue';
       const allowanceLabel = emp.employment_type === 'self_employed' ? '5 days/yr free' : '20 days/yr free';
+      const isTerminated = !!emp.is_terminated;
       const isOverpaid = netRemaining < 0;
 
       // Progress bar
@@ -921,27 +947,37 @@ async function loadSalaryPage() {
 
       const netClass = isOverpaid ? ' danger' : '';
 
-      return `<div class="salary-card">
+      const earnedTotal = emp.earned_to_date != null ? parseFloat(emp.earned_to_date) : null;
+      const eb = emp.earned_breakdown;
+
+      return `<div class="salary-card${isTerminated ? ' terminated-card' : ''}">
+        ${isTerminated ? `
+        <div style="background:var(--danger);color:#fff;padding:8px 22px;font-size:0.78rem;font-weight:700;letter-spacing:0.4px;display:flex;align-items:center;gap:10px">
+          <span>TERMINATED</span>
+          <span style="opacity:0.8">${emp.termination_date}</span>
+          ${emp.termination_reason ? `<span style="opacity:0.7">· ${esc(emp.termination_reason)}</span>` : ''}
+        </div>` : ''}
         <div class="salary-card-header">
-          <div class="salary-avatar">${initials}</div>
+          <div class="salary-avatar" style="${isTerminated ? 'opacity:0.6;filter:grayscale(1)' : ''}">${initials}</div>
           <div>
             <div class="salary-name">${esc(emp.name || '')}</div>
             <div class="salary-sub">
               <span class="badge ${typeBadge}" style="font-size:0.68rem">${typeLabel}</span>
               &nbsp;<span class="badge badge-grey" style="font-size:0.68rem">${cur}</span>
-              &nbsp;${allowanceLabel} &nbsp;·&nbsp; Rate: (annual ÷ 12) ÷ working days/month
+              ${isTerminated ? '' : `&nbsp;${allowanceLabel} &nbsp;·&nbsp; Rate: (annual ÷ 12) ÷ working days/month`}
             </div>
           </div>
           <div class="salary-header-right">
-            <div class="salary-annual-label">Annual Salary</div>
-            <div class="salary-annual">${sym}${annualSalary.toLocaleString('en-GB', {minimumFractionDigits:2})}</div>
+            <div class="salary-annual-label">${isTerminated ? 'Earned to Termination' : 'Annual Salary'}</div>
+            <div class="salary-annual">${sym}${(isTerminated ? (earnedTotal ?? annualSalary) : annualSalary).toLocaleString('en-GB', {minimumFractionDigits:2})}</div>
           </div>
           <button class="btn btn-ghost btn-sm" onclick="openSalaryPaymentModal(${emp.employee_id})">+ Payment</button>
         </div>
         <div class="salary-card-body">
           ${progress}
           <div class="salary-stats-row">
-            <div class="salary-stat primary"><div class="salary-stat-label">Annual Salary</div><div class="salary-stat-value">${sym}${annualSalary.toLocaleString('en-GB', {minimumFractionDigits:2})}</div></div>
+            <div class="salary-stat primary"><div class="salary-stat-label">${isTerminated ? 'Annual Salary' : 'Annual Salary'}</div><div class="salary-stat-value">${sym}${annualSalary.toLocaleString('en-GB', {minimumFractionDigits:2})}</div></div>
+            ${isTerminated && earnedTotal != null ? `<div class="salary-stat warning"><div class="salary-stat-label">Earned to ${emp.termination_date}</div><div class="salary-stat-value">${sym}${earnedTotal.toLocaleString('en-GB',{minimumFractionDigits:2})}</div></div>` : ''}
             <div class="salary-stat success"><div class="salary-stat-label">Total Paid</div><div class="salary-stat-value">${sym}${totalPaidEmp.toLocaleString('en-GB', {minimumFractionDigits:2})}</div></div>
             <div class="salary-stat ${excessDays > 0 ? 'warning' : ''}"><div class="salary-stat-label">Days Off (${year})</div><div class="salary-stat-value">${totalDaysOff} / ${allowanceDays}</div></div>
             ${deductNote}
@@ -1014,10 +1050,37 @@ async function loadSalaryPage() {
             </div>
           </div>` : ''}
 
+          ${isTerminated && eb ? `
+          <div style="margin-top:14px;background:#fff5f5;border:1px solid #fca5a5;border-radius:10px;padding:14px 16px">
+            <div style="font-size:0.72rem;font-weight:700;text-transform:uppercase;letter-spacing:0.6px;color:var(--danger);margin-bottom:10px">
+              Final Pay Breakdown &nbsp;·&nbsp; ${emp.start_date ? `Started ${emp.start_date}` : ''} → Terminated ${emp.termination_date}
+            </div>
+            <div style="display:flex;flex-direction:column;gap:5px;font-size:0.84rem">
+              <div style="display:flex;justify-content:space-between">
+                <span style="color:var(--muted)">First month (${eb.first_month_days}/${eb.first_month_total_days} working days)</span>
+                <span style="font-weight:700">${sym}${eb.first_month_pay.toLocaleString('en-GB',{minimumFractionDigits:2})}</span>
+              </div>
+              ${eb.full_months_count > 0 ? `
+              <div style="display:flex;justify-content:space-between">
+                <span style="color:var(--muted)">${eb.full_months_count} full month${eb.full_months_count > 1 ? 's' : ''} × ${sym}${(annualSalary/12).toLocaleString('en-GB',{minimumFractionDigits:2})}</span>
+                <span style="font-weight:700">${sym}${eb.full_months_pay.toLocaleString('en-GB',{minimumFractionDigits:2})}</span>
+              </div>` : ''}
+              ${eb.last_month_pay > 0 ? `
+              <div style="display:flex;justify-content:space-between">
+                <span style="color:var(--muted)">Last month (pro-rated to ${emp.termination_date})</span>
+                <span style="font-weight:700">${sym}${eb.last_month_pay.toLocaleString('en-GB',{minimumFractionDigits:2})}</span>
+              </div>` : ''}
+              <div style="display:flex;justify-content:space-between;border-top:1px dashed #fca5a5;padding-top:8px;margin-top:4px">
+                <span style="font-weight:700;color:var(--danger)">Total earned</span>
+                <span style="font-weight:800;color:var(--danger);font-size:0.95rem">${sym}${earnedTotal.toLocaleString('en-GB',{minimumFractionDigits:2})}</span>
+              </div>
+            </div>
+          </div>` : ''}
+
           <div class="salary-net-remaining${netClass}">
             <div>
-              <div class="salary-net-remaining-label">Net Remaining to Pay (${year})</div>
-              <div style="font-size:0.75rem;color:var(--muted);margin-top:2px">Annual − Paid − Day-Off Deductions − Office Items</div>
+              <div class="salary-net-remaining-label">${isTerminated ? 'Outstanding Balance' : `Net Remaining to Pay (${year})`}</div>
+              <div style="font-size:0.75rem;color:var(--muted);margin-top:2px">${isTerminated ? 'Earned − Paid − Deductions' : 'Annual − Paid − Day-Off Deductions − Office Items'}</div>
             </div>
             <div class="salary-net-remaining-value">${isOverpaid ? '−' : ''}${sym}${Math.abs(netRemaining).toLocaleString('en-GB', {minimumFractionDigits:2})}</div>
           </div>

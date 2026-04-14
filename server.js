@@ -92,80 +92,73 @@ function workingDaysInMonth(year, month) {
   return count;
 }
 
-// Count Mon–Fri days from startDay to end of month (inclusive)
-function workingDaysFromDate(year, month, startDay) {
-  const daysInMonth = new Date(year, month, 0).getDate();
+// Count Mon–Fri days from startDay to endDay within a single month
+function workingDaysInRange(year, month, startDay, endDay) {
   let count = 0;
-  for (let d = startDay; d <= daysInMonth; d++) {
+  for (let d = startDay; d <= endDay; d++) {
     const dow = new Date(year, month - 1, d).getDay();
     if (dow >= 1 && dow <= 5) count++;
   }
   return count;
 }
 
-// Calculate pro-rated pay breakdown for an employee with a start_date
-// Returns full months pay + pro-rated first month + total expected to date
-function calcProRatedPay(annualSalary, startDateStr) {
-  if (!startDateStr || !annualSalary) return null;
-  const start = new Date(startDateStr);
-  const now   = new Date();
-  if (start > now) return null;
+// Calculate earned pay from startDate to endDate (defaults to today if null).
+// If startDate is null, uses Jan 1 of the end year.
+// Handles: pro-rated first month, full middle months, pro-rated last month.
+function calcEarnedPay(annualSalary, startDateStr, endDateStr) {
+  if (!annualSalary) return null;
+  const end   = endDateStr   ? new Date(endDateStr)   : new Date();
+  const start = startDateStr ? new Date(startDateStr) : new Date(end.getFullYear(), 0, 1);
+  if (start > end) return null;
 
-  const startY = start.getFullYear();
-  const startM = start.getMonth() + 1; // 1-based
-  const startD = start.getDate();
-  const nowY   = now.getFullYear();
-  const nowM   = now.getMonth() + 1;
+  const sY = start.getFullYear(), sM = start.getMonth() + 1, sD = start.getDate();
+  const eY = end.getFullYear(),   eM = end.getMonth() + 1,   eD = end.getDate();
+  const isSameMonth = sY === eY && sM === eM;
 
-  // Pro-rated first month: working days from start day to end of month
-  const totalWDFirst = workingDaysInMonth(startY, startM);
-  const wdFromStart  = workingDaysFromDate(startY, startM, startD);
-  const firstMonthPay = totalWDFirst > 0
-    ? parseFloat(((annualSalary / 12) * (wdFromStart / totalWDFirst)).toFixed(2))
-    : 0;
-
-  // Full months after the start month up to (but not including) current month
-  let fullMonthsCount = 0;
-  let y = startY, m = startM + 1;
-  if (m > 12) { m = 1; y++; }
-  while (y < nowY || (y === nowY && m < nowM)) {
-    fullMonthsCount++;
-    m++;
-    if (m > 12) { m = 1; y++; }
+  if (isSameMonth) {
+    const totalWD = workingDaysInMonth(sY, sM);
+    const worked  = workingDaysInRange(sY, sM, sD, eD);
+    const pay = totalWD > 0 ? parseFloat(((annualSalary / 12) * (worked / totalWD)).toFixed(2)) : 0;
+    return { start_date: startDateStr, end_date: endDateStr,
+             first_month: `${sY}-${String(sM).padStart(2,'0')}`,
+             first_month_days: worked, first_month_total_days: totalWD, first_month_pay: pay,
+             full_months_count: 0, full_months_pay: 0, last_month_pay: 0, total_expected: pay };
   }
-  const fullMonthsPay = parseFloat(((annualSalary / 12) * fullMonthsCount).toFixed(2));
 
-  // Pro-rated current month up to today
-  const wdThisMonthTotal = workingDaysInMonth(nowY, nowM);
-  const wdThisMonthSoFar = workingDaysFromDate(nowY, nowM, 1) - workingDaysFromDate(nowY, nowM, now.getDate() + 1);
-  // Simpler: count working days from 1st to today
-  let wdToday = 0;
-  for (let d = 1; d <= now.getDate(); d++) {
-    const dow = new Date(nowY, nowM - 1, d).getDay();
-    if (dow >= 1 && dow <= 5) wdToday++;
-  }
-  const currentMonthPay = wdThisMonthTotal > 0
-    ? parseFloat(((annualSalary / 12) * (wdToday / wdThisMonthTotal)).toFixed(2))
-    : 0;
+  // First (partial) month
+  const totalWDFirst = workingDaysInMonth(sY, sM);
+  const wdFirst = workingDaysInRange(sY, sM, sD, new Date(sY, sM, 0).getDate());
+  const firstPay = totalWDFirst > 0 ? parseFloat(((annualSalary / 12) * (wdFirst / totalWDFirst)).toFixed(2)) : 0;
 
-  // If start month IS current month, first month pay already covers up to today
-  const isSameMonth = startY === nowY && startM === nowM;
+  // Full months between first and last
+  let fullCount = 0;
+  let fy = sY, fm = sM + 1;
+  if (fm > 12) { fm = 1; fy++; }
+  while (fy < eY || (fy === eY && fm < eM)) { fullCount++; fm++; if (fm > 12) { fm = 1; fy++; } }
+  const fullPay = parseFloat(((annualSalary / 12) * fullCount).toFixed(2));
 
-  const totalExpected = isSameMonth
-    ? firstMonthPay
-    : parseFloat((firstMonthPay + fullMonthsPay + currentMonthPay).toFixed(2));
+  // Last (partial) month
+  const totalWDLast = workingDaysInMonth(eY, eM);
+  const wdLast = workingDaysInRange(eY, eM, 1, eD);
+  const lastPay = totalWDLast > 0 ? parseFloat(((annualSalary / 12) * (wdLast / totalWDLast)).toFixed(2)) : 0;
 
   return {
-    start_date:         startDateStr,
-    first_month:        `${startY}-${String(startM).padStart(2,'0')}`,
-    first_month_days:   wdFromStart,
+    start_date:           startDateStr,
+    end_date:             endDateStr,
+    first_month:          `${sY}-${String(sM).padStart(2,'0')}`,
+    first_month_days:     wdFirst,
     first_month_total_days: totalWDFirst,
-    first_month_pay:    firstMonthPay,
-    full_months_count:  fullMonthsCount,
-    full_months_pay:    fullMonthsPay,
-    current_month_pay:  isSameMonth ? 0 : currentMonthPay,
-    total_expected:     totalExpected
+    first_month_pay:      firstPay,
+    full_months_count:    fullCount,
+    full_months_pay:      fullPay,
+    last_month_pay:       lastPay,
+    total_expected:       parseFloat((firstPay + fullPay + lastPay).toFixed(2))
   };
+}
+
+// Convenience: earned pay from start_date to today (for active employees)
+function calcProRatedPay(annualSalary, startDateStr) {
+  return calcEarnedPay(annualSalary, startDateStr, null);
 }
 
 // Daily rate for a specific month: (annual ÷ 12) ÷ working days in that month
@@ -342,6 +335,24 @@ app.put('/api/employees/:id', requireAuth, async (req, res) => {
   res.json({ success: true });
 });
 
+app.post('/api/employees/:id/terminate', requireAuth, async (req, res) => {
+  const { termination_date, termination_reason } = req.body;
+  if (!termination_date) return res.status(400).json({ error: 'termination_date required' });
+  await q(
+    'UPDATE employees SET active = 0, termination_date = ?, termination_reason = ? WHERE id = ?',
+    [termination_date, termination_reason || '', req.params.id]
+  );
+  res.json({ success: true });
+});
+
+app.post('/api/employees/:id/reactivate', requireAuth, async (req, res) => {
+  await q(
+    'UPDATE employees SET active = 1, termination_date = NULL, termination_reason = NULL WHERE id = ?',
+    [req.params.id]
+  );
+  res.json({ success: true });
+});
+
 app.delete('/api/employees/:id', requireAuth, async (req, res) => {
   await q('UPDATE employees SET active = 0 WHERE id = ?', [req.params.id]);
   res.json({ success: true });
@@ -514,7 +525,8 @@ app.delete('/api/payments/:id', requireAuth, async (req, res) => {
 app.get('/api/salary-overview', requireAuth, async (req, res) => {
   try {
     const year = parseInt(req.query.year) || new Date().getFullYear();
-    const { rows: employees } = await q('SELECT * FROM employees WHERE active = 1 ORDER BY name');
+    // Include terminated employees so their final summary still shows
+    const { rows: employees } = await q('SELECT * FROM employees ORDER BY active DESC, name');
 
     const overview = await Promise.all(employees.map(async emp => {
       const { rows: payments } = await q(
@@ -534,31 +546,49 @@ app.get('/api/salary-overview', requireAuth, async (req, res) => {
         'SELECT *, effective_from::TEXT AS effective_from FROM salary_history WHERE employee_id = ? ORDER BY salary_history.effective_from DESC, created_at DESC',
         [emp.id]
       );
-      const totalOffice = officeRows.reduce((a, b) => a + parseFloat(b.amount), 0);
-      const totalPaid   = payments.reduce((a, b) => a + parseFloat(b.amount), 0);
-      const netRemaining = parseFloat((annualSal - totalPaid - dayCalc.excess_deduction - totalOffice).toFixed(2));
-      const pctPaid     = annualSal > 0 ? Math.min(100, Math.round((totalPaid / annualSal) * 100)) : 0;
+
+      const startDateStr       = emp.start_date        ? emp.start_date.toISOString().slice(0,10)        : null;
+      const terminationDateStr = emp.termination_date  ? emp.termination_date.toISOString().slice(0,10)  : null;
+      const isTerminated       = !emp.active && !!terminationDateStr;
+
+      // For terminated employees: earned = pro-rated from start to termination date
+      // For active employees: full annual salary is the target
+      const earnedPay = isTerminated
+        ? calcEarnedPay(annualSal, startDateStr, terminationDateStr)
+        : calcProRatedPay(annualSal, startDateStr);
+
+      const totalOffice   = officeRows.reduce((a, b) => a + parseFloat(b.amount), 0);
+      const totalPaid     = payments.reduce((a, b) => a + parseFloat(b.amount), 0);
+      const salaryTarget  = isTerminated ? (earnedPay?.total_expected ?? annualSal) : annualSal;
+      const netRemaining  = parseFloat((salaryTarget - totalPaid - dayCalc.excess_deduction - totalOffice).toFixed(2));
+      const pctPaid       = salaryTarget > 0 ? Math.min(100, Math.round((totalPaid / salaryTarget) * 100)) : 0;
 
       return {
-        employee_id:       emp.id,
-        name:              emp.name,
-        employment_type:   emp.employment_type,
-        currency:          emp.currency || 'GBP',
-        annual_salary:     annualSal,
-        start_date:        emp.start_date ? emp.start_date.toISOString().slice(0,10) : null,
-        pro_rated:         calcProRatedPay(annualSal, emp.start_date ? emp.start_date.toISOString().slice(0,10) : null),
-        salary_history:    salaryHistory,
+        employee_id:         emp.id,
+        name:                emp.name,
+        employment_type:     emp.employment_type,
+        currency:            emp.currency || 'GBP',
+        annual_salary:       annualSal,
+        active:              emp.active ? 1 : 0,
+        start_date:          startDateStr,
+        termination_date:    terminationDateStr,
+        termination_reason:  emp.termination_reason || '',
+        is_terminated:       isTerminated,
+        earned_to_date:      isTerminated ? earnedPay?.total_expected ?? annualSal : null,
+        pro_rated:           !isTerminated ? earnedPay : null,
+        earned_breakdown:    isTerminated ? earnedPay : null,
+        salary_history:      salaryHistory,
         payments,
-        office_deductions: officeRows,
+        office_deductions:   officeRows,
         total_office_deductions: parseFloat(totalOffice.toFixed(2)),
-        total_paid:        parseFloat(totalPaid.toFixed(2)),
-        total_days_off:    dayCalc.total_days_off,
-        allowance_days:    allowance,
-        excess_days:       dayCalc.excess_days,
-        excess_deduction:  dayCalc.excess_deduction,
-        breakdown:         dayCalc.breakdown,
-        net_remaining:     netRemaining,
-        pct_paid:          pctPaid
+        total_paid:          parseFloat(totalPaid.toFixed(2)),
+        total_days_off:      dayCalc.total_days_off,
+        allowance_days:      allowance,
+        excess_days:         dayCalc.excess_days,
+        excess_deduction:    dayCalc.excess_deduction,
+        breakdown:           dayCalc.breakdown,
+        net_remaining:       netRemaining,
+        pct_paid:            pctPaid
       };
     }));
 

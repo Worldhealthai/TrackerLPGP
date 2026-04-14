@@ -401,6 +401,45 @@
 </div>
 
 <!-- ══ MODAL: Payment ══ -->
+<!-- ══ MODAL: Terminate Employee ══ -->
+<div class="modal-overlay" id="terminateModal">
+  <div class="modal">
+    <div class="modal-header">
+      <h2 style="color:var(--danger)">Terminate Employee</h2>
+      <button class="modal-close" onclick="closeModal('terminateModal')">✕</button>
+    </div>
+    <input type="hidden" id="termEmpId">
+    <p id="termEmpName" style="font-weight:700;font-size:1rem;margin-bottom:16px;color:var(--text)"></p>
+    <div style="background:var(--danger-light);border:1px solid #fca5a5;border-radius:8px;padding:12px 14px;margin-bottom:16px;font-size:0.84rem;color:#991b1b">
+      Records will be kept. Salary will be calculated up to the termination date.
+    </div>
+    <div class="form-row">
+      <div class="form-group">
+        <label>Termination Date</label>
+        <input type="date" id="termDate">
+      </div>
+      <div class="form-group">
+        <label>Reason</label>
+        <select id="termReason">
+          <option value="Resigned">Resigned</option>
+          <option value="Dismissed">Dismissed</option>
+          <option value="Contract ended">Contract ended</option>
+          <option value="Redundancy">Redundancy</option>
+          <option value="Other">Other</option>
+        </select>
+      </div>
+    </div>
+    <div class="form-group" style="margin-bottom:20px">
+      <label>Additional Notes (optional)</label>
+      <input type="text" id="termNotes" placeholder="e.g. Last day was Friday">
+    </div>
+    <div style="display:flex;gap:10px;justify-content:flex-end">
+      <button class="btn btn-ghost" onclick="closeModal('terminateModal')">Cancel</button>
+      <button class="btn btn-danger" onclick="confirmTerminate()">Terminate</button>
+    </div>
+  </div>
+</div>
+
 <div class="modal-overlay" id="paymentModal">
   <div class="modal">
     <div class="modal-header">
