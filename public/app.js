@@ -576,33 +576,40 @@ async function loadPaymentsSection(empId, emp) {
   const totalPaid    = payments.reduce((a, b) => a + parseFloat(b.amount || 0), 0);
   const dayOffDeduct = parseFloat(yearStats.excess_deduction) || 0;
   const officeDeduct = officeRows.reduce((a, b) => a + parseFloat(b.amount || 0), 0);
-  const remaining    = annual - totalPaid - dayOffDeduct - officeDeduct;
 
-  // Pro-rated only applies if employee started this year
+  // Pro-rated only applies if employee started this year — fetch from overview to get salary_target
   const startDate = emp.start_date ? emp.start_date.slice(0,10) : null;
   const startedThisYear = startDate && startDate.startsWith(String(year));
   let proRatedHtml = '';
+  let salaryTargetForYear = annual; // default to full annual
   if (startedThisYear) {
     const res2 = await fetch(`/api/salary-overview?year=${year}`);
     if (res2.ok) {
       const overview = await res2.json();
       const empData = Array.isArray(overview) ? overview.find(e => e.employee_id === parseInt(empId)) : null;
-      const pr = empData?.pro_rated;
-      if (pr) {
-        proRatedHtml = `
-        <div style="margin-top:14px;background:#f0fdf4;border:1px solid #86efac;border-radius:10px;padding:14px 16px">
-          <div style="font-size:0.72rem;font-weight:700;text-transform:uppercase;letter-spacing:0.5px;color:#16a34a;margin-bottom:8px">Pro-Rated Reference · Started ${pr.start_date}</div>
-          <div style="font-size:0.85rem;display:flex;justify-content:space-between;font-weight:600">
-            <span style="color:var(--muted)">Expected to date</span>
-            <span style="color:#16a34a;font-weight:800">${sym}${pr.total_expected.toLocaleString('en-GB',{minimumFractionDigits:2})}</span>
-          </div>
-        </div>`;
+      if (empData) {
+        // Use the server-computed salary_target (pro-rated to Dec 31)
+        salaryTargetForYear = parseFloat(empData.salary_target ?? empData.annual_salary) || annual;
+        const pr = empData.pro_rated;
+        if (pr) {
+          proRatedHtml = `
+          <div style="margin-top:14px;background:#f0fdf4;border:1px solid #86efac;border-radius:10px;padding:14px 16px">
+            <div style="font-size:0.72rem;font-weight:700;text-transform:uppercase;letter-spacing:0.5px;color:#16a34a;margin-bottom:8px">Pro-Rated Reference · Started ${pr.start_date}</div>
+            <div style="font-size:0.85rem;display:flex;justify-content:space-between;font-weight:600">
+              <span style="color:var(--muted)">Expected to date</span>
+              <span style="color:#16a34a;font-weight:800">${sym}${pr.total_expected.toLocaleString('en-GB',{minimumFractionDigits:2})}</span>
+            </div>
+          </div>`;
+        }
       }
     }
   }
 
+  const remaining = salaryTargetForYear - totalPaid - dayOffDeduct - officeDeduct;
+
   document.getElementById('salaryInfo').innerHTML = `
     <div class="stat-card blue"><div class="stat-label">Annual Salary</div><div class="stat-value">${sym}${annual.toLocaleString('en-GB',{minimumFractionDigits:2})}</div></div>
+    ${startedThisYear ? `<div class="stat-card yellow"><div class="stat-label">Target for ${year}</div><div class="stat-value">${sym}${salaryTargetForYear.toLocaleString('en-GB',{minimumFractionDigits:2})}</div></div>` : ''}
     ${startDate ? `<div class="stat-card blue"><div class="stat-label">Start Date</div><div class="stat-value" style="font-size:1.1rem">${startDate}</div></div>` : ''}
     <div class="stat-card green"><div class="stat-label">Paid This Year</div><div class="stat-value">${sym}${totalPaid.toLocaleString('en-GB',{minimumFractionDigits:2})}</div></div>
     ${dayOffDeduct > 0 ? `<div class="stat-card red"><div class="stat-label">Day-Off Deductions</div><div class="stat-value">−${sym}${dayOffDeduct.toLocaleString('en-GB',{minimumFractionDigits:2})}</div></div>` : ''}
@@ -903,7 +910,7 @@ async function loadSalaryPage() {
     const totalHtml = currencies.map(c => {
       const sub = activeRows.filter(r => (r.currency || 'GBP') === c);
       const s = currencySymbol(c);
-      const tAnnual  = sub.reduce((a, b) => a + (parseFloat(b.annual_salary) || 0), 0);
+      const tAnnual  = sub.reduce((a, b) => a + (parseFloat(b.salary_target ?? b.annual_salary) || 0), 0);
       const tPaid    = sub.reduce((a, b) => a + (parseFloat(b.total_paid) || 0), 0);
       const tDeduct  = sub.reduce((a, b) => a + (parseFloat(b.excess_deduction) || 0), 0);
       const tRemain  = sub.reduce((a, b) => a + (parseFloat(b.net_remaining) || 0), 0);
@@ -924,6 +931,8 @@ async function loadSalaryPage() {
 
     container.innerHTML = rows.map(emp => {
       const annualSalary    = parseFloat(emp.annual_salary) || 0;
+      const salaryTarget    = parseFloat(emp.salary_target ?? emp.annual_salary) || 0;
+      const isProRatedYear  = !emp.is_terminated && salaryTarget !== annualSalary && salaryTarget > 0;
       const totalPaidEmp    = parseFloat(emp.total_paid) || 0;
       const excessDeduction = parseFloat(emp.excess_deduction) || 0;
       const netRemaining    = parseFloat(emp.net_remaining) || 0;
@@ -947,11 +956,12 @@ async function loadSalaryPage() {
 
       // Progress bar
       const fill = `<div class="salary-progress-fill${isOverpaid ? ' overpaid' : ''}" style="width:${Math.min(pctPaid,100)}%"></div>`;
+      const pctLabel = isProRatedYear ? `${pctPaid}% of ${year} target paid` : `${pctPaid}% of annual salary paid`;
       const progress = `
         <div class="salary-progress-wrap">
           <div class="salary-progress-labels">
             <span>Paid: ${sym}${totalPaidEmp.toLocaleString('en-GB', {minimumFractionDigits:2})}</span>
-            <span>${pctPaid}% of annual salary paid</span>
+            <span>${pctLabel}</span>
           </div>
           <div class="salary-progress-bar">${fill}</div>
         </div>`;
@@ -998,15 +1008,16 @@ async function loadSalaryPage() {
             </div>
           </div>
           <div class="salary-header-right">
-            <div class="salary-annual-label">${isTerminated ? 'Earned to Termination' : 'Annual Salary'}</div>
-            <div class="salary-annual">${sym}${(isTerminated ? (earnedTotal ?? annualSalary) : annualSalary).toLocaleString('en-GB', {minimumFractionDigits:2})}</div>
+            <div class="salary-annual-label">${isTerminated ? 'Earned to Termination' : isProRatedYear ? `Target for ${year}` : 'Annual Salary'}</div>
+            <div class="salary-annual">${sym}${(isTerminated ? (earnedTotal ?? annualSalary) : isProRatedYear ? salaryTarget : annualSalary).toLocaleString('en-GB', {minimumFractionDigits:2})}</div>
           </div>
           <button class="btn btn-ghost btn-sm" onclick="openSalaryPaymentModal(${emp.employee_id})">+ Payment</button>
         </div>
         <div class="salary-card-body">
           ${progress}
           <div class="salary-stats-row">
-            <div class="salary-stat primary"><div class="salary-stat-label">${isTerminated ? 'Annual Salary' : 'Annual Salary'}</div><div class="salary-stat-value">${sym}${annualSalary.toLocaleString('en-GB', {minimumFractionDigits:2})}</div></div>
+            <div class="salary-stat primary"><div class="salary-stat-label">${isTerminated ? 'Annual Salary' : isProRatedYear ? 'Annual Salary' : 'Annual Salary'}</div><div class="salary-stat-value">${sym}${annualSalary.toLocaleString('en-GB', {minimumFractionDigits:2})}</div></div>
+            ${isProRatedYear ? `<div class="salary-stat warning"><div class="salary-stat-label">Target for ${year}</div><div class="salary-stat-value">${sym}${salaryTarget.toLocaleString('en-GB',{minimumFractionDigits:2})}</div></div>` : ''}
             ${isTerminated && earnedTotal != null ? `<div class="salary-stat warning"><div class="salary-stat-label">Earned to ${emp.termination_date}</div><div class="salary-stat-value">${sym}${earnedTotal.toLocaleString('en-GB',{minimumFractionDigits:2})}</div></div>` : ''}
             <div class="salary-stat success"><div class="salary-stat-label">Total Paid</div><div class="salary-stat-value">${sym}${totalPaidEmp.toLocaleString('en-GB', {minimumFractionDigits:2})}</div></div>
             <div class="salary-stat ${excessDays > 0 ? 'warning' : ''}"><div class="salary-stat-label">Days Off (${year})</div><div class="salary-stat-value">${totalDaysOff} / ${allowanceDays}</div></div>
@@ -1110,7 +1121,7 @@ async function loadSalaryPage() {
           <div class="salary-net-remaining${netClass}">
             <div>
               <div class="salary-net-remaining-label">${isTerminated ? 'Outstanding Balance' : `Net Remaining to Pay (${year})`}</div>
-              <div style="font-size:0.75rem;color:var(--muted);margin-top:2px">${isTerminated ? 'Earned − Paid − Deductions' : 'Annual − Paid − Day-Off Deductions − Office Items'}</div>
+              <div style="font-size:0.75rem;color:var(--muted);margin-top:2px">${isTerminated ? 'Earned − Paid − Deductions' : isProRatedYear ? `${year} Target − Paid − Day-Off Deductions − Office Items` : 'Annual − Paid − Day-Off Deductions − Office Items'}</div>
             </div>
             <div class="salary-net-remaining-value">${isOverpaid ? '−' : ''}${sym}${Math.abs(netRemaining).toLocaleString('en-GB', {minimumFractionDigits:2})}</div>
           </div>

@@ -555,15 +555,26 @@ app.get('/api/salary-overview', requireAuth, async (req, res) => {
       const startedThisYear = startDateStr && startDateStr.startsWith(String(year));
 
       // For terminated employees: earned = pro-rated from start to termination date
-      // For active employees who started this year: show pro-rated reference
+      // For active employees who started this year: show pro-rated reference (start → today)
       // For all others: full annual salary is the target, no pro-rated reference
       const earnedPay = isTerminated
         ? calcEarnedPay(annualSal, startDateStr, terminationDateStr)
         : (startedThisYear ? calcProRatedPay(annualSal, startDateStr) : null);
 
+      // Salary target for this year:
+      //   terminated  → earned from start to termination date
+      //   started this year (active) → pro-rated from start date to Dec 31 of this year
+      //   otherwise   → full annual salary
+      let salaryTarget = annualSal;
+      if (isTerminated) {
+        salaryTarget = earnedPay?.total_expected ?? annualSal;
+      } else if (startedThisYear) {
+        const yearEnd = calcEarnedPay(annualSal, startDateStr, `${year}-12-31`);
+        salaryTarget = yearEnd?.total_expected ?? annualSal;
+      }
+
       const totalOffice   = officeRows.reduce((a, b) => a + parseFloat(b.amount), 0);
       const totalPaid     = payments.reduce((a, b) => a + parseFloat(b.amount), 0);
-      const salaryTarget  = isTerminated ? (earnedPay?.total_expected ?? annualSal) : annualSal;
       const netRemaining  = parseFloat((salaryTarget - totalPaid - dayCalc.excess_deduction - totalOffice).toFixed(2));
       const pctPaid       = salaryTarget > 0 ? Math.min(100, Math.round((totalPaid / salaryTarget) * 100)) : 0;
 
@@ -573,6 +584,7 @@ app.get('/api/salary-overview', requireAuth, async (req, res) => {
         employment_type:     emp.employment_type,
         currency:            emp.currency || 'GBP',
         annual_salary:       annualSal,
+        salary_target:       parseFloat(salaryTarget.toFixed(2)),
         active:              emp.active ? 1 : 0,
         start_date:          startDateStr,
         termination_date:    terminationDateStr,
