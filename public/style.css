@@ -1335,6 +1335,7 @@ tbody tr:hover td strong { color: var(--primary); }
 .soc-label { font-size: 0.72rem; font-weight: 600; color: var(--muted); white-space: nowrap; }
 .soc-value { font-size: 1.15rem; font-weight: 800; letter-spacing: -0.5px; color: var(--text); }
 .soc-value.paid        { color: var(--success); }
+.soc-value.deduct      { color: var(--warning); }
 .soc-value.outstanding { color: var(--danger); }
 .soc-value.outstanding.overpaid { color: var(--success); }
 .soc-value.outstanding.clear    { color: var(--muted); }

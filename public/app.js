@@ -923,11 +923,15 @@ async function loadSalaryPage() {
     const TYPE_LABEL = { payroll: 'Payroll', self_employed: 'Self-Employed' };
     const TYPE_CLASS  = { payroll: 'payroll', self_employed: 'self-employed' };
     const totalHtml = groups.map(g => {
-      const s       = currencySymbol(g.currency);
-      const tTarget = g.rows.reduce((a, b) => a + (parseFloat(b.salary_target ?? b.annual_salary) || 0), 0);
-      const tPaid   = g.rows.reduce((a, b) => a + (parseFloat(b.total_paid)    || 0), 0);
-      const tRemain = g.rows.reduce((a, b) => a + (parseFloat(b.net_remaining) || 0), 0);
-      const header  = groups.length > 1 ? `${TYPE_LABEL[g.type]} · ${g.currency}` : TYPE_LABEL[g.type];
+      const s        = currencySymbol(g.currency);
+      const tTarget  = g.rows.reduce((a, b) => a + (parseFloat(b.salary_target ?? b.annual_salary) || 0), 0);
+      const tPaid    = g.rows.reduce((a, b) => a + (parseFloat(b.total_paid)    || 0), 0);
+      const tDeduct  = g.rows.reduce((a, b) => a + (parseFloat(b.excess_deduction) || 0) + (parseFloat(b.total_office_deductions) || 0), 0);
+      const tRemain  = g.rows.reduce((a, b) => a + (parseFloat(b.net_remaining) || 0), 0);
+      const typeLabel = groups.length > 1 ? `${TYPE_LABEL[g.type]} · ${g.currency}` : TYPE_LABEL[g.type];
+      // Show employee name when the card represents a single person
+      const empName   = g.rows.length === 1 ? g.rows[0].name : null;
+      const header    = empName ? `${empName} &nbsp;·&nbsp; ${typeLabel}` : typeLabel;
       const remainClass = tRemain < 0 ? 'overpaid' : tRemain === 0 ? 'clear' : '';
       return `
         <div class="salary-overview-card ${TYPE_CLASS[g.type]}">
@@ -940,6 +944,11 @@ async function loadSalaryPage() {
             <span class="soc-label">Total Paid</span>
             <span class="soc-value paid">${s}${fmtK(tPaid)}</span>
           </div>
+          ${tDeduct > 0 ? `
+          <div class="soc-row">
+            <span class="soc-label">Deductions</span>
+            <span class="soc-value deduct">−${s}${fmtK(tDeduct)}</span>
+          </div>` : ''}
           <div class="soc-row soc-row--outstanding">
             <span class="soc-label">Outstanding</span>
             <span class="soc-value outstanding ${remainClass}">${tRemain < 0 ? '−' : ''}${s}${fmtK(Math.abs(tRemain))}</span>
