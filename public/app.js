@@ -865,8 +865,9 @@ async function loadSalaryPage() {
   const container = document.getElementById('salaryCards');
   try {
     initSalaryYearSelect();
-    const year   = document.getElementById('salaryYear').value || new Date().getFullYear();
-    const empFilter = document.getElementById('salaryEmpFilter').value;
+    const year       = document.getElementById('salaryYear').value || new Date().getFullYear();
+    const empFilter  = document.getElementById('salaryEmpFilter').value;
+    const searchTerm = (document.getElementById('salarySearch')?.value || '').trim().toLowerCase();
 
     const ctrl = new AbortController();
     const timer = setTimeout(() => ctrl.abort(), 20000);
@@ -885,11 +886,14 @@ async function loadSalaryPage() {
     if (!Array.isArray(data)) throw new Error('Unexpected response from server');
     // Update tab counts
     const base = empFilter ? data.filter(e => String(e.employee_id) === empFilter) : data;
+    const searched = searchTerm
+      ? base.filter(e => (e.name || '').toLowerCase().includes(searchTerm))
+      : base;
     const counts = {
-      all:          base.filter(e => !e.is_terminated).length,
-      payroll:      base.filter(e => !e.is_terminated && e.employment_type === 'payroll').length,
-      self_employed:base.filter(e => !e.is_terminated && e.employment_type === 'self_employed').length,
-      terminated:   base.filter(e => e.is_terminated).length
+      all:          searched.filter(e => !e.is_terminated).length,
+      payroll:      searched.filter(e => !e.is_terminated && e.employment_type === 'payroll').length,
+      self_employed:searched.filter(e => !e.is_terminated && e.employment_type === 'self_employed').length,
+      terminated:   searched.filter(e => e.is_terminated).length
     };
     document.querySelectorAll('.salary-tab').forEach(t => {
       const key = t.dataset.tab;
@@ -898,30 +902,51 @@ async function loadSalaryPage() {
     });
 
     const tab = activeSalaryTab();
-    let rows = [...base];
+    let rows = [...searched];
     if (tab === 'terminated')        rows = rows.filter(e => e.is_terminated);
     else if (tab === 'payroll')      rows = rows.filter(e => !e.is_terminated && e.employment_type === 'payroll');
     else if (tab === 'self_employed')rows = rows.filter(e => !e.is_terminated && e.employment_type === 'self_employed');
     else                             rows = rows.filter(e => !e.is_terminated);
 
-    // ── Totals strip (grouped by currency, active employees only) ──
+    // ── Totals strip: grouped by employment_type × currency (active only) ──
     const activeRows = rows.filter(r => !r.is_terminated);
-    const currencies = [...new Set(rows.map(r => r.currency || 'GBP'))];
-    const totalHtml = currencies.map(c => {
-      const sub = activeRows.filter(r => (r.currency || 'GBP') === c);
-      const s = currencySymbol(c);
-      const tAnnual  = sub.reduce((a, b) => a + (parseFloat(b.salary_target ?? b.annual_salary) || 0), 0);
-      const tPaid    = sub.reduce((a, b) => a + (parseFloat(b.total_paid) || 0), 0);
-      const tDeduct  = sub.reduce((a, b) => a + (parseFloat(b.excess_deduction) || 0), 0);
-      const tRemain  = sub.reduce((a, b) => a + (parseFloat(b.net_remaining) || 0), 0);
-      const label    = currencies.length > 1 ? ` (${c})` : '';
+    const TYPE_ORDER = ['payroll', 'self_employed'];
+    const groups = [];
+    TYPE_ORDER.forEach(type => {
+      const ofType = activeRows.filter(r => r.employment_type === type);
+      if (!ofType.length) return;
+      const curs = [...new Set(ofType.map(r => r.currency || 'GBP'))];
+      curs.forEach(c => {
+        groups.push({ type, currency: c, rows: ofType.filter(r => (r.currency || 'GBP') === c) });
+      });
+    });
+    const TYPE_LABEL = { payroll: 'Payroll', self_employed: 'Self-Employed' };
+    const TYPE_CLASS  = { payroll: 'payroll', self_employed: 'self-employed' };
+    const totalHtml = groups.map(g => {
+      const s       = currencySymbol(g.currency);
+      const tTarget = g.rows.reduce((a, b) => a + (parseFloat(b.salary_target ?? b.annual_salary) || 0), 0);
+      const tPaid   = g.rows.reduce((a, b) => a + (parseFloat(b.total_paid)    || 0), 0);
+      const tRemain = g.rows.reduce((a, b) => a + (parseFloat(b.net_remaining) || 0), 0);
+      const header  = groups.length > 1 ? `${TYPE_LABEL[g.type]} · ${g.currency}` : TYPE_LABEL[g.type];
+      const remainClass = tRemain < 0 ? 'overpaid' : tRemain === 0 ? 'clear' : '';
       return `
-        <div class="stat-card blue"><div class="stat-label">Total Payroll ${year}${label}</div><div class="stat-value">${s}${fmtK(tAnnual)}</div></div>
-        <div class="stat-card green"><div class="stat-label">Total Paid${label}</div><div class="stat-value">${s}${fmtK(tPaid)}</div></div>
-        <div class="stat-card red"><div class="stat-label">Day-Off Deductions${label}</div><div class="stat-value">${s}${fmtK(tDeduct)}</div></div>
-        <div class="stat-card yellow"><div class="stat-label">Outstanding${label}</div><div class="stat-value">${s}${fmtK(tRemain)}</div></div>`;
+        <div class="salary-overview-card ${TYPE_CLASS[g.type]}">
+          <div class="soc-header">${header}</div>
+          <div class="soc-row">
+            <span class="soc-label">Target for ${year}</span>
+            <span class="soc-value target">${s}${fmtK(tTarget)}</span>
+          </div>
+          <div class="soc-row">
+            <span class="soc-label">Total Paid</span>
+            <span class="soc-value paid">${s}${fmtK(tPaid)}</span>
+          </div>
+          <div class="soc-row soc-row--outstanding">
+            <span class="soc-label">Outstanding</span>
+            <span class="soc-value outstanding ${remainClass}">${tRemain < 0 ? '−' : ''}${s}${fmtK(Math.abs(tRemain))}</span>
+          </div>
+        </div>`;
     }).join('');
-    document.getElementById('salaryTotals').innerHTML = totalHtml;
+    document.getElementById('salaryTotals').innerHTML = totalHtml || '';
 
     // ── Per-employee cards ──
     if (!rows.length) {

@@ -155,11 +155,16 @@
               <option value="">All Employees</option>
             </select>
           </div>
+          <div class="form-group" style="margin:0;min-width:160px">
+            <label>Search</label>
+            <input type="search" id="salarySearch" placeholder="Filter by name…"
+              oninput="loadSalaryPage()" autocomplete="off" />
+          </div>
           <button class="btn btn-primary" style="margin-left:auto" onclick="openSalaryPaymentModal()">+ Log Payment</button>
         </div>
 
         <!-- Totals strip -->
-        <div id="salaryTotals" class="stats-grid" style="margin-bottom:24px"></div>
+        <div id="salaryTotals" class="salary-overview-grid" style="margin-bottom:24px"></div>
 
         <!-- Type tabs -->
         <div class="salary-tabs">
