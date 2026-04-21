@@ -542,6 +542,10 @@ app.get('/api/salary-overview', requireAuth, async (req, res) => {
         'SELECT *, deduction_date::TEXT AS deduction_date FROM office_deductions WHERE employee_id = ? ORDER BY office_deductions.deduction_date DESC',
         [emp.id]
       );
+      const { rows: bonusRows } = await q(
+        'SELECT *, bonus_date::TEXT AS bonus_date FROM bonuses WHERE employee_id = ? ORDER BY bonuses.bonus_date DESC',
+        [emp.id]
+      );
       const { rows: salaryHistory } = await q(
         'SELECT *, effective_from::TEXT AS effective_from FROM salary_history WHERE employee_id = ? ORDER BY salary_history.effective_from DESC, created_at DESC',
         [emp.id]
@@ -595,6 +599,8 @@ app.get('/api/salary-overview', requireAuth, async (req, res) => {
         earned_breakdown:    isTerminated ? earnedPay : null,
         salary_history:      salaryHistory,
         payments,
+        bonuses:             bonusRows,
+        total_bonuses:       parseFloat(bonusRows.reduce((a, b) => a + parseFloat(b.amount), 0).toFixed(2)),
         office_deductions:   officeRows,
         total_office_deductions: parseFloat(totalOffice.toFixed(2)),
         total_paid:          parseFloat(totalPaid.toFixed(2)),
@@ -734,6 +740,32 @@ app.post('/api/office-deductions', requireAuth, async (req, res) => {
 
 app.delete('/api/office-deductions/:id', requireAuth, async (req, res) => {
   await q('DELETE FROM office_deductions WHERE id = ?', [req.params.id]);
+  res.json({ success: true });
+});
+
+// ─── BONUSES ─────────────────────────────────────────────────────────────────
+
+app.get('/api/bonuses/:employeeId', requireAuth, async (req, res) => {
+  const { rows } = await q(
+    'SELECT *, bonus_date::TEXT AS bonus_date FROM bonuses WHERE employee_id = ? ORDER BY bonuses.bonus_date DESC',
+    [req.params.employeeId]
+  );
+  res.json(rows);
+});
+
+app.post('/api/bonuses', requireAuth, async (req, res) => {
+  const { employee_id, amount, bonus_date, reason, notes } = req.body;
+  if (!employee_id || !amount)
+    return res.status(400).json({ error: 'employee_id and amount required' });
+  const { rows } = await q(
+    'INSERT INTO bonuses (employee_id, amount, bonus_date, reason, notes, created_by) VALUES (?, ?, ?, ?, ?, ?) RETURNING id',
+    [employee_id, amount, bonus_date || new Date().toISOString().slice(0,10), reason || '', notes || '', req.admin.id]
+  );
+  res.json({ id: rows[0].id });
+});
+
+app.delete('/api/bonuses/:id', requireAuth, async (req, res) => {
+  await q('DELETE FROM bonuses WHERE id = ?', [req.params.id]);
   res.json({ success: true });
 });
 

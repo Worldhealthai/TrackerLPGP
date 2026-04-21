@@ -976,8 +976,10 @@ async function loadSalaryPage() {
       const pctPaid         = parseFloat(emp.pct_paid) || 0;
       const payments        = Array.isArray(emp.payments) ? emp.payments : [];
       const officeDeductions = Array.isArray(emp.office_deductions) ? emp.office_deductions : [];
+      const bonuses         = Array.isArray(emp.bonuses) ? emp.bonuses : [];
       const salaryHistory   = Array.isArray(emp.salary_history) ? emp.salary_history : [];
       const officeTotal     = parseFloat(emp.total_office_deductions) || 0;
+      const bonusTotal      = parseFloat(emp.total_bonuses) || 0;
       const cur             = emp.currency || 'GBP';
       const sym             = currencySymbol(cur);
 
@@ -1019,6 +1021,10 @@ async function loadSalaryPage() {
         ? `<div class="salary-stat danger"><div class="salary-stat-label">Office Items</div><div class="salary-stat-value">−${sym}${officeTotal.toLocaleString('en-GB', {minimumFractionDigits:2})}</div></div>`
         : '';
 
+      const bonusNote = bonusTotal > 0
+        ? `<div class="salary-stat" style="border-color:#f59e0b"><div class="salary-stat-label" style="color:#b45309">Bonuses Paid</div><div class="salary-stat-value" style="color:#d97706">+${sym}${bonusTotal.toLocaleString('en-GB', {minimumFractionDigits:2})}</div></div>`
+        : '';
+
       const netClass = isOverpaid ? ' danger' : '';
 
       const earnedTotal = emp.earned_to_date != null ? parseFloat(emp.earned_to_date) : null;
@@ -1057,6 +1063,7 @@ async function loadSalaryPage() {
             <div class="salary-stat ${excessDays > 0 ? 'warning' : ''}"><div class="salary-stat-label">Days Off (${year})</div><div class="salary-stat-value">${totalDaysOff} / ${allowanceDays}</div></div>
             ${deductNote}
             ${officeNote}
+            ${bonusNote}
           </div>
 
           <button class="salary-payments-toggle" onclick="togglePaymentsList(this)">▶ Payment History (${payments.length})</button>
@@ -1078,6 +1085,24 @@ async function loadSalaryPage() {
                     <button class="btn btn-danger btn-sm" onclick="deleteOfficeDeduction(${od.id})">Del</button>
                   </div>`).join('')}
               </div>` : `<div style="color:var(--muted);font-size:0.82rem;padding:4px 0">No items logged.</div>`}
+          </div>
+
+          <div style="margin-top:14px">
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+              <span style="font-size:0.78rem;font-weight:700;text-transform:uppercase;letter-spacing:0.5px;color:#b45309">Bonuses (${bonuses.length})</span>
+              <button class="btn btn-ghost btn-sm" style="border-color:#f59e0b;color:#b45309" onclick="openBonusModal(${emp.employee_id})">+ Add Bonus</button>
+            </div>
+            ${bonuses.length ? `
+              <div style="display:flex;flex-direction:column;gap:6px">
+                ${bonuses.map(b => `
+                  <div class="salary-payment-row" style="background:#fffbeb;border-color:#fcd34d">
+                    <span class="salary-payment-month">${b.bonus_date || ''}</span>
+                    <span style="font-weight:800;color:#d97706">+${sym}${parseFloat(b.amount || 0).toLocaleString('en-GB',{minimumFractionDigits:2})}</span>
+                    <span class="salary-payment-notes">${esc(b.reason || '')}</span>
+                    ${b.notes ? `<span style="color:var(--muted);font-size:0.75rem">${esc(b.notes)}</span>` : ''}
+                    <button class="btn btn-danger btn-sm" onclick="deleteBonus(${b.id})">Del</button>
+                  </div>`).join('')}
+              </div>` : `<div style="color:var(--muted);font-size:0.82rem;padding:4px 0">No bonuses logged yet.</div>`}
           </div>
 
           ${emp.pro_rated ? (() => {
@@ -1244,6 +1269,38 @@ async function saveOfficeDeduction() {
 async function deleteOfficeDeduction(id) {
   if (!confirm('Remove this deduction?')) return;
   await fetch(`/api/office-deductions/${id}`, { method: 'DELETE' });
+  loadSalaryPage();
+}
+
+function openBonusModal(empId) {
+  document.getElementById('bonusEmpId').value = empId;
+  document.getElementById('bonusAmount').value = '';
+  document.getElementById('bonusDate').value = today();
+  document.getElementById('bonusReason').value = '';
+  document.getElementById('bonusNotes').value = '';
+  openModal('bonusModal');
+}
+
+async function saveBonusRecord() {
+  const employee_id = document.getElementById('bonusEmpId').value;
+  const amount      = document.getElementById('bonusAmount').value;
+  const bonus_date  = document.getElementById('bonusDate').value;
+  const reason      = document.getElementById('bonusReason').value.trim();
+  const notes       = document.getElementById('bonusNotes').value.trim();
+  if (!amount || parseFloat(amount) <= 0) return alert('Enter a valid bonus amount');
+  const res = await fetch('/api/bonuses', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ employee_id, amount, bonus_date, reason, notes })
+  });
+  if (!res.ok) { const e = await res.json(); return alert(e.error); }
+  closeModal('bonusModal');
+  loadSalaryPage();
+}
+
+async function deleteBonus(id) {
+  if (!confirm('Remove this bonus record?')) return;
+  await fetch(`/api/bonuses/${id}`, { method: 'DELETE' });
   loadSalaryPage();
 }
 

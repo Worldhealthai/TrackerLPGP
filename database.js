@@ -137,6 +137,19 @@ async function runMigrations() {
     )
   `);
 
+  await sql(`
+    CREATE TABLE IF NOT EXISTS bonuses (
+      id SERIAL PRIMARY KEY,
+      employee_id INT NOT NULL REFERENCES employees(id) ON DELETE CASCADE,
+      amount NUMERIC(12,2) NOT NULL,
+      bonus_date DATE NOT NULL DEFAULT CURRENT_DATE,
+      reason TEXT NOT NULL DEFAULT '',
+      notes TEXT DEFAULT '',
+      created_by INT,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `);
+
   const rows = await sql('SELECT COUNT(*) AS c FROM admins');
   if (parseInt(rows[0].c) === 0) {
     const hash = bcrypt.hashSync('admin123', 10);
