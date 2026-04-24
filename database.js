@@ -55,7 +55,8 @@ async function runMigrations() {
       ADD COLUMN IF NOT EXISTS currency TEXT NOT NULL DEFAULT 'GBP',
       ADD COLUMN IF NOT EXISTS start_date DATE,
       ADD COLUMN IF NOT EXISTS termination_date DATE,
-      ADD COLUMN IF NOT EXISTS termination_reason TEXT DEFAULT ''
+      ADD COLUMN IF NOT EXISTS termination_reason TEXT DEFAULT '',
+      ADD COLUMN IF NOT EXISTS tax_rate NUMERIC(5,2)
   `);
 
   await sql(`

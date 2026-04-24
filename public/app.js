@@ -143,10 +143,18 @@ function openEmpModal(emp = null) {
   document.getElementById('empType').value = emp ? (emp.employment_type || 'payroll') : 'payroll';
   document.getElementById('empCurrency').value = emp ? (emp.currency || 'GBP') : 'GBP';
   document.getElementById('empAnnualSalary').value = emp ? emp.annual_salary : 0;
+  document.getElementById('empTaxRate').value = emp && emp.tax_rate != null ? emp.tax_rate : '';
   document.getElementById('empSalaryEffective').value = today();
   document.getElementById('empSalaryReason').value = '';
   document.getElementById('salaryChangeFields').classList.add('hidden');
   document.getElementById('empModalTitle').textContent = emp ? 'Edit Employee' : 'Add Employee';
+
+  const toggleTaxField = () => {
+    const isPayroll = document.getElementById('empType').value === 'payroll';
+    document.getElementById('taxRateField').style.display = isPayroll ? '' : 'none';
+  };
+  document.getElementById('empType').onchange = toggleTaxField;
+  toggleTaxField();
 
   // Show raise fields when salary value changes
   const salaryInput = document.getElementById('empAnnualSalary');
@@ -167,19 +175,21 @@ async function saveEmployee() {
   const annual_salary = parseFloat(document.getElementById('empAnnualSalary').value) || 0;
   const salary_reason = document.getElementById('empSalaryReason').value.trim();
   const salary_effective = document.getElementById('empSalaryEffective').value;
+  const taxRateVal = document.getElementById('empTaxRate').value;
+  const tax_rate = employment_type === 'payroll' && taxRateVal !== '' ? parseFloat(taxRateVal) : null;
   if (!name) return showToast('Name is required', 'error');
 
   if (id) {
     await fetch(`/api/employees/${id}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name, employment_type, annual_salary, currency, active: 1, salary_reason, salary_effective, start_date })
+      body: JSON.stringify({ name, employment_type, annual_salary, currency, active: 1, salary_reason, salary_effective, start_date, tax_rate })
     });
   } else {
     await fetch('/api/employees', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name, employment_type, annual_salary, currency, start_date })
+      body: JSON.stringify({ name, employment_type, annual_salary, currency, start_date, tax_rate })
     });
   }
   closeModal('empModal');
@@ -1020,6 +1030,8 @@ async function loadSalaryPage() {
       const bonusTotal      = parseFloat(emp.total_bonuses) || 0;
       const cur             = emp.currency || 'GBP';
       const sym             = currencySymbol(cur);
+      const taxRate         = emp.tax_rate ? parseFloat(emp.tax_rate) : null;
+      const netMonthly      = emp.net_monthly ? parseFloat(emp.net_monthly) : null;
 
       const initials = (emp.name || '?').split(' ').map(w => w[0]).join('').slice(0,2).toUpperCase();
       const typeLabel = emp.employment_type === 'self_employed' ? 'Self-Employed' : 'Payroll';
@@ -1063,6 +1075,13 @@ async function loadSalaryPage() {
         ? `<div class="salary-stat" style="border-color:#f59e0b"><div class="salary-stat-label" style="color:#b45309">Bonuses Paid</div><div class="salary-stat-value" style="color:#d97706">+${sym}${bonusTotal.toLocaleString('en-GB', {minimumFractionDigits:2})}</div></div>`
         : '';
 
+      const taxNote = taxRate
+        ? `<div class="salary-stat" style="border-color:#818cf8;background:#eef2ff">
+            <div class="salary-stat-label" style="color:var(--primary)">Net Monthly (after ${taxRate}% tax)</div>
+            <div class="salary-stat-value" style="color:var(--primary)">${sym}${netMonthly.toLocaleString('en-GB', {minimumFractionDigits:2})}</div>
+          </div>`
+        : '';
+
       const netClass = isOverpaid ? ' danger' : '';
 
       const earnedTotal = emp.earned_to_date != null ? parseFloat(emp.earned_to_date) : null;
@@ -1099,6 +1118,7 @@ async function loadSalaryPage() {
             ${isTerminated && earnedTotal != null ? `<div class="salary-stat warning"><div class="salary-stat-label">Earned to ${emp.termination_date}</div><div class="salary-stat-value">${sym}${earnedTotal.toLocaleString('en-GB',{minimumFractionDigits:2})}</div></div>` : ''}
             <div class="salary-stat success"><div class="salary-stat-label">Total Paid</div><div class="salary-stat-value">${sym}${totalPaidEmp.toLocaleString('en-GB', {minimumFractionDigits:2})}</div></div>
             <div class="salary-stat ${excessDays > 0 ? 'warning' : ''}"><div class="salary-stat-label">Days Off (${year})</div><div class="salary-stat-value">${totalDaysOff} / ${allowanceDays}</div></div>
+            ${taxNote}
             ${deductNote}
             ${officeNote}
             ${bonusNote}
@@ -1697,12 +1717,14 @@ async function renderSalaryReminderPanel() {
       </div>
       ${unpaid.map(emp => {
         const sym = currencySymbol(emp.currency || 'GBP');
-        const target = parseFloat(emp.salary_target ?? emp.annual_salary) || 0;
-        const monthly = target / 12;
+        const grossMonthly = (parseFloat(emp.annual_salary) || 0) / 12;
+        const netMo = emp.net_monthly ? parseFloat(emp.net_monthly) : null;
+        const displayAmount = netMo ?? grossMonthly;
+        const taxLabel = netMo ? ` <span style="font-size:0.72rem;color:var(--muted)">(net, after ${emp.tax_rate}% tax)</span>` : '';
         return `
           <div class="salary-reminder-row">
             <div class="salary-reminder-name">${esc(emp.name)}</div>
-            <div class="salary-reminder-amount">${sym}${monthly.toLocaleString('en-GB',{minimumFractionDigits:2})} /mo</div>
+            <div class="salary-reminder-amount">${sym}${displayAmount.toLocaleString('en-GB',{minimumFractionDigits:2})} /mo${taxLabel}</div>
             <div class="salary-reminder-actions">
               <button class="btn btn-ghost btn-sm" onclick="skipSalaryReminder(${emp.employee_id},${year},${month})">Skip</button>
               <button class="btn btn-primary btn-sm" onclick="openSalaryPaymentModal(${emp.employee_id})">Log Payment</button>
