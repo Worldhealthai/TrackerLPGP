@@ -1040,215 +1040,255 @@ async function loadSalaryPage() {
       const isTerminated = !!emp.is_terminated;
       const isOverpaid = netRemaining < 0;
 
-      // Progress bar
-      const fill = `<div class="salary-progress-fill${isOverpaid ? ' overpaid' : ''}" style="width:${Math.min(pctPaid,100)}%"></div>`;
-      const pctLabel = isProRatedYear ? `${pctPaid}% of ${year} target paid` : `${pctPaid}% of annual salary paid`;
-      const progress = `
-        <div class="salary-progress-wrap">
-          <div class="salary-progress-labels">
-            <span>Paid: ${sym}${totalPaidEmp.toLocaleString('en-GB', {minimumFractionDigits:2})}</span>
-            <span>${pctLabel}</span>
-          </div>
-          <div class="salary-progress-bar">${fill}</div>
-        </div>`;
-
-      // Payments list
-      const payList = payments.length
-        ? payments.map(p => `
-          <div class="salary-payment-row">
-            <span class="salary-payment-month">${MONTHS[p.payment_month] || p.payment_month} ${p.payment_year}</span>
-            <span class="salary-payment-amount">+${sym}${parseFloat(p.amount || 0).toLocaleString('en-GB', {minimumFractionDigits:2})}</span>
-            <span class="salary-payment-notes">${esc(p.notes || '')}</span>
-            <button class="btn btn-danger btn-sm" onclick="deleteSalaryPayment(${p.id})">Del</button>
-          </div>`).join('')
-        : `<div style="color:var(--muted);font-size:0.85rem;padding:8px 0">No payments logged yet.</div>`;
-
-      const deductNote = excessDays > 0
-        ? `<div class="salary-stat danger"><div class="salary-stat-label">Day-Off Deduction</div><div class="salary-stat-value">−${sym}${excessDeduction.toLocaleString('en-GB', {minimumFractionDigits:2})}</div></div>`
-        : `<div class="salary-stat success"><div class="salary-stat-label">Day-Off Deduction</div><div class="salary-stat-value">${sym}0.00</div></div>`;
-
-      const officeNote = officeTotal > 0
-        ? `<div class="salary-stat danger"><div class="salary-stat-label">Office Items</div><div class="salary-stat-value">−${sym}${officeTotal.toLocaleString('en-GB', {minimumFractionDigits:2})}</div></div>`
-        : '';
-
-      const bonusNote = bonusTotal > 0
-        ? `<div class="salary-stat" style="border-color:#f59e0b"><div class="salary-stat-label" style="color:#b45309">Bonuses Paid</div><div class="salary-stat-value" style="color:#d97706">+${sym}${bonusTotal.toLocaleString('en-GB', {minimumFractionDigits:2})}</div></div>`
-        : '';
-
-      const taxNote = paye
-        ? `<div class="salary-stat" style="border-color:#818cf8;background:#eef2ff;grid-column:1/-1">
-            <div class="salary-stat-label" style="color:var(--primary);font-weight:600;margin-bottom:6px">UK PAYE Breakdown (2024/25)</div>
-            <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:6px;font-size:0.82rem">
-              <span>Income Tax: <strong>${sym}${paye.income_tax.toLocaleString('en-GB',{minimumFractionDigits:2})}/yr</strong></span>
-              <span>Nat. Insurance: <strong>${sym}${paye.national_insurance.toLocaleString('en-GB',{minimumFractionDigits:2})}/yr</strong></span>
-              ${paye.pension > 0 ? `<span>Pension (${emp.pension_rate}%): <strong>${sym}${paye.pension.toLocaleString('en-GB',{minimumFractionDigits:2})}/yr</strong></span>` : ''}
-            </div>
-            <div style="margin-top:8px;font-size:0.95rem;font-weight:700;color:var(--primary)">
-              Take-home: ${sym}${paye.net_monthly.toLocaleString('en-GB',{minimumFractionDigits:2})}/mo
-            </div>
-          </div>`
-        : '';
-
-      const netClass = isOverpaid ? ' danger' : '';
 
       const earnedTotal = emp.earned_to_date != null ? parseFloat(emp.earned_to_date) : null;
       const eb = emp.earned_breakdown;
 
-      return `<div class="salary-card${isTerminated ? ' terminated-card' : ''}">
-        ${isTerminated ? `
-        <div style="background:var(--danger);color:#fff;padding:8px 22px;font-size:0.78rem;font-weight:700;letter-spacing:0.4px;display:flex;align-items:center;gap:10px">
-          <span>TERMINATED</span>
-          <span style="opacity:0.8">${emp.termination_date}</span>
-          ${emp.termination_reason ? `<span style="opacity:0.7">· ${esc(emp.termination_reason)}</span>` : ''}
+      // ── figures strip values ──
+      const figOutClass = isOverpaid ? 'sc-fig-ok' : netRemaining === 0 ? 'sc-fig-dim' : 'sc-fig-bad';
+
+      // ── build card ──
+      const avatarTypeClass = isTerminated ? '' : emp.employment_type === 'self_employed' ? ' sc-self-emp-type' : '';
+      const accentClass = isTerminated ? 'sc-term-accent' : emp.employment_type === 'self_employed' ? 'sc-self-emp' : 'sc-payroll';
+
+      return `<div class="sc-card${isTerminated ? ' sc-terminated' : ''}${avatarTypeClass}">
+        <div class="sc-accent ${accentClass}"></div>
+
+        ${isTerminated ? `<div class="sc-term-banner">
+          <span>Terminated</span>
+          <span class="tb-date">${emp.termination_date}</span>
+          ${emp.termination_reason ? `<span class="tb-reason">· ${esc(emp.termination_reason)}</span>` : ''}
         </div>` : ''}
-        <div class="salary-card-header">
-          <div class="salary-avatar" style="${isTerminated ? 'opacity:0.6;filter:grayscale(1)' : ''}">${initials}</div>
-          <div>
-            <div class="salary-name">${esc(emp.name || '')}</div>
-            <div class="salary-sub">
-              <span class="badge ${typeBadge}" style="font-size:0.68rem">${typeLabel}</span>
-              &nbsp;<span class="badge badge-grey" style="font-size:0.68rem">${cur}</span>
-              ${isTerminated ? '' : `&nbsp;${allowanceLabel} &nbsp;·&nbsp; Rate: (annual ÷ 12) ÷ working days/month`}
+
+        <div class="sc-head">
+          <div class="sc-avatar">${initials}</div>
+          <div class="sc-info">
+            <div class="sc-emp-name">${esc(emp.name || '')}</div>
+            <div class="sc-emp-badges">
+              <span class="badge ${typeBadge}" style="font-size:0.67rem">${typeLabel}</span>
+              <span class="badge badge-grey" style="font-size:0.67rem">${cur}</span>
+              ${emp.start_date ? `<span class="sc-emp-since">${isTerminated ? 'Started' : 'Since'} ${emp.start_date}</span>` : ''}
             </div>
           </div>
-          <div class="salary-header-right">
-            <div class="salary-annual-label">${isTerminated ? 'Earned to Termination' : isProRatedYear ? `Target for ${year}` : 'Annual Salary'}</div>
-            <div class="salary-annual">${sym}${(isTerminated ? (earnedTotal ?? annualSalary) : isProRatedYear ? salaryTarget : annualSalary).toLocaleString('en-GB', {minimumFractionDigits:2})}</div>
+          <div class="sc-annual">
+            <div class="sc-annual-lbl">${isTerminated ? 'Final earned' : isProRatedYear ? `Target ${year}` : 'Annual'}</div>
+            <div class="sc-annual-val">${sym}${(isTerminated ? (earnedTotal ?? annualSalary) : isProRatedYear ? salaryTarget : annualSalary).toLocaleString('en-GB',{maximumFractionDigits:0})}</div>
           </div>
-          <button class="btn btn-ghost btn-sm" onclick="openSalaryPaymentModal(${emp.employee_id})">+ Payment</button>
+          ${!isTerminated ? `<button class="btn btn-primary btn-sm" onclick="openSalaryPaymentModal(${emp.employee_id})" style="flex-shrink:0">+ Pay</button>` : ''}
         </div>
-        <div class="salary-card-body">
-          ${progress}
-          <div class="salary-stats-row">
-            <div class="salary-stat primary"><div class="salary-stat-label">${isTerminated ? 'Annual Salary' : isProRatedYear ? 'Annual Salary' : 'Annual Salary'}</div><div class="salary-stat-value">${sym}${annualSalary.toLocaleString('en-GB', {minimumFractionDigits:2})}</div></div>
-            ${isProRatedYear ? `<div class="salary-stat warning"><div class="salary-stat-label">Target for ${year}</div><div class="salary-stat-value">${sym}${salaryTarget.toLocaleString('en-GB',{minimumFractionDigits:2})}</div></div>` : ''}
-            ${isTerminated && earnedTotal != null ? `<div class="salary-stat warning"><div class="salary-stat-label">Earned to ${emp.termination_date}</div><div class="salary-stat-value">${sym}${earnedTotal.toLocaleString('en-GB',{minimumFractionDigits:2})}</div></div>` : ''}
-            <div class="salary-stat success"><div class="salary-stat-label">Total Paid</div><div class="salary-stat-value">${sym}${totalPaidEmp.toLocaleString('en-GB', {minimumFractionDigits:2})}</div></div>
-            <div class="salary-stat ${excessDays > 0 ? 'warning' : ''}"><div class="salary-stat-label">Days Off (${year})</div><div class="salary-stat-value">${totalDaysOff} / ${allowanceDays}</div></div>
-            ${taxNote}
-            ${deductNote}
-            ${officeNote}
-            ${bonusNote}
+
+        <div class="sc-prog">
+          <div class="sc-prog-meta">
+            <span>${sym}${totalPaidEmp.toLocaleString('en-GB',{minimumFractionDigits:2})} paid</span>
+            <span class="sc-pct-pill">${pctPaid}%</span>
+            <span>${isOverpaid ? 'overpaid' : `${sym}${Math.abs(netRemaining).toLocaleString('en-GB',{minimumFractionDigits:2})} remaining`}</span>
           </div>
+          <div class="sc-prog-track">
+            <div class="sc-prog-fill${isOverpaid ? ' overpaid' : ''}" style="width:${Math.min(pctPaid,100)}%"></div>
+          </div>
+        </div>
 
-          <button class="salary-payments-toggle" onclick="togglePaymentsList(this)">▶ Payment History (${payments.length})</button>
-          <div class="salary-payments-list">${payList}</div>
+        <div class="sc-figures">
+          ${paye ? `
+          <div class="sc-fig">
+            <div class="sc-fig-lbl">Gross / month</div>
+            <div class="sc-fig-val">${sym}${paye.gross_monthly.toLocaleString('en-GB',{maximumFractionDigits:0})}</div>
+            <div class="sc-fig-sub">before deductions</div>
+          </div>
+          <div class="sc-fig sc-fig-hi">
+            <div class="sc-fig-lbl">Take-home / month</div>
+            <div class="sc-fig-val">${sym}${paye.net_monthly.toLocaleString('en-GB',{maximumFractionDigits:0})}</div>
+            <div class="sc-fig-sub">after PAYE + NI${paye.pension > 0 ? ' + pension' : ''}</div>
+          </div>` : `
+          <div class="sc-fig">
+            <div class="sc-fig-lbl">Monthly pay</div>
+            <div class="sc-fig-val">${sym}${(annualSalary/12).toLocaleString('en-GB',{maximumFractionDigits:0})}</div>
+            <div class="sc-fig-sub">${sym}${annualSalary.toLocaleString('en-GB',{maximumFractionDigits:0})}/yr</div>
+          </div>
+          <div class="sc-fig ${excessDays > 0 ? 'sc-fig-bad' : 'sc-fig-ok'}">
+            <div class="sc-fig-lbl">Days off</div>
+            <div class="sc-fig-val">${totalDaysOff} <span style="font-size:0.75rem;font-weight:600;color:#9ca3af">/ ${allowanceDays}</span></div>
+            <div class="sc-fig-sub">${allowanceLabel}</div>
+          </div>`}
+          <div class="sc-fig ${figOutClass}">
+            <div class="sc-fig-lbl">Outstanding</div>
+            <div class="sc-fig-val">${isOverpaid ? '−' : ''}${sym}${Math.abs(netRemaining).toLocaleString('en-GB',{maximumFractionDigits:0})}</div>
+            <div class="sc-fig-sub">${isOverpaid ? 'overpaid' : isTerminated ? 'final balance' : `${year} balance`}</div>
+          </div>
+        </div>
 
-          <div style="margin-top:14px">
-            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
-              <span style="font-size:0.78rem;font-weight:700;text-transform:uppercase;letter-spacing:0.5px;color:var(--muted)">Office Items / Deductions (${officeDeductions.length})</span>
-              <button class="btn btn-ghost btn-sm" onclick="openOfficeDeductModal(${emp.employee_id})">+ Add Item</button>
+        <div class="sc-sections">
+
+          <!-- Payments -->
+          <div class="sc-section">
+            <button class="sc-sec-toggle" onclick="toggleSection(this)">
+              <span class="sc-sec-title">Payments (${payments.length})</span>
+              ${payments.length ? `<span class="sc-sec-sum green">+${sym}${totalPaidEmp.toLocaleString('en-GB',{minimumFractionDigits:2})}</span>` : ''}
+              <span class="sc-chevron">›</span>
+            </button>
+            <div class="sc-sec-body">
+              <div class="sc-sec-actions">
+                <button class="btn btn-primary btn-sm" onclick="openSalaryPaymentModal(${emp.employee_id})">+ Log Payment</button>
+              </div>
+              ${payments.length ? payments.map(p => `
+                <div class="sc-item">
+                  <span class="sc-item-date">${MONTHS[p.payment_month]?.slice(0,3)||p.payment_month} ${p.payment_year}</span>
+                  <span class="sc-item-amt pos">+${sym}${parseFloat(p.amount||0).toLocaleString('en-GB',{minimumFractionDigits:2})}</span>
+                  <span class="sc-item-note">${esc(p.notes||'')}</span>
+                  <button class="btn btn-danger btn-sm" onclick="deleteSalaryPayment(${p.id})">×</button>
+                </div>`).join('') : `<div class="sc-empty">No payments logged yet.</div>`}
             </div>
-            ${officeDeductions.length ? `
-              <div style="display:flex;flex-direction:column;gap:6px">
-                ${officeDeductions.map(od => `
-                  <div class="salary-payment-row" style="background:#fff8f8;border-color:#fca5a5">
-                    <span class="salary-payment-month">${od.deduction_date || ''}</span>
-                    <span style="font-weight:800;color:var(--danger)">−${sym}${parseFloat(od.amount || 0).toLocaleString('en-GB',{minimumFractionDigits:2})}</span>
-                    <span class="salary-payment-notes">${esc(od.description || '')}</span>
-                    ${od.notes ? `<span style="color:var(--muted);font-size:0.75rem">${esc(od.notes)}</span>` : ''}
-                    <button class="btn btn-danger btn-sm" onclick="deleteOfficeDeduction(${od.id})">Del</button>
-                  </div>`).join('')}
-              </div>` : `<div style="color:var(--muted);font-size:0.82rem;padding:4px 0">No items logged.</div>`}
           </div>
 
-          <div style="margin-top:14px">
-            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
-              <span style="font-size:0.78rem;font-weight:700;text-transform:uppercase;letter-spacing:0.5px;color:#b45309">Bonuses (${bonuses.length})</span>
-              <button class="btn btn-ghost btn-sm" style="border-color:#f59e0b;color:#b45309" onclick="openBonusModal(${emp.employee_id})">+ Add Bonus</button>
+          ${paye ? `
+          <!-- PAYE Breakdown -->
+          <div class="sc-section">
+            <button class="sc-sec-toggle" onclick="toggleSection(this)">
+              <span class="sc-sec-title">PAYE Breakdown (2024/25)</span>
+              <span class="sc-sec-sum">${sym}${(paye.income_tax+paye.national_insurance+paye.pension).toLocaleString('en-GB',{minimumFractionDigits:2})}/yr deducted</span>
+              <span class="sc-chevron">›</span>
+            </button>
+            <div class="sc-sec-body">
+              <div class="sc-paye-grid">
+                <div class="sc-paye-box">
+                  <div class="sc-paye-lbl">Income Tax</div>
+                  <div class="sc-paye-val">${sym}${paye.income_tax.toLocaleString('en-GB',{minimumFractionDigits:2})}</div>
+                  <div class="sc-paye-sub">per year</div>
+                </div>
+                <div class="sc-paye-box">
+                  <div class="sc-paye-lbl">National Insurance</div>
+                  <div class="sc-paye-val">${sym}${paye.national_insurance.toLocaleString('en-GB',{minimumFractionDigits:2})}</div>
+                  <div class="sc-paye-sub">per year</div>
+                </div>
+                ${paye.pension > 0 ? `
+                <div class="sc-paye-box">
+                  <div class="sc-paye-lbl">Pension (${emp.pension_rate}%)</div>
+                  <div class="sc-paye-val">${sym}${paye.pension.toLocaleString('en-GB',{minimumFractionDigits:2})}</div>
+                  <div class="sc-paye-sub">per year</div>
+                </div>` : ''}
+              </div>
+              <div class="sc-paye-footer">
+                <span class="sc-paye-footer-lbl">Monthly take-home</span>
+                <span class="sc-paye-footer-val">${sym}${paye.net_monthly.toLocaleString('en-GB',{minimumFractionDigits:2})}</span>
+              </div>
             </div>
-            ${bonuses.length ? `
-              <div style="display:flex;flex-direction:column;gap:6px">
-                ${bonuses.map(b => `
-                  <div class="salary-payment-row" style="background:#fffbeb;border-color:#fcd34d">
-                    <span class="salary-payment-month">${b.bonus_date || ''}</span>
-                    <span style="font-weight:800;color:#d97706">+${sym}${parseFloat(b.amount || 0).toLocaleString('en-GB',{minimumFractionDigits:2})}</span>
-                    <span class="salary-payment-notes">${esc(b.reason || '')}</span>
-                    ${b.notes ? `<span style="color:var(--muted);font-size:0.75rem">${esc(b.notes)}</span>` : ''}
-                    <button class="btn btn-danger btn-sm" onclick="deleteBonus(${b.id})">Del</button>
-                  </div>`).join('')}
-              </div>` : `<div style="color:var(--muted);font-size:0.82rem;padding:4px 0">No bonuses logged yet.</div>`}
+          </div>` : ''}
+
+          <!-- Office Deductions -->
+          <div class="sc-section">
+            <button class="sc-sec-toggle" onclick="toggleSection(this)">
+              <span class="sc-sec-title">Office Deductions (${officeDeductions.length})</span>
+              ${officeTotal > 0 ? `<span class="sc-sec-sum red">−${sym}${officeTotal.toLocaleString('en-GB',{minimumFractionDigits:2})}</span>` : ''}
+              <span class="sc-chevron">›</span>
+            </button>
+            <div class="sc-sec-body">
+              <div class="sc-sec-actions">
+                <button class="btn btn-ghost btn-sm" onclick="openOfficeDeductModal(${emp.employee_id})">+ Add Deduction</button>
+              </div>
+              ${officeDeductions.length ? officeDeductions.map(od => `
+                <div class="sc-item">
+                  <span class="sc-item-date">${od.deduction_date||''}</span>
+                  <span class="sc-item-amt neg">−${sym}${parseFloat(od.amount||0).toLocaleString('en-GB',{minimumFractionDigits:2})}</span>
+                  <span class="sc-item-note">${esc(od.description||'')}${od.notes?` · ${esc(od.notes)}`:''}</span>
+                  <button class="btn btn-danger btn-sm" onclick="deleteOfficeDeduction(${od.id})">×</button>
+                </div>`).join('') : `<div class="sc-empty">No deductions logged.</div>`}
+            </div>
           </div>
 
+          <!-- Bonuses -->
+          <div class="sc-section">
+            <button class="sc-sec-toggle" onclick="toggleSection(this)">
+              <span class="sc-sec-title">Bonuses (${bonuses.length})</span>
+              ${bonusTotal > 0 ? `<span class="sc-sec-sum amber">+${sym}${bonusTotal.toLocaleString('en-GB',{minimumFractionDigits:2})}</span>` : ''}
+              <span class="sc-chevron">›</span>
+            </button>
+            <div class="sc-sec-body">
+              <div class="sc-sec-actions">
+                <button class="btn btn-ghost btn-sm" style="border-color:#f59e0b;color:#b45309" onclick="openBonusModal(${emp.employee_id})">+ Add Bonus</button>
+              </div>
+              ${bonuses.length ? bonuses.map(b => `
+                <div class="sc-item" style="background:#fffbeb;border-color:#fde68a">
+                  <span class="sc-item-date">${b.bonus_date||''}</span>
+                  <span class="sc-item-amt amb">+${sym}${parseFloat(b.amount||0).toLocaleString('en-GB',{minimumFractionDigits:2})}</span>
+                  <span class="sc-item-note">${esc(b.reason||'')}${b.notes?` · ${esc(b.notes)}`:''}</span>
+                  <button class="btn btn-danger btn-sm" onclick="deleteBonus(${b.id})">×</button>
+                </div>`).join('') : `<div class="sc-empty">No bonuses logged yet.</div>`}
+            </div>
+          </div>
+
+          <!-- Days off (payroll only) -->
+          ${emp.employment_type === 'payroll' ? `
+          <div class="sc-section">
+            <button class="sc-sec-toggle" onclick="toggleSection(this)">
+              <span class="sc-sec-title">Days Off — ${totalDaysOff} / ${allowanceDays} used</span>
+              ${excessDays > 0
+                ? `<span class="sc-sec-sum red">−${sym}${excessDeduction.toLocaleString('en-GB',{minimumFractionDigits:2})} deducted</span>`
+                : `<span class="sc-sec-sum muted">within allowance</span>`}
+              <span class="sc-chevron">›</span>
+            </button>
+            <div class="sc-sec-body">
+              <div class="sc-days-note">${excessDays > 0
+                ? `${excessDays} day${excessDays > 1 ? 's' : ''} over the ${allowanceDays}-day allowance → ${sym}${excessDeduction.toLocaleString('en-GB',{minimumFractionDigits:2})} deducted from salary.`
+                : `${totalDaysOff} of ${allowanceDays} free days used — no deduction.`}</div>
+            </div>
+          </div>` : ''}
+
+          <!-- Pro-rated breakdown -->
           ${emp.pro_rated ? (() => {
             const pr = emp.pro_rated;
-            const isSame = pr.full_months_count === 0 && pr.current_month_pay === 0;
             return `
-          <div style="margin-top:14px;background:#f0fdf4;border:1px solid #86efac;border-radius:10px;padding:14px 16px">
-            <div style="font-size:0.72rem;font-weight:700;text-transform:uppercase;letter-spacing:0.6px;color:#16a34a;margin-bottom:10px">
-              Pro-Rated Pay Reference &nbsp;·&nbsp; Started ${pr.start_date}
-            </div>
-            <div style="display:flex;flex-direction:column;gap:5px;font-size:0.84rem">
-              <div style="display:flex;justify-content:space-between">
-                <span style="color:var(--muted)">First month (${pr.first_month_days}/${pr.first_month_total_days} working days)</span>
-                <span style="font-weight:700">${sym}${pr.first_month_pay.toLocaleString('en-GB',{minimumFractionDigits:2})}</span>
-              </div>
-              ${pr.full_months_count > 0 ? `
-              <div style="display:flex;justify-content:space-between">
-                <span style="color:var(--muted)">${pr.full_months_count} full month${pr.full_months_count > 1 ? 's' : ''} × ${sym}${(annualSalary/12).toLocaleString('en-GB',{minimumFractionDigits:2})}</span>
-                <span style="font-weight:700">${sym}${pr.full_months_pay.toLocaleString('en-GB',{minimumFractionDigits:2})}</span>
-              </div>` : ''}
-              ${!isSame && pr.current_month_pay > 0 ? `
-              <div style="display:flex;justify-content:space-between">
-                <span style="color:var(--muted)">Current month (to date)</span>
-                <span style="font-weight:700">${sym}${pr.current_month_pay.toLocaleString('en-GB',{minimumFractionDigits:2})}</span>
-              </div>` : ''}
-              <div style="display:flex;justify-content:space-between;border-top:1px dashed #86efac;padding-top:8px;margin-top:4px">
-                <span style="font-weight:700;color:#16a34a">Total expected to date</span>
-                <span style="font-weight:800;color:#16a34a;font-size:0.95rem">${sym}${pr.total_expected.toLocaleString('en-GB',{minimumFractionDigits:2})}</span>
+          <div class="sc-section">
+            <button class="sc-sec-toggle" onclick="toggleSection(this)">
+              <span class="sc-sec-title">Pro-Rated Pay — started ${pr.start_date}</span>
+              <span class="sc-chevron">›</span>
+            </button>
+            <div class="sc-sec-body">
+              <div class="sc-breakdown">
+                <div class="sc-breakdown-title">Earned pay to date</div>
+                <div class="sc-breakdown-row"><span>First month (${pr.first_month_days}/${pr.first_month_total_days} working days)</span><span>${sym}${pr.first_month_pay.toLocaleString('en-GB',{minimumFractionDigits:2})}</span></div>
+                ${pr.full_months_count > 0 ? `<div class="sc-breakdown-row"><span>${pr.full_months_count} full month${pr.full_months_count > 1 ? 's' : ''}</span><span>${sym}${pr.full_months_pay.toLocaleString('en-GB',{minimumFractionDigits:2})}</span></div>` : ''}
+                ${pr.current_month_pay > 0 ? `<div class="sc-breakdown-row"><span>Current month (to date)</span><span>${sym}${pr.current_month_pay.toLocaleString('en-GB',{minimumFractionDigits:2})}</span></div>` : ''}
+                <div class="sc-breakdown-row total"><span>Total expected to date</span><span>${sym}${pr.total_expected.toLocaleString('en-GB',{minimumFractionDigits:2})}</span></div>
               </div>
             </div>
-          </div>`;
-          })() : ''}
+          </div>`; })() : ''}
 
+          <!-- Salary history / raises -->
           ${salaryHistory.length ? `
-          <div style="margin-top:14px">
-            <button class="salary-payments-toggle" onclick="togglePaymentsList(this)">▶ Salary History / Raises (${salaryHistory.length})</button>
-            <div class="salary-payments-list">
+          <div class="sc-section">
+            <button class="sc-sec-toggle" onclick="toggleSection(this)">
+              <span class="sc-sec-title">Salary History (${salaryHistory.length})</span>
+              <span class="sc-chevron">›</span>
+            </button>
+            <div class="sc-sec-body">
               ${salaryHistory.map(h => `
-                <div class="salary-payment-row" style="background:#f0fdf4;border-color:#86efac">
-                  <span class="salary-payment-month">${h.effective_from || ''}</span>
-                  <span style="font-weight:700;color:#16a34a">${currencySymbol(h.currency || cur)}${parseFloat(h.annual_salary || 0).toLocaleString('en-GB',{minimumFractionDigits:2})}/yr</span>
-                  <span class="salary-payment-notes">${esc(h.reason || '')}</span>
-                  <button class="btn btn-danger btn-sm" onclick="deleteSalaryHistory(${h.id})">Del</button>
+                <div class="sc-hist-item">
+                  <span class="sc-item-date">${h.effective_from||''}</span>
+                  <span style="font-weight:800;color:#16a34a;min-width:100px">${currencySymbol(h.currency||cur)}${parseFloat(h.annual_salary||0).toLocaleString('en-GB',{minimumFractionDigits:2})}/yr</span>
+                  <span class="sc-item-note">${esc(h.reason||'')}</span>
+                  <button class="btn btn-danger btn-sm" onclick="deleteSalaryHistory(${h.id})">×</button>
                 </div>`).join('')}
             </div>
           </div>` : ''}
 
+          <!-- Final pay breakdown for terminated -->
           ${isTerminated && eb ? `
-          <div style="margin-top:14px;background:#fff5f5;border:1px solid #fca5a5;border-radius:10px;padding:14px 16px">
-            <div style="font-size:0.72rem;font-weight:700;text-transform:uppercase;letter-spacing:0.6px;color:var(--danger);margin-bottom:10px">
-              Final Pay Breakdown &nbsp;·&nbsp; ${emp.start_date ? `Started ${emp.start_date}` : ''} → Terminated ${emp.termination_date}
-            </div>
-            <div style="display:flex;flex-direction:column;gap:5px;font-size:0.84rem">
-              <div style="display:flex;justify-content:space-between">
-                <span style="color:var(--muted)">First month (${eb.first_month_days}/${eb.first_month_total_days} working days)</span>
-                <span style="font-weight:700">${sym}${eb.first_month_pay.toLocaleString('en-GB',{minimumFractionDigits:2})}</span>
-              </div>
-              ${eb.full_months_count > 0 ? `
-              <div style="display:flex;justify-content:space-between">
-                <span style="color:var(--muted)">${eb.full_months_count} full month${eb.full_months_count > 1 ? 's' : ''} × ${sym}${(annualSalary/12).toLocaleString('en-GB',{minimumFractionDigits:2})}</span>
-                <span style="font-weight:700">${sym}${eb.full_months_pay.toLocaleString('en-GB',{minimumFractionDigits:2})}</span>
-              </div>` : ''}
-              ${eb.last_month_pay > 0 ? `
-              <div style="display:flex;justify-content:space-between">
-                <span style="color:var(--muted)">Last month (pro-rated to ${emp.termination_date})</span>
-                <span style="font-weight:700">${sym}${eb.last_month_pay.toLocaleString('en-GB',{minimumFractionDigits:2})}</span>
-              </div>` : ''}
-              <div style="display:flex;justify-content:space-between;border-top:1px dashed #fca5a5;padding-top:8px;margin-top:4px">
-                <span style="font-weight:700;color:var(--danger)">Total earned</span>
-                <span style="font-weight:800;color:var(--danger);font-size:0.95rem">${sym}${earnedTotal.toLocaleString('en-GB',{minimumFractionDigits:2})}</span>
+          <div class="sc-section">
+            <button class="sc-sec-toggle" onclick="toggleSection(this)">
+              <span class="sc-sec-title">Final Pay Breakdown</span>
+              <span class="sc-chevron">›</span>
+            </button>
+            <div class="sc-sec-body">
+              <div class="sc-breakdown danger">
+                <div class="sc-breakdown-title">${emp.start_date ? `Started ${emp.start_date} → ` : ''}Terminated ${emp.termination_date}</div>
+                <div class="sc-breakdown-row"><span>First month (${eb.first_month_days}/${eb.first_month_total_days} working days)</span><span>${sym}${eb.first_month_pay.toLocaleString('en-GB',{minimumFractionDigits:2})}</span></div>
+                ${eb.full_months_count > 0 ? `<div class="sc-breakdown-row"><span>${eb.full_months_count} full month${eb.full_months_count > 1 ? 's' : ''}</span><span>${sym}${eb.full_months_pay.toLocaleString('en-GB',{minimumFractionDigits:2})}</span></div>` : ''}
+                ${eb.last_month_pay > 0 ? `<div class="sc-breakdown-row"><span>Last month (pro-rated)</span><span>${sym}${eb.last_month_pay.toLocaleString('en-GB',{minimumFractionDigits:2})}</span></div>` : ''}
+                <div class="sc-breakdown-row total"><span>Total earned</span><span>${sym}${(earnedTotal||0).toLocaleString('en-GB',{minimumFractionDigits:2})}</span></div>
               </div>
             </div>
           </div>` : ''}
 
-          <div class="salary-net-remaining${netClass}">
-            <div>
-              <div class="salary-net-remaining-label">${isTerminated ? 'Outstanding Balance' : `Net Remaining to Pay (${year})`}</div>
-              <div style="font-size:0.75rem;color:var(--muted);margin-top:2px">${isTerminated ? 'Earned − Paid − Deductions' : isProRatedYear ? `${year} Target − Paid − Day-Off Deductions − Office Items` : 'Annual − Paid − Day-Off Deductions − Office Items'}</div>
-            </div>
-            <div class="salary-net-remaining-value">${isOverpaid ? '−' : ''}${sym}${Math.abs(netRemaining).toLocaleString('en-GB', {minimumFractionDigits:2})}</div>
-          </div>
         </div>
       </div>`;
     }).join('');
@@ -1256,6 +1296,10 @@ async function loadSalaryPage() {
     console.error('loadSalaryPage error:', e);
     container.innerHTML = `<div class="alert alert-error" style="margin:24px">Failed to load salary data: ${esc(e.message)}. Please refresh and try again.</div>`;
   }
+}
+
+function toggleSection(btn) {
+  btn.closest('.sc-section').classList.toggle('open');
 }
 
 function togglePaymentsList(btn) {

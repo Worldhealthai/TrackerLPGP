@@ -1586,3 +1586,221 @@ tbody tr:hover td strong { color: var(--primary); }
 }
 .sidebar-user-name { font-size: 0.72rem; font-weight: 600; color: rgba(255,255,255,0.78); }
 .sidebar-user-role { font-size: 0.62rem; color: rgba(255,255,255,0.35); }
+
+/* ══════════════════════════════════════════
+   SALARY CARD v2 — REDESIGN
+══════════════════════════════════════════ */
+
+.sc-card {
+  background: #fff;
+  border-radius: 16px;
+  margin-bottom: 20px;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.07), 0 0 0 1px rgba(0,0,0,0.05);
+  overflow: hidden;
+  transition: box-shadow 0.2s, transform 0.2s;
+}
+.sc-card:hover {
+  box-shadow: 0 8px 24px rgba(0,0,0,0.09), 0 0 0 1px rgba(0,0,0,0.05);
+  transform: translateY(-1px);
+}
+.sc-card.sc-terminated { opacity: 0.84; }
+
+/* Accent stripe */
+.sc-accent { height: 4px; background: #e5e7eb; }
+.sc-accent.sc-payroll    { background: linear-gradient(90deg, #6366f1 0%, #818cf8 60%, #a5b4fc 100%); }
+.sc-accent.sc-self-emp   { background: linear-gradient(90deg, #f59e0b 0%, #fbbf24 60%, #fcd34d 100%); }
+.sc-accent.sc-term-accent { background: linear-gradient(90deg, #ef4444, #f87171); }
+
+/* Terminated banner */
+.sc-term-banner {
+  background: #fef2f2;
+  border-bottom: 1px solid #fecaca;
+  padding: 6px 20px;
+  display: flex; align-items: center; gap: 10px;
+  font-size: 0.72rem; font-weight: 700; color: #dc2626;
+  letter-spacing: 0.5px; text-transform: uppercase;
+}
+.sc-term-banner .tb-date   { color: #9ca3af; font-weight: 500; text-transform: none; letter-spacing: 0; }
+.sc-term-banner .tb-reason { color: #9ca3af; font-weight: 400; font-style: italic; text-transform: none; letter-spacing: 0; }
+
+/* Card header */
+.sc-head {
+  display: flex; align-items: center; gap: 14px;
+  padding: 18px 22px 14px;
+}
+.sc-avatar {
+  width: 46px; height: 46px;
+  border-radius: 12px;
+  background: linear-gradient(135deg, #6366f1, #818cf8);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 1rem; font-weight: 800; color: #fff;
+  flex-shrink: 0;
+  box-shadow: 0 4px 12px rgba(99,102,241,0.25);
+  letter-spacing: -0.5px;
+}
+.sc-card.sc-terminated .sc-avatar {
+  background: linear-gradient(135deg, #9ca3af, #d1d5db);
+  box-shadow: none;
+}
+.sc-card.sc-self-emp-type .sc-avatar {
+  background: linear-gradient(135deg, #f59e0b, #fbbf24);
+  box-shadow: 0 4px 12px rgba(245,158,11,0.25);
+}
+
+.sc-info { flex: 1; min-width: 0; }
+.sc-emp-name {
+  font-size: 1rem; font-weight: 700; color: #111827;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.sc-emp-badges {
+  display: flex; align-items: center; gap: 5px; margin-top: 4px; flex-wrap: wrap;
+}
+.sc-emp-since { font-size: 0.7rem; color: #9ca3af; }
+
+.sc-annual { text-align: right; flex-shrink: 0; }
+.sc-annual-lbl {
+  font-size: 0.63rem; color: #9ca3af;
+  text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 2px;
+}
+.sc-annual-val {
+  font-size: 1.3rem; font-weight: 800; color: #111827; letter-spacing: -0.5px;
+}
+
+/* Progress bar */
+.sc-prog { padding: 0 22px 16px; }
+.sc-prog-meta {
+  display: flex; align-items: center; justify-content: space-between;
+  margin-bottom: 7px; font-size: 0.77rem; color: #6b7280;
+}
+.sc-pct-pill {
+  background: #ede9fe; color: #6d28d9;
+  font-size: 0.68rem; font-weight: 800;
+  padding: 2px 9px; border-radius: 99px;
+}
+.sc-prog-track {
+  height: 7px; background: #f3f4f6; border-radius: 99px; overflow: hidden;
+}
+.sc-prog-fill {
+  height: 100%; border-radius: 99px;
+  background: linear-gradient(90deg, #6366f1, #a5b4fc);
+  transition: width 0.6s cubic-bezier(0.4,0,0.2,1); min-width: 2px;
+}
+.sc-prog-fill.overpaid { background: linear-gradient(90deg, #10b981, #34d399); }
+
+/* Key figures strip */
+.sc-figures {
+  display: grid; grid-template-columns: repeat(3, 1fr);
+  border-top: 1px solid #f3f4f6; border-bottom: 1px solid #f3f4f6;
+}
+.sc-fig {
+  padding: 14px 18px; border-right: 1px solid #f3f4f6;
+}
+.sc-fig:last-child { border-right: none; }
+.sc-fig-lbl {
+  font-size: 0.63rem; text-transform: uppercase; letter-spacing: 0.6px;
+  color: #9ca3af; font-weight: 700; margin-bottom: 5px;
+}
+.sc-fig-val {
+  font-size: 1.1rem; font-weight: 800; color: #111827; letter-spacing: -0.4px;
+}
+.sc-fig-sub { font-size: 0.67rem; color: #9ca3af; margin-top: 3px; }
+.sc-fig.sc-fig-hi  .sc-fig-val { color: #6366f1; }
+.sc-fig.sc-fig-bad .sc-fig-val { color: #ef4444; }
+.sc-fig.sc-fig-ok  .sc-fig-val { color: #10b981; }
+.sc-fig.sc-fig-dim .sc-fig-val { color: #9ca3af; }
+
+/* Accordion sections */
+.sc-sections { }
+.sc-section { border-top: 1px solid #f3f4f6; }
+.sc-section:first-child { border-top: none; }
+
+.sc-sec-toggle {
+  display: flex; align-items: center; width: 100%;
+  padding: 12px 22px; background: none; border: none;
+  font-family: inherit; font-size: 0.81rem; font-weight: 600;
+  color: #374151; cursor: pointer; text-align: left; gap: 8px;
+  transition: background 0.12s;
+}
+.sc-sec-toggle:hover { background: #fafafa; }
+.sc-sec-title { flex: 1; }
+.sc-sec-sum {
+  font-size: 0.78rem; font-weight: 700; color: #6366f1;
+  margin-right: 4px; white-space: nowrap;
+}
+.sc-sec-sum.red    { color: #ef4444; }
+.sc-sec-sum.green  { color: #10b981; }
+.sc-sec-sum.amber  { color: #d97706; }
+.sc-sec-sum.muted  { color: #10b981; font-weight: 600; }
+.sc-chevron {
+  font-size: 1rem; color: #d1d5db; line-height: 1;
+  transition: transform 0.2s; flex-shrink: 0; display: inline-block;
+}
+.sc-section.open .sc-chevron { transform: rotate(90deg); }
+
+.sc-sec-body { display: none; padding: 4px 22px 16px; }
+.sc-section.open .sc-sec-body { display: block; }
+
+.sc-sec-actions { display: flex; gap: 8px; margin-bottom: 10px; }
+
+/* Row items inside sections */
+.sc-item {
+  display: flex; align-items: center; gap: 10px;
+  padding: 8px 10px; border-radius: 8px;
+  font-size: 0.81rem; background: #fafafa;
+  border: 1px solid #f0f0f0; margin-bottom: 5px;
+}
+.sc-item:last-child { margin-bottom: 0; }
+.sc-item-date { color: #9ca3af; width: 88px; flex-shrink: 0; font-size: 0.76rem; }
+.sc-item-amt  { font-weight: 800; letter-spacing: -0.3px; min-width: 86px; }
+.sc-item-amt.pos { color: #10b981; }
+.sc-item-amt.neg { color: #ef4444; }
+.sc-item-amt.amb { color: #d97706; }
+.sc-item-note { color: #6b7280; flex: 1; font-size: 0.77rem; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sc-empty { color: #9ca3af; font-size: 0.8rem; padding: 4px 2px; font-style: italic; }
+
+/* PAYE section */
+.sc-paye-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px,1fr)); gap: 8px; padding-top: 2px; }
+.sc-paye-box { background: #eef2ff; border-radius: 10px; padding: 11px 13px; }
+.sc-paye-lbl { font-size: 0.62rem; text-transform: uppercase; letter-spacing: 0.5px; color: #818cf8; font-weight: 700; margin-bottom: 4px; }
+.sc-paye-val { font-size: 0.95rem; font-weight: 800; color: #4f46e5; }
+.sc-paye-sub { font-size: 0.65rem; color: #a5b4fc; margin-top: 1px; }
+.sc-paye-footer {
+  margin-top: 10px; padding: 13px 16px;
+  background: linear-gradient(135deg, #4f46e5, #6366f1);
+  border-radius: 10px; color: #fff;
+  display: flex; align-items: center; justify-content: space-between;
+}
+.sc-paye-footer-lbl { font-size: 0.67rem; text-transform: uppercase; letter-spacing: 0.5px; opacity: 0.75; }
+.sc-paye-footer-val { font-size: 1.15rem; font-weight: 800; letter-spacing: -0.5px; }
+
+/* Pro-rata + breakdown block */
+.sc-breakdown {
+  background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 10px; padding: 12px 14px; margin-top: 4px;
+}
+.sc-breakdown.danger { background: #fff5f5; border-color: #fecaca; }
+.sc-breakdown-title  { font-size: 0.62rem; text-transform: uppercase; letter-spacing: 0.6px; color: #16a34a; font-weight: 700; margin-bottom: 8px; }
+.sc-breakdown.danger .sc-breakdown-title { color: #dc2626; }
+.sc-breakdown-row { display: flex; justify-content: space-between; font-size: 0.81rem; padding: 3px 0; color: #374151; }
+.sc-breakdown-row.total { border-top: 1px dashed #86efac; padding-top: 8px; margin-top: 4px; font-weight: 700; color: #16a34a; }
+.sc-breakdown.danger .sc-breakdown-row.total { border-color: #fca5a5; color: #dc2626; }
+
+.sc-days-note { font-size: 0.81rem; color: #6b7280; padding: 4px 0; }
+
+/* History row */
+.sc-hist-item {
+  display: flex; align-items: center; gap: 10px;
+  padding: 8px 10px; border-radius: 8px; margin-bottom: 5px;
+  font-size: 0.81rem; background: #f0fdf4; border: 1px solid #bbf7d0;
+}
+
+/* Mobile adjustments */
+@media (max-width: 640px) {
+  .sc-figures { grid-template-columns: 1fr 1fr; }
+  .sc-fig:nth-child(3) { grid-column: 1/-1; border-right: none; border-top: 1px solid #f3f4f6; }
+  .sc-head { padding: 14px 16px 12px; gap: 10px; }
+  .sc-annual-val { font-size: 1.05rem; }
+  .sc-prog { padding: 0 16px 12px; }
+  .sc-sec-toggle { padding: 11px 16px; }
+  .sc-sec-body { padding: 4px 16px 14px; }
+  .sc-paye-grid { grid-template-columns: 1fr 1fr; }
+}
