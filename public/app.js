@@ -1729,7 +1729,6 @@ function dismissAllReminders() {
 
 // ─── CALENDAR REMINDERS ───────────────────────────────────────────────────────
 function openCalReminderModal(dateStr = null) {
-  document.getElementById('crId').value       = '';
   document.getElementById('crTitle').value    = '';
   document.getElementById('crCategory').value = 'other';
   document.getElementById('crDate').value     = dateStr || today();

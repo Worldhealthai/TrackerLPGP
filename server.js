@@ -830,7 +830,7 @@ app.get('/api/calendar-reminders/upcoming', requireAuth, async (req, res) => {
     const todayStr = today.toISOString().slice(0, 10);
     const future = new Date(today); future.setDate(future.getDate() + days);
     const futureStr = future.toISOString().slice(0, 10);
-    const { rows } = await q('SELECT *, reminder_date::TEXT AS reminder_date FROM calendar_reminders ORDER BY reminder_date');
+    const { rows } = await q('SELECT id, title, reminder_date::TEXT AS reminder_date, recurrence, category, amount, currency, notes, created_by, created_at FROM calendar_reminders ORDER BY reminder_date');
     const upcoming = [];
     rows.forEach(r => {
       const [, bM, bD] = r.reminder_date.split('-').map(Number);
@@ -862,7 +862,7 @@ app.get('/api/calendar-reminders', requireAuth, async (req, res) => {
   try {
     const year  = parseInt(req.query.year)  || new Date().getFullYear();
     const month = parseInt(req.query.month) || (new Date().getMonth() + 1);
-    const { rows } = await q('SELECT *, reminder_date::TEXT AS reminder_date FROM calendar_reminders ORDER BY reminder_date');
+    const { rows } = await q('SELECT id, title, reminder_date::TEXT AS reminder_date, recurrence, category, amount, currency, notes, created_by, created_at FROM calendar_reminders ORDER BY reminder_date');
     res.json(expandReminders(rows, year, month));
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
