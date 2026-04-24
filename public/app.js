@@ -1659,6 +1659,10 @@ function updateSalaryBadge(count) {
 function getUnpaidThisMonth(overview, year, month) {
   return (overview || []).filter(emp => {
     if (emp.is_terminated || !emp.annual_salary || parseFloat(emp.annual_salary) <= 0) return false;
+    if (emp.start_date) {
+      const [sy, sm] = emp.start_date.slice(0, 7).split('-').map(Number);
+      if (sy > year || (sy === year && sm > month)) return false;
+    }
     const skipKey = `paySkip_${year}_${month}_${emp.employee_id}`;
     if (localStorage.getItem(skipKey)) return false;
     const paid = (emp.payments || []).some(p =>
