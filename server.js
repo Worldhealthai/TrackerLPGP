@@ -797,6 +797,98 @@ app.delete('/api/salary-history/:id', requireAuth, async (req, res) => {
   res.json({ success: true });
 });
 
+// ─── CALENDAR REMINDERS ──────────────────────────────────────────────────────
+
+function expandReminders(rows, year, month) {
+  const from = `${year}-${String(month).padStart(2,'0')}-01`;
+  const lastDay = new Date(year, month, 0).getDate();
+  const to = `${year}-${String(month).padStart(2,'0')}-${String(lastDay).padStart(2,'0')}`;
+  const results = [];
+  rows.forEach(r => {
+    const baseDate = r.reminder_date;
+    const [,, bD] = baseDate.split('-').map(Number);
+    const bM = parseInt(baseDate.split('-')[1]);
+    if (r.recurrence === 'none') {
+      if (baseDate >= from && baseDate <= to) results.push({ ...r, virtual_date: baseDate });
+    } else if (r.recurrence === 'monthly') {
+      const daysInMonth = new Date(year, month, 0).getDate();
+      const day = Math.min(bD, daysInMonth);
+      results.push({ ...r, virtual_date: `${year}-${String(month).padStart(2,'0')}-${String(day).padStart(2,'0')}` });
+    } else if (r.recurrence === 'yearly' && bM === month) {
+      const daysInMonth = new Date(year, month, 0).getDate();
+      const day = Math.min(bD, daysInMonth);
+      results.push({ ...r, virtual_date: `${year}-${String(month).padStart(2,'0')}-${String(day).padStart(2,'0')}` });
+    }
+  });
+  return results;
+}
+
+app.get('/api/calendar-reminders/upcoming', requireAuth, async (req, res) => {
+  try {
+    const days = parseInt(req.query.days) || 7;
+    const today = new Date();
+    const todayStr = today.toISOString().slice(0, 10);
+    const future = new Date(today); future.setDate(future.getDate() + days);
+    const futureStr = future.toISOString().slice(0, 10);
+    const { rows } = await q('SELECT *, reminder_date::TEXT AS reminder_date FROM calendar_reminders ORDER BY reminder_date');
+    const upcoming = [];
+    rows.forEach(r => {
+      const [, bM, bD] = r.reminder_date.split('-').map(Number);
+      for (let offset = 0; offset <= 1; offset++) {
+        const d = new Date(today); d.setMonth(d.getMonth() + offset);
+        const cY = d.getFullYear(), cM = d.getMonth() + 1;
+        if (r.recurrence === 'none') {
+          if (r.reminder_date >= todayStr && r.reminder_date <= futureStr)
+            upcoming.push({ ...r, virtual_date: r.reminder_date });
+        } else if (r.recurrence === 'monthly') {
+          const dim = new Date(cY, cM, 0).getDate();
+          const vd = `${cY}-${String(cM).padStart(2,'0')}-${String(Math.min(bD, dim)).padStart(2,'0')}`;
+          if (vd >= todayStr && vd <= futureStr) upcoming.push({ ...r, virtual_date: vd });
+        } else if (r.recurrence === 'yearly' && bM === cM) {
+          const dim = new Date(cY, cM, 0).getDate();
+          const vd = `${cY}-${String(cM).padStart(2,'0')}-${String(Math.min(bD, dim)).padStart(2,'0')}`;
+          if (vd >= todayStr && vd <= futureStr) upcoming.push({ ...r, virtual_date: vd });
+        }
+      }
+    });
+    const seen = new Set();
+    const deduped = upcoming.filter(r => { const k = `${r.id}:${r.virtual_date}`; if (seen.has(k)) return false; seen.add(k); return true; });
+    deduped.sort((a, b) => a.virtual_date.localeCompare(b.virtual_date));
+    res.json(deduped);
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.get('/api/calendar-reminders', requireAuth, async (req, res) => {
+  try {
+    const year  = parseInt(req.query.year)  || new Date().getFullYear();
+    const month = parseInt(req.query.month) || (new Date().getMonth() + 1);
+    const { rows } = await q('SELECT *, reminder_date::TEXT AS reminder_date FROM calendar_reminders ORDER BY reminder_date');
+    res.json(expandReminders(rows, year, month));
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.post('/api/calendar-reminders', requireAuth, async (req, res) => {
+  try {
+    const { title, reminder_date, recurrence, category, amount, currency, notes } = req.body;
+    if (!title || !reminder_date) return res.status(400).json({ error: 'title and reminder_date required' });
+    const rec = ['none','monthly','yearly'].includes(recurrence) ? recurrence : 'none';
+    const cat = ['rent','subscription','deposit','utility','other'].includes(category) ? category : 'other';
+    const cur = ['GBP','AED'].includes(currency) ? currency : 'GBP';
+    const { rows } = await q(
+      'INSERT INTO calendar_reminders (title, reminder_date, recurrence, category, amount, currency, notes, created_by) VALUES (?,?,?,?,?,?,?,?) RETURNING id',
+      [title, reminder_date, rec, cat, amount || null, cur, notes || '', req.admin.id]
+    );
+    res.json({ id: rows[0].id });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.delete('/api/calendar-reminders/:id', requireAuth, async (req, res) => {
+  try {
+    await q('DELETE FROM calendar_reminders WHERE id = ?', [req.params.id]);
+    res.json({ success: true });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 // ─── GLOBAL ERROR HANDLER ────────────────────────────────────────────────────
 // Catches any unhandled async errors thrown in routes (e.g. DB failures)
 // eslint-disable-next-line no-unused-vars

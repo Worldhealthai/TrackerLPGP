@@ -17,7 +17,8 @@ document.addEventListener('DOMContentLoaded', async () => {
   if (!res.ok) { window.location.href = '/login.html'; return; }
   currentUser = await res.json();
 
-  document.getElementById('userLabel').textContent = `${currentUser.username} (${currentUser.role})`;
+  const initials = currentUser.username.slice(0,2).toUpperCase();
+  document.getElementById('userLabel').innerHTML = `<div class="sidebar-user-pill"><div class="sidebar-user-avatar">${esc(initials)}</div><span class="sidebar-user-name">${esc(currentUser.username)}</span><span class="sidebar-user-role">${esc(currentUser.role)}</span></div>`;
   document.getElementById('todayDate').textContent = formatDate(today());
 
   if (currentUser.role === 'admin') {
@@ -49,6 +50,14 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   await loadEmployees();
   loadDashboard();
+
+  // Initial badge — silent, non-blocking
+  fetch(`/api/salary-overview?year=${new Date().getFullYear()}`)
+    .then(r => r.ok ? r.json() : [])
+    .then(data => {
+      const now = new Date();
+      updateSalaryBadge(getUnpaidThisMonth(data, now.getFullYear(), now.getMonth() + 1).length);
+    }).catch(() => {});
 });
 
 function toggleMobileNav() {
@@ -75,7 +84,7 @@ function navigate(page) {
   if (page === 'employees') loadEmpTable();
   if (page === 'admins') loadAdmins();
   if (page === 'calendar') loadCalendar();
-  if (page === 'salary') loadSalaryPage();
+  if (page === 'salary') { loadSalaryPage(); renderSalaryReminderPanel(); }
 }
 
 // ─── EMPLOYEES ───────────────────────────────────────────────────────────────
@@ -158,7 +167,7 @@ async function saveEmployee() {
   const annual_salary = parseFloat(document.getElementById('empAnnualSalary').value) || 0;
   const salary_reason = document.getElementById('empSalaryReason').value.trim();
   const salary_effective = document.getElementById('empSalaryEffective').value;
-  if (!name) return alert('Name is required');
+  if (!name) return showToast('Name is required', 'error');
 
   if (id) {
     await fetch(`/api/employees/${id}`, {
@@ -192,21 +201,21 @@ async function confirmTerminate() {
   const date   = document.getElementById('termDate').value;
   const reason = document.getElementById('termReason').value;
   const notes  = document.getElementById('termNotes').value.trim();
-  if (!date) return alert('Please select a termination date');
+  if (!date) return showToast('Please select a termination date', 'error');
   const fullReason = notes ? `${reason} — ${notes}` : reason;
   const res = await fetch(`/api/employees/${id}/terminate`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ termination_date: date, termination_reason: fullReason })
   });
-  if (!res.ok) { const e = await res.json(); return alert(e.error); }
+  if (!res.ok) { const e = await res.json(); return showToast(e.error, 'error'); }
   closeModal('terminateModal');
   await loadEmployees();
   loadEmpTable();
 }
 
 async function reactivateEmployee(id) {
-  if (!confirm('Reactivate this employee? This clears the termination date.')) return;
+  if (!await showConfirm('Reactivate this employee? This clears the termination date.')) return;
   await fetch(`/api/employees/${id}/reactivate`, { method: 'POST' });
   await loadEmployees();
   loadEmpTable();
@@ -215,15 +224,42 @@ async function reactivateEmployee(id) {
 // ─── DASHBOARD ───────────────────────────────────────────────────────────────
 async function loadDashboard() {
   const year = new Date().getFullYear();
-  const res = await fetch(`/api/summary?from=${year}-01-01&to=${year}-12-31`);
-  const summary = await res.json();
+  const now = new Date();
+  const month = now.getMonth() + 1;
+
+  // Skeleton while loading
+  document.getElementById('dashStats').innerHTML = `
+    <div class="skeleton skeleton-stat"></div>
+    <div class="skeleton skeleton-stat"></div>
+    <div class="skeleton skeleton-stat"></div>
+  `;
+
+  const [summaryRes, salaryRes, upcomingRes] = await Promise.all([
+    fetch(`/api/summary?from=${year}-01-01&to=${year}-12-31`),
+    fetch(`/api/salary-overview?year=${year}`),
+    fetch(`/api/calendar-reminders/upcoming?days=7`)
+  ]);
+
+  const summary       = summaryRes.ok ? await summaryRes.json() : [];
+  const salaryData    = salaryRes.ok  ? await salaryRes.json()  : [];
+  const upcoming      = upcomingRes.ok ? await upcomingRes.json() : [];
 
   const totalDeduction = summary.reduce((a, b) => a + b.total_deduction, 0);
+  const unpaidCount    = getUnpaidThisMonth(salaryData, year, month).length;
+  updateSalaryBadge(unpaidCount);
 
   document.getElementById('dashStats').innerHTML = `
     <div class="stat-card blue"><div class="stat-label">Active Employees</div><div class="stat-value">${summary.length}</div></div>
     <div class="stat-card red"><div class="stat-label">Total Deductions (${year})</div><div class="stat-value">£${totalDeduction.toFixed(2)}</div></div>
+    <div class="stat-card ${unpaidCount > 0 ? 'red' : 'green'}" style="cursor:pointer" onclick="navigate('salary')" title="Go to salary page">
+      <div class="stat-label">Unpaid This Month</div>
+      <div class="stat-value">${unpaidCount}</div>
+      <div style="font-size:0.72rem;color:var(--muted);margin-top:4px">Click to view →</div>
+    </div>
   `;
+
+  // Upcoming reminders widget
+  renderUpcomingWidget(upcoming);
 
   const tbody = document.getElementById('dashTable');
   tbody.innerHTML = '';
@@ -389,7 +425,7 @@ async function loadEmployeeRecords() {
 // ─── RECORD MODAL ────────────────────────────────────────────────────────────
 function openRecordModal() {
   const empId = document.getElementById('trackEmp').value;
-  if (!empId) return alert('Please select an employee first');
+  if (!empId) return showToast('Please select an employee first', 'info');
   document.getElementById('recId').value = '';
   document.getElementById('recEmpId').value = empId;
   document.getElementById('recEmpRow').classList.add('hidden');
@@ -486,7 +522,8 @@ async function saveRecord() {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body)
   });
-  if (!res.ok) { const e = await res.json(); return alert(e.error); }
+  if (!res.ok) { const e = await res.json(); return showToast(e.error, 'error'); }
+  showToast('Record saved', 'success');
   closeModal('recordModal');
   const calPage = document.getElementById('page-calendar');
   if (calPage && calPage.classList.contains('active')) loadCalendar();
@@ -494,7 +531,7 @@ async function saveRecord() {
 }
 
 async function deleteRecord(id) {
-  if (!confirm('Delete this record?')) return;
+  if (!await showConfirm('Delete this record?')) return;
   await fetch(`/api/records/${id}`, { method: 'DELETE' });
   const calPage = document.getElementById('page-calendar');
   if (calPage && calPage.classList.contains('active')) loadCalendar();
@@ -533,8 +570,8 @@ async function loadAdjList() {
 async function saveAdjustment() {
   const mins = parseInt(document.getElementById('adjMinutes').value);
   const reason = document.getElementById('adjReason').value.trim();
-  if (isNaN(mins)) return alert('Enter a number of minutes');
-  if (!reason) return alert('Reason is required');
+  if (isNaN(mins)) return showToast('Enter a number of minutes', 'error');
+  if (!reason) return showToast('Reason is required', 'error');
   await fetch('/api/adjustments', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -547,7 +584,7 @@ async function saveAdjustment() {
 }
 
 async function deleteAdj(id) {
-  if (!confirm('Remove this adjustment?')) return;
+  if (!await showConfirm('Remove this adjustment?')) return;
   await fetch(`/api/adjustments/${id}`, { method: 'DELETE' });
   await loadAdjList();
   loadEmployeeRecords();
@@ -654,19 +691,19 @@ async function savePayment() {
   const payment_month = document.getElementById('payMonth').value;
   const amount = document.getElementById('payAmount').value;
   const notes = document.getElementById('payNotes').value;
-  if (!amount) return alert('Amount is required');
+  if (!amount) return showToast('Amount is required', 'error');
   const res = await fetch('/api/payments', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ employee_id, payment_year, payment_month, amount, notes })
   });
-  if (!res.ok) { const e = await res.json(); return alert(e.error); }
+  if (!res.ok) { const e = await res.json(); return showToast(e.error, 'error'); }
   closeModal('paymentModal');
   loadEmployeeRecords();
 }
 
 async function deletePayment(id) {
-  if (!confirm('Delete this payment record?')) return;
+  if (!await showConfirm('Delete this payment record?')) return;
   await fetch(`/api/payments/${id}`, { method: 'DELETE' });
   loadEmployeeRecords();
 }
@@ -678,7 +715,7 @@ async function loadReport() {
   const empId = document.getElementById('repEmp').value;
   const container = document.getElementById('reportContent');
 
-  if (!from || !to) return alert('Please select a date range');
+  if (!from || !to) return showToast('Please select a date range', 'info');
 
   container.innerHTML = `<div class="empty-state"><div class="icon">⏳</div><div>Generating report…</div></div>`;
 
@@ -810,31 +847,31 @@ async function saveAdmin() {
   const username = document.getElementById('newAdminUser').value.trim();
   const password = document.getElementById('newAdminPass').value;
   const role = document.getElementById('newAdminRole').value;
-  if (!username || !password) return alert('Username and password required');
+  if (!username || !password) return showToast('Username and password required', 'error');
   const res = await fetch('/api/admins', {
     method: 'POST', headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ username, password, role })
   });
-  if (!res.ok) { const e = await res.json(); return alert(e.error); }
+  if (!res.ok) { const e = await res.json(); return showToast(e.error, 'error'); }
   closeModal('adminModal');
   loadAdmins();
 }
 
 async function deleteAdmin(id) {
-  if (!confirm('Remove this user?')) return;
+  if (!await showConfirm('Remove this user?')) return;
   const res = await fetch(`/api/admins/${id}`, { method: 'DELETE' });
-  if (!res.ok) { const e = await res.json(); return alert(e.error); }
+  if (!res.ok) { const e = await res.json(); return showToast(e.error, 'error'); }
   loadAdmins();
 }
 
 async function resetPw(id) {
-  const pw = prompt('New password:');
+  const pw = await showPrompt('New password:', 'Enter new password');
   if (!pw) return;
   await fetch(`/api/admins/${id}/password`, {
     method: 'PUT', headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ password: pw })
   });
-  alert('Password updated');
+  showToast('Password updated', 'success');
 }
 
 // ─── SALARY PAGE ─────────────────────────────────────────────────────────────
@@ -863,6 +900,7 @@ function initSalaryYearSelect() {
 
 async function loadSalaryPage() {
   const container = document.getElementById('salaryCards');
+  renderSalaryReminderPanel();
   try {
     initSalaryYearSelect();
     const year       = document.getElementById('salaryYear').value || new Date().getFullYear();
@@ -1222,19 +1260,19 @@ async function saveSalaryPayment() {
   const payment_month = document.getElementById('spMonth').value;
   const amount        = document.getElementById('spAmount').value;
   const notes         = document.getElementById('spNotes').value;
-  if (!amount || parseFloat(amount) <= 0) return alert('Enter a valid amount');
+  if (!amount || parseFloat(amount) <= 0) return showToast('Enter a valid amount', 'error');
   const res = await fetch('/api/payments', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ employee_id, payment_year, payment_month, amount, notes })
   });
-  if (!res.ok) { const e = await res.json(); return alert(e.error); }
+  if (!res.ok) { const e = await res.json(); return showToast(e.error, 'error'); }
   closeModal('salaryPayModal');
   loadSalaryPage();
 }
 
 async function deleteSalaryPayment(id) {
-  if (!confirm('Delete this payment?')) return;
+  if (!await showConfirm('Delete this payment?')) return;
   await fetch(`/api/payments/${id}`, { method: 'DELETE' });
   loadSalaryPage();
 }
@@ -1254,20 +1292,20 @@ async function saveOfficeDeduction() {
   const amount        = document.getElementById('odAmount').value;
   const deduction_date = document.getElementById('odDate').value;
   const notes         = document.getElementById('odNotes').value;
-  if (!description) return alert('Description is required');
-  if (!amount || parseFloat(amount) <= 0) return alert('Enter a valid amount');
+  if (!description) return showToast('Description is required', 'error');
+  if (!amount || parseFloat(amount) <= 0) return showToast('Enter a valid amount', 'error');
   const res = await fetch('/api/office-deductions', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ employee_id, description, amount, deduction_date, notes })
   });
-  if (!res.ok) { const e = await res.json(); return alert(e.error); }
+  if (!res.ok) { const e = await res.json(); return showToast(e.error, 'error'); }
   closeModal('officeDeductModal');
   loadSalaryPage();
 }
 
 async function deleteOfficeDeduction(id) {
-  if (!confirm('Remove this deduction?')) return;
+  if (!await showConfirm('Remove this deduction?')) return;
   await fetch(`/api/office-deductions/${id}`, { method: 'DELETE' });
   loadSalaryPage();
 }
@@ -1287,25 +1325,25 @@ async function saveBonusRecord() {
   const bonus_date  = document.getElementById('bonusDate').value;
   const reason      = document.getElementById('bonusReason').value.trim();
   const notes       = document.getElementById('bonusNotes').value.trim();
-  if (!amount || parseFloat(amount) <= 0) return alert('Enter a valid bonus amount');
+  if (!amount || parseFloat(amount) <= 0) return showToast('Enter a valid bonus amount', 'error');
   const res = await fetch('/api/bonuses', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ employee_id, amount, bonus_date, reason, notes })
   });
-  if (!res.ok) { const e = await res.json(); return alert(e.error); }
+  if (!res.ok) { const e = await res.json(); return showToast(e.error, 'error'); }
   closeModal('bonusModal');
   loadSalaryPage();
 }
 
 async function deleteBonus(id) {
-  if (!confirm('Remove this bonus record?')) return;
+  if (!await showConfirm('Remove this bonus record?')) return;
   await fetch(`/api/bonuses/${id}`, { method: 'DELETE' });
   loadSalaryPage();
 }
 
 async function deleteSalaryHistory(id) {
-  if (!confirm('Remove this salary history entry?')) return;
+  if (!await showConfirm('Remove this salary history entry?')) return;
   await fetch(`/api/salary-history/${id}`, { method: 'DELETE' });
   loadSalaryPage();
 }
@@ -1320,70 +1358,70 @@ let calYear  = new Date().getFullYear();
 let calMonth = new Date().getMonth() + 1; // 1-based
 let calData  = []; // raw rows from /api/calendar
 
+let calReminders = [];
+
 async function loadCalendar() {
-  document.getElementById('calMonthLabel').textContent =
-    `${MONTHS[calMonth]} ${calYear}`;
+  document.getElementById('calMonthLabel').textContent = `${MONTHS[calMonth]} ${calYear}`;
 
   const empFilter = document.getElementById('calEmpFilter').value;
-  const res = await fetch(`/api/calendar?year=${calYear}&month=${calMonth}`);
-  calData = await res.json();
 
-  // Group by date
+  const [calRes, remRes] = await Promise.all([
+    fetch(`/api/calendar?year=${calYear}&month=${calMonth}`),
+    fetch(`/api/calendar-reminders?year=${calYear}&month=${calMonth}`)
+  ]);
+  calData = await calRes.json();
+  calReminders = remRes.ok ? await remRes.json() : [];
+
   const byDate = {};
-  calData.forEach(r => {
-    const key = r.record_date;
-    if (!byDate[key]) byDate[key] = [];
-    byDate[key].push(r);
-  });
+  calData.forEach(r => { if (!byDate[r.record_date]) byDate[r.record_date] = []; byDate[r.record_date].push(r); });
 
-  // Build grid
+  const remindersByDate = {};
+  calReminders.forEach(r => { if (!remindersByDate[r.virtual_date]) remindersByDate[r.virtual_date] = []; remindersByDate[r.virtual_date].push(r); });
+
   const grid = document.getElementById('calGrid');
   grid.innerHTML = '';
 
-  // First day of month (0=Sun … 6=Sat) — shift so Mon=0
   const firstDow = (new Date(calYear, calMonth - 1, 1).getDay() + 6) % 7;
   const daysInMonth = new Date(calYear, calMonth, 0).getDate();
   const prevDays  = new Date(calYear, calMonth - 1, 0).getDate();
   const todayStr  = today();
 
-  // Fill leading blanks from previous month
   for (let i = 0; i < firstDow; i++) {
-    const d = prevDays - firstDow + i + 1;
     const cell = document.createElement('div');
     cell.className = 'cal-cell other-month';
-    cell.innerHTML = `<div class="cal-date">${d}</div>`;
+    cell.innerHTML = `<div class="cal-date">${prevDays - firstDow + i + 1}</div>`;
     grid.appendChild(cell);
   }
 
-  // Days of this month
   for (let d = 1; d <= daysInMonth; d++) {
     const dateStr = `${calYear}-${String(calMonth).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
-    const dow = (new Date(calYear, calMonth - 1, d).getDay() + 6) % 7; // Mon=0
-    const entries = (byDate[dateStr] || []).filter(r =>
-      !empFilter || String(r.employee_id) === empFilter
-    );
+    const dow = (new Date(calYear, calMonth - 1, d).getDay() + 6) % 7;
+    const entries = (byDate[dateStr] || []).filter(r => !empFilter || String(r.employee_id) === empFilter);
+    const remindersToday = remindersByDate[dateStr] || [];
 
     const cell = document.createElement('div');
     const classes = ['cal-cell'];
     if (dateStr === todayStr) classes.push('today');
     if (dow >= 5) classes.push('weekend');
     if (entries.length) classes.push('has-offs');
+    if (remindersToday.length) classes.push('has-reminders');
     cell.className = classes.join(' ');
 
-    const maxShow = 3;
+    const maxShow = 2;
     const chips = entries.slice(0, maxShow).map(r => {
       const cls = parseFloat(r.is_day_off) === 1 ? 'chip-full' : 'chip-half';
       return `<span class="cal-chip ${cls}">${esc(r.employee_name)}</span>`;
     }).join('');
-    const more = entries.length > maxShow
-      ? `<div class="cal-more">+${entries.length - maxShow} more</div>` : '';
+    const more = entries.length > maxShow ? `<div class="cal-more">+${entries.length - maxShow} more</div>` : '';
+    const dots = remindersToday.length
+      ? `<div class="cal-reminder-dots">${remindersToday.map(r => `<span class="cal-reminder-dot cat-${r.category}" title="${esc(r.title)}"></span>`).join('')}</div>`
+      : '';
 
-    cell.innerHTML = `<div class="cal-date">${d}</div><div class="cal-chips">${chips}${more}</div>`;
-    cell.addEventListener('click', () => openDayModal(dateStr, entries));
+    cell.innerHTML = `<div class="cal-date">${d}</div><div class="cal-chips">${chips}${more}</div>${dots}`;
+    cell.addEventListener('click', () => openDayModal(dateStr, entries, remindersToday));
     grid.appendChild(cell);
   }
 
-  // Trailing blanks
   const totalCells = firstDow + daysInMonth;
   const trailing = (7 - (totalCells % 7)) % 7;
   for (let i = 1; i <= trailing; i++) {
@@ -1393,7 +1431,6 @@ async function loadCalendar() {
     grid.appendChild(cell);
   }
 
-  // Summary strip: days with offs
   renderCalSummary(byDate, empFilter);
 }
 
@@ -1427,12 +1464,31 @@ function renderCalSummary(byDate, empFilter) {
   }
 }
 
-function openDayModal(dateStr, entries) {
+function openDayModal(dateStr, entries, remindersToday = []) {
   document.getElementById('dayModalTitle').textContent = formatDate(dateStr);
+  const CAT_ICONS = { rent:'🏠', subscription:'📦', deposit:'💳', utility:'⚡', other:'📌' };
+  const REC_LABEL = { none:'one-time', monthly:'monthly', yearly:'yearly' };
 
   let content = '';
+
+  if (remindersToday.length) {
+    content += `<div style="margin-bottom:14px">
+      <div style="font-size:0.72rem;font-weight:700;text-transform:uppercase;letter-spacing:0.5px;color:var(--warning);margin-bottom:8px">Expense Reminders</div>
+      ${remindersToday.map(r => `
+        <div class="cal-reminder-entry">
+          <span style="font-size:1.1rem;flex-shrink:0">${CAT_ICONS[r.category] || '📌'}</span>
+          <div style="flex:1;min-width:0">
+            <div style="font-weight:700">${esc(r.title)}${r.amount ? ` <span style="color:var(--warning);font-weight:800;margin-left:6px">${currencySymbol(r.currency)}${parseFloat(r.amount).toLocaleString('en-GB',{minimumFractionDigits:2})}</span>` : ''}</div>
+            <div style="font-size:0.75rem;color:var(--muted);margin-top:2px">${REC_LABEL[r.recurrence] || 'one-time'}${r.notes ? ' · ' + esc(r.notes) : ''}</div>
+          </div>
+          <button class="btn btn-danger btn-sm" onclick="deleteCalReminder(${r.id})">Del</button>
+        </div>`).join('')}
+    </div>`;
+  }
+
   if (entries.length) {
-    content = entries.map(r => {
+    content += `<div style="font-size:0.72rem;font-weight:700;text-transform:uppercase;letter-spacing:0.5px;color:var(--muted);margin-bottom:8px">Days Off</div>`;
+    content += entries.map(r => {
       const label = parseFloat(r.is_day_off) === 1 ? 'Full Day' : 'Half Day';
       const cls   = parseFloat(r.is_day_off) === 1 ? 'chip-full' : 'chip-half';
       const typeLabel = r.employment_type === 'self_employed' ? 'Self-Emp' : 'Payroll';
@@ -1444,17 +1500,14 @@ function openDayModal(dateStr, entries) {
         <button class="btn btn-danger btn-sm" style="margin-left:auto" onclick="deleteRecord(${r.record_id});closeModal('dayModal')">Remove</button>
       </div>`;
     }).join('');
-  } else {
-    content = `<p style="color:var(--muted);font-size:0.88rem">No days off recorded for this date.</p>`;
   }
+
+  if (!content) {
+    content = `<p style="color:var(--muted);font-size:0.88rem">No entries for this date.</p>`;
+  }
+
   document.getElementById('dayModalContent').innerHTML = content;
-
-  // Book button: pre-fill record modal with this date & day-off
-  document.getElementById('dayModalBookBtn').onclick = () => {
-    closeModal('dayModal');
-    openRecordModalForDate(dateStr);
-  };
-
+  document.getElementById('dayModalBookBtn').onclick = () => { closeModal('dayModal'); openRecordModalForDate(dateStr); };
   openModal('dayModal');
 }
 
@@ -1513,4 +1566,233 @@ function thisMonth() {
 }
 function esc(str) {
   return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+// ─── TOAST NOTIFICATIONS ─────────────────────────────────────────────────────
+function showToast(msg, type = 'info', duration = 4000) {
+  const container = document.getElementById('toastContainer');
+  if (!container) return;
+  const toast = document.createElement('div');
+  toast.className = `toast toast-${type}`;
+  toast.style.setProperty('--toast-dur', duration + 'ms');
+  toast.innerHTML = `
+    <div class="toast-body">
+      <span class="toast-msg">${esc(String(msg))}</span>
+      <button class="toast-close" onclick="dismissToast(this.parentElement.parentElement)">✕</button>
+    </div>
+    <div class="toast-progress"></div>`;
+  container.appendChild(toast);
+  requestAnimationFrame(() => toast.classList.add('visible'));
+  const timer = setTimeout(() => dismissToast(toast), duration);
+  toast._timer = timer;
+}
+
+function dismissToast(toast) {
+  if (!toast || toast._dismissing) return;
+  toast._dismissing = true;
+  clearTimeout(toast._timer);
+  toast.classList.add('dismissing');
+  toast.addEventListener('animationend', () => toast.remove(), { once: true });
+  setTimeout(() => toast.remove(), 600);
+}
+
+// ─── CONFIRM / PROMPT DIALOGS ─────────────────────────────────────────────────
+function showConfirm(msg) {
+  return new Promise(resolve => {
+    const overlay = document.createElement('div');
+    overlay.className = 'modal-overlay open';
+    overlay.innerHTML = `
+      <div class="modal" style="max-width:380px">
+        <div class="modal-header"><span class="modal-title">Confirm</span></div>
+        <div class="modal-body"><p style="margin:0 0 20px;font-size:0.92rem">${esc(msg)}</p>
+          <div style="display:flex;gap:10px;justify-content:flex-end">
+            <button class="btn btn-ghost" id="_cfCancel">Cancel</button>
+            <button class="btn btn-danger" id="_cfOk">Confirm</button>
+          </div>
+        </div>
+      </div>`;
+    document.body.appendChild(overlay);
+    const cleanup = (val) => { overlay.remove(); resolve(val); };
+    overlay.querySelector('#_cfOk').onclick     = () => cleanup(true);
+    overlay.querySelector('#_cfCancel').onclick  = () => cleanup(false);
+    overlay.addEventListener('click', e => { if (e.target === overlay) cleanup(false); });
+  });
+}
+
+function showPrompt(msg, placeholder = '') {
+  return new Promise(resolve => {
+    const overlay = document.createElement('div');
+    overlay.className = 'modal-overlay open';
+    overlay.innerHTML = `
+      <div class="modal" style="max-width:380px">
+        <div class="modal-header"><span class="modal-title">${esc(msg)}</span></div>
+        <div class="modal-body">
+          <input id="_promptInput" class="form-control" placeholder="${esc(placeholder)}" style="margin-bottom:16px">
+          <div style="display:flex;gap:10px;justify-content:flex-end">
+            <button class="btn btn-ghost" id="_prCancel">Cancel</button>
+            <button class="btn btn-primary" id="_prOk">OK</button>
+          </div>
+        </div>
+      </div>`;
+    document.body.appendChild(overlay);
+    const input = overlay.querySelector('#_promptInput');
+    input.focus();
+    const cleanup = (val) => { overlay.remove(); resolve(val); };
+    overlay.querySelector('#_prOk').onclick     = () => cleanup(input.value.trim() || null);
+    overlay.querySelector('#_prCancel').onclick  = () => cleanup(null);
+    overlay.addEventListener('click', e => { if (e.target === overlay) cleanup(null); });
+    input.addEventListener('keydown', e => { if (e.key === 'Enter') cleanup(input.value.trim() || null); });
+  });
+}
+
+// ─── SALARY BADGE ─────────────────────────────────────────────────────────────
+function updateSalaryBadge(count) {
+  ['salaryNavBadge', 'salaryBottomBadge'].forEach(id => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    if (count > 0) { el.textContent = count; el.classList.remove('hidden'); }
+    else el.classList.add('hidden');
+  });
+}
+
+// ─── SALARY REMINDER PANEL ────────────────────────────────────────────────────
+function getUnpaidThisMonth(overview, year, month) {
+  return (overview || []).filter(emp => {
+    if (emp.is_terminated || !emp.annual_salary || parseFloat(emp.annual_salary) <= 0) return false;
+    const skipKey = `paySkip_${year}_${month}_${emp.employee_id}`;
+    if (localStorage.getItem(skipKey)) return false;
+    const paid = (emp.payments || []).some(p =>
+      parseInt(p.payment_year) === year && parseInt(p.payment_month) === month
+    );
+    return !paid;
+  });
+}
+
+async function renderSalaryReminderPanel() {
+  const panel = document.getElementById('salaryReminderPanel');
+  if (!panel) return;
+  const now   = new Date();
+  const year  = now.getFullYear();
+  const month = now.getMonth() + 1;
+
+  try {
+    const res = await fetch(`/api/salary-overview?year=${year}`);
+    if (!res.ok) { panel.classList.add('hidden'); return; }
+    const overview = await res.json();
+    const unpaid   = getUnpaidThisMonth(overview, year, month);
+    updateSalaryBadge(unpaid.length);
+
+    if (!unpaid.length) { panel.classList.add('hidden'); return; }
+
+    panel.classList.remove('hidden');
+    const monthName = MONTHS[month];
+    panel.innerHTML = `
+      <div class="salary-reminder-header">
+        <span>💳 ${unpaid.length} employee${unpaid.length > 1 ? 's' : ''} not yet paid for ${monthName} ${year}</span>
+        <button class="btn btn-ghost btn-sm" onclick="dismissAllReminders()">Dismiss all</button>
+      </div>
+      ${unpaid.map(emp => {
+        const sym = currencySymbol(emp.currency || 'GBP');
+        const target = parseFloat(emp.salary_target ?? emp.annual_salary) || 0;
+        const monthly = target / 12;
+        return `
+          <div class="salary-reminder-row">
+            <div class="salary-reminder-name">${esc(emp.name)}</div>
+            <div class="salary-reminder-amount">${sym}${monthly.toLocaleString('en-GB',{minimumFractionDigits:2})} /mo</div>
+            <div class="salary-reminder-actions">
+              <button class="btn btn-ghost btn-sm" onclick="skipSalaryReminder(${emp.employee_id},${year},${month})">Skip</button>
+              <button class="btn btn-primary btn-sm" onclick="openSalaryPaymentModal(${emp.employee_id})">Log Payment</button>
+            </div>
+          </div>`;
+      }).join('')}`;
+  } catch(e) {
+    panel.classList.add('hidden');
+  }
+}
+
+function skipSalaryReminder(empId, year, month) {
+  localStorage.setItem(`paySkip_${year}_${month}_${empId}`, '1');
+  renderSalaryReminderPanel();
+}
+
+function dismissAllReminders() {
+  const now   = new Date();
+  const year  = now.getFullYear();
+  const month = now.getMonth() + 1;
+  const panel = document.getElementById('salaryReminderPanel');
+  if (!panel) return;
+  panel.querySelectorAll('.salary-reminder-row').forEach(row => {
+    const btn = row.querySelector('button[onclick^="skipSalaryReminder"]');
+    if (btn) btn.click();
+  });
+}
+
+// ─── CALENDAR REMINDERS ───────────────────────────────────────────────────────
+function openCalReminderModal(dateStr = null) {
+  document.getElementById('crId').value       = '';
+  document.getElementById('crTitle').value    = '';
+  document.getElementById('crCategory').value = 'other';
+  document.getElementById('crDate').value     = dateStr || today();
+  document.getElementById('crRecurrence').value = 'none';
+  document.getElementById('crAmount').value   = '';
+  document.getElementById('crCurrency').value = 'GBP';
+  document.getElementById('crNotes').value    = '';
+  openModal('calReminderModal');
+}
+
+async function saveCalReminder() {
+  const title      = document.getElementById('crTitle').value.trim();
+  const category   = document.getElementById('crCategory').value;
+  const reminderDate = document.getElementById('crDate').value;
+  const recurrence = document.getElementById('crRecurrence').value;
+  const amount     = document.getElementById('crAmount').value;
+  const currency   = document.getElementById('crCurrency').value;
+  const notes      = document.getElementById('crNotes').value.trim();
+  if (!title)        return showToast('Title is required', 'error');
+  if (!reminderDate) return showToast('Date is required', 'error');
+  const res = await fetch('/api/calendar-reminders', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ title, category, reminder_date: reminderDate, recurrence, amount: amount || null, currency, notes })
+  });
+  if (!res.ok) { const e = await res.json(); return showToast(e.error || 'Save failed', 'error'); }
+  closeModal('calReminderModal');
+  showToast('Reminder saved', 'success');
+  loadCalendar();
+}
+
+async function deleteCalReminder(id) {
+  if (!await showConfirm('Delete this reminder? All recurrences will be removed.')) return;
+  const res = await fetch(`/api/calendar-reminders/${id}`, { method: 'DELETE' });
+  if (!res.ok) { showToast('Delete failed', 'error'); return; }
+  showToast('Reminder deleted', 'success');
+  closeModal('dayModal');
+  loadCalendar();
+}
+
+// ─── DASHBOARD UPCOMING WIDGET ────────────────────────────────────────────────
+function renderUpcomingWidget(upcoming) {
+  const stats = document.getElementById('dashStats');
+  if (!stats) return;
+  const existing = document.getElementById('upcomingWidget');
+  if (existing) existing.remove();
+  if (!upcoming || !upcoming.length) return;
+
+  const CAT_ICONS = { rent:'🏠', subscription:'📦', deposit:'💳', utility:'⚡', other:'📌' };
+  const widget = document.createElement('div');
+  widget.id = 'upcomingWidget';
+  widget.className = 'dashboard-widget';
+  widget.innerHTML = `
+    <div class="dashboard-widget-header">Upcoming Reminders (next 7 days)</div>
+    <div class="dashboard-widget-body">
+      ${upcoming.map(r => `
+        <div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--border)">
+          <span style="font-size:1.1rem">${CAT_ICONS[r.category] || '📌'}</span>
+          <div style="flex:1;min-width:0">
+            <div style="font-weight:600;font-size:0.88rem">${esc(r.title)}</div>
+            <div style="font-size:0.75rem;color:var(--muted)">${r.virtual_date}${r.amount ? ' · ' + currencySymbol(r.currency) + parseFloat(r.amount).toLocaleString('en-GB',{minimumFractionDigits:2}) : ''}</div>
+          </div>
+        </div>`).join('')}
+    </div>`;
+  stats.insertAdjacentElement('afterend', widget);
 }

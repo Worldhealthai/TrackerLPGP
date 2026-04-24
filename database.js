@@ -150,6 +150,23 @@ async function runMigrations() {
     )
   `);
 
+  await sql(`
+    CREATE TABLE IF NOT EXISTS calendar_reminders (
+      id            SERIAL PRIMARY KEY,
+      title         TEXT NOT NULL,
+      reminder_date DATE NOT NULL,
+      recurrence    TEXT NOT NULL DEFAULT 'none'
+                      CHECK (recurrence IN ('none','monthly','yearly')),
+      category      TEXT NOT NULL DEFAULT 'other'
+                      CHECK (category IN ('rent','subscription','deposit','utility','other')),
+      amount        NUMERIC(12,2),
+      currency      TEXT NOT NULL DEFAULT 'GBP',
+      notes         TEXT DEFAULT '',
+      created_by    INT REFERENCES admins(id) ON DELETE SET NULL,
+      created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `);
+
   const rows = await sql('SELECT COUNT(*) AS c FROM admins');
   if (parseInt(rows[0].c) === 0) {
     const hash = bcrypt.hashSync('admin123', 10);

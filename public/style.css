@@ -1348,3 +1348,241 @@ tbody tr:hover td strong { color: var(--primary); }
 @media (max-width: 380px) {
   .salary-overview-grid { grid-template-columns: 1fr; }
 }
+
+/* ══════════════════════════════════════════
+   TOAST NOTIFICATION SYSTEM
+══════════════════════════════════════════ */
+#toastContainer {
+  position: fixed;
+  bottom: 24px;
+  right: 24px;
+  z-index: 9999;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  max-width: 360px;
+  width: calc(100vw - 48px);
+  pointer-events: none;
+}
+.toast {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 13px 16px;
+  border-radius: 12px;
+  font-size: 0.875rem;
+  font-weight: 500;
+  line-height: 1.45;
+  box-shadow: var(--shadow-lg);
+  border: 1px solid transparent;
+  pointer-events: all;
+  animation: toastSlideIn 0.28s ease;
+  position: relative;
+  overflow: hidden;
+}
+.toast::before {
+  content: '';
+  position: absolute;
+  left: 0; top: 0; bottom: 0;
+  width: 4px;
+  border-radius: 12px 0 0 12px;
+}
+.toast-success { background: #f0fdf4; border-color: #86efac; color: #14532d; }
+.toast-success::before { background: var(--success); }
+.toast-error { background: var(--danger-light); border-color: #fca5a5; color: #991b1b; }
+.toast-error::before { background: var(--danger); }
+.toast-info { background: var(--info-light); border-color: #7dd3fc; color: #0c4a6e; }
+.toast-info::before { background: var(--info); }
+.toast-warning { background: var(--warning-light); border-color: #fcd34d; color: #78350f; }
+.toast-warning::before { background: var(--warning); }
+.toast-icon { font-size: 1rem; flex-shrink: 0; margin-top: 1px; }
+.toast-message { flex: 1; }
+.toast-close {
+  background: none; border: none; cursor: pointer;
+  font-size: 0.85rem; opacity: 0.45; padding: 0 2px;
+  line-height: 1; flex-shrink: 0; transition: opacity 0.15s;
+}
+.toast-close:hover { opacity: 1; }
+.toast-progress {
+  position: absolute; bottom: 0; left: 0;
+  height: 3px; border-radius: 0 0 0 12px;
+  background: rgba(0,0,0,0.10);
+  animation: toastProgress var(--toast-dur, 4000ms) linear forwards;
+}
+@keyframes toastSlideIn {
+  from { opacity: 0; transform: translateX(32px); }
+  to   { opacity: 1; transform: translateX(0); }
+}
+@keyframes toastSlideOut {
+  from { opacity: 1; transform: translateX(0);    max-height: 100px; }
+  to   { opacity: 0; transform: translateX(32px); max-height: 0; padding: 0; margin: 0; }
+}
+@keyframes toastProgress {
+  from { width: 100%; }
+  to   { width: 0%; }
+}
+@media (max-width: 768px) {
+  #toastContainer { bottom: 74px; right: 12px; left: 12px; width: auto; max-width: none; }
+}
+
+/* ══════════════════════════════════════════
+   NAV BADGE (unpaid salary indicator)
+══════════════════════════════════════════ */
+.nav-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--danger);
+  color: #fff;
+  font-size: 0.6rem;
+  font-weight: 800;
+  min-width: 18px;
+  height: 18px;
+  border-radius: 9px;
+  padding: 0 4px;
+  margin-left: 6px;
+  line-height: 1;
+  box-shadow: 0 2px 6px rgba(239,68,68,0.4);
+  vertical-align: middle;
+}
+.nav-badge-bottom {
+  position: absolute;
+  top: 4px;
+  right: calc(50% - 18px);
+  min-width: 16px;
+  height: 16px;
+  font-size: 0.55rem;
+  margin-left: 0;
+}
+
+/* ══════════════════════════════════════════
+   SALARY PAYMENT REMINDER PANEL
+══════════════════════════════════════════ */
+.salary-reminder-panel {
+  background: linear-gradient(135deg, #fffbeb, #fef3c7);
+  border: 1px solid #fcd34d;
+  border-radius: var(--radius);
+  overflow: hidden;
+  box-shadow: var(--shadow-sm);
+}
+.salary-reminder-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 13px 18px;
+  border-bottom: 1px solid #fde68a;
+  background: rgba(251,191,36,0.12);
+}
+.salary-reminder-icon { font-size: 1rem; }
+.salary-reminder-title { flex: 1; font-size: 0.875rem; font-weight: 700; color: #78350f; }
+.salary-reminder-dismiss {
+  background: none; border: none; cursor: pointer;
+  color: #92400e; font-size: 0.9rem; opacity: 0.45;
+  transition: opacity 0.15s; padding: 2px 6px; border-radius: 4px;
+}
+.salary-reminder-dismiss:hover { opacity: 1; background: rgba(0,0,0,0.06); }
+.salary-reminder-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 11px 18px;
+  border-bottom: 1px solid #fde68a;
+  font-size: 0.845rem;
+  flex-wrap: wrap;
+}
+.salary-reminder-row:last-child { border-bottom: none; }
+.salary-reminder-name { font-weight: 700; color: var(--text); flex: 1; min-width: 100px; }
+.salary-reminder-amount { color: var(--muted); font-size: 0.8rem; }
+
+/* ══════════════════════════════════════════
+   CALENDAR REMINDER DOTS & CHIPS
+══════════════════════════════════════════ */
+.cal-reminder-dots { display: flex; gap: 3px; flex-wrap: wrap; margin-top: 2px; }
+.cal-reminder-dot { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; }
+.cal-reminder-dot.cat-rent         { background: #6366f1; }
+.cal-reminder-dot.cat-subscription { background: #8b5cf6; }
+.cal-reminder-dot.cat-deposit      { background: #ec4899; }
+.cal-reminder-dot.cat-utility      { background: #f59e0b; }
+.cal-reminder-dot.cat-other        { background: #64748b; }
+
+.cal-reminder-entry {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 10px 12px;
+  background: #fffbeb;
+  border-radius: 10px;
+  margin-bottom: 8px;
+  font-size: 0.875rem;
+  border: 1px solid #fde68a;
+}
+
+/* ══════════════════════════════════════════
+   DASHBOARD UPCOMING WIDGET
+══════════════════════════════════════════ */
+.dashboard-widget {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow: hidden;
+  box-shadow: var(--shadow-sm);
+  transition: box-shadow 0.2s;
+  margin-bottom: 24px;
+}
+.dashboard-widget:hover { box-shadow: var(--shadow); }
+.dashboard-widget-header {
+  padding: 13px 18px 10px;
+  border-bottom: 1px solid var(--border-light);
+  font-size: 0.75rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.7px;
+  color: var(--muted);
+}
+.dashboard-widget-body { padding: 4px 18px 14px; }
+
+/* ══════════════════════════════════════════
+   SKELETON LOADERS
+══════════════════════════════════════════ */
+.skeleton {
+  background: linear-gradient(90deg, #f1f5f9 25%, #e2e8f0 50%, #f1f5f9 75%);
+  background-size: 200% 100%;
+  animation: skeletonPulse 1.5s ease-in-out infinite;
+  border-radius: 8px;
+}
+.skeleton-stat { height: 80px; border-radius: var(--radius); }
+@keyframes skeletonPulse {
+  0%   { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+
+/* ══════════════════════════════════════════
+   PAGE TRANSITION
+══════════════════════════════════════════ */
+.page.active { animation: pageEnter 0.2s ease; }
+@keyframes pageEnter {
+  from { opacity: 0; transform: translateY(5px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+/* ══════════════════════════════════════════
+   SIDEBAR USER PILL
+══════════════════════════════════════════ */
+.sidebar-user-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  background: rgba(255,255,255,0.07);
+  border: 1px solid rgba(255,255,255,0.1);
+  border-radius: 20px;
+  padding: 4px 10px 4px 5px;
+  margin-top: 4px;
+}
+.sidebar-user-avatar {
+  width: 22px; height: 22px; border-radius: 50%;
+  background: linear-gradient(135deg, var(--primary), #818cf8);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 0.6rem; font-weight: 800; color: #fff; flex-shrink: 0;
+}
+.sidebar-user-name { font-size: 0.72rem; font-weight: 600; color: rgba(255,255,255,0.78); }
+.sidebar-user-role { font-size: 0.62rem; color: rgba(255,255,255,0.35); }

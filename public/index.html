@@ -26,7 +26,7 @@
       <div class="nav-item" data-page="tracking"><span class="icon">⏱️</span> Daily Tracking</div>
       <div class="nav-item" data-page="calendar"><span class="icon">📅</span> Calendar</div>
       <div class="nav-section-label">Management</div>
-      <div class="nav-item" data-page="salary"><span class="icon">💰</span> Salary</div>
+      <div class="nav-item" data-page="salary"><span class="icon">💰</span> Salary<span id="salaryNavBadge" class="nav-badge hidden"></span></div>
       <div class="nav-item" data-page="employees"><span class="icon">👥</span> Employees</div>
       <div class="nav-item" data-page="reports"><span class="icon">📋</span> Reports</div>
       <div class="nav-item admin-only hidden" data-page="admins"><span class="icon">🔐</span> Admin Users</div>
@@ -143,6 +143,17 @@
 
       <!-- ══ SALARY ══ -->
       <div class="page" id="page-salary">
+        <!-- Salary payment reminder panel -->
+        <div id="salaryReminderPanel" class="hidden" style="margin-bottom:18px">
+          <div class="salary-reminder-panel">
+            <div class="salary-reminder-header">
+              <span class="salary-reminder-icon">🔔</span>
+              <span id="salaryReminderTitle" class="salary-reminder-title">Unpaid employees this month</span>
+              <button class="salary-reminder-dismiss" onclick="dismissAllReminders()" title="Dismiss all">✕</button>
+            </div>
+            <div id="salaryReminderRows"></div>
+          </div>
+        </div>
         <!-- Controls row -->
         <div class="filter-bar" style="align-items:center">
           <div class="form-group" style="margin:0">
@@ -222,13 +233,15 @@
               <option value="">All Employees</option>
             </select>
           </div>
+          <button class="btn btn-primary btn-sm" onclick="openCalReminderModal()">+ Add Reminder</button>
         </div>
 
         <!-- Legend -->
         <div style="display:flex;gap:16px;margin-bottom:14px;font-size:0.83rem;flex-wrap:wrap">
           <span><span class="cal-chip chip-full">Full Day</span> Full day off</span>
           <span><span class="cal-chip chip-half">Half Day</span> Half day off</span>
-          <span style="color:var(--muted)">Click a date to book / manage days off</span>
+          <span><span class="cal-reminder-dot cat-rent" style="display:inline-block;width:8px;height:8px;border-radius:50%;vertical-align:middle;margin-right:3px"></span> Expense reminder</span>
+          <span style="color:var(--muted)">Click a date to view / book</span>
         </div>
 
         <!-- Calendar grid -->
@@ -653,6 +666,67 @@
   </div>
 </div>
 
+<!-- ══ MODAL: Add Calendar Reminder ══ -->
+<div class="modal-overlay" id="calReminderModal">
+  <div class="modal">
+    <div class="modal-header">
+      <h2>Add Expense Reminder</h2>
+      <button class="modal-close" onclick="closeModal('calReminderModal')">✕</button>
+    </div>
+    <div class="form-row">
+      <div class="form-group">
+        <label>Title</label>
+        <input type="text" id="crTitle" placeholder="e.g. Office Rent">
+      </div>
+      <div class="form-group">
+        <label>Category</label>
+        <select id="crCategory">
+          <option value="rent">🏠 Rent</option>
+          <option value="subscription">📦 Subscription</option>
+          <option value="deposit">💳 Deposit</option>
+          <option value="utility">⚡ Utility</option>
+          <option value="other" selected>📌 Other</option>
+        </select>
+      </div>
+    </div>
+    <div class="form-row">
+      <div class="form-group">
+        <label>Date</label>
+        <input type="date" id="crDate">
+      </div>
+      <div class="form-group">
+        <label>Recurrence</label>
+        <select id="crRecurrence">
+          <option value="none">One-time</option>
+          <option value="monthly">Monthly (same day)</option>
+          <option value="yearly">Yearly (same date)</option>
+        </select>
+      </div>
+    </div>
+    <div class="form-row">
+      <div class="form-group">
+        <label>Amount (optional)</label>
+        <input type="number" id="crAmount" min="0" step="0.01" placeholder="e.g. 1200">
+      </div>
+      <div class="form-group">
+        <label>Currency</label>
+        <select id="crCurrency">
+          <option value="GBP">£ GBP</option>
+          <option value="AED">AED</option>
+        </select>
+      </div>
+    </div>
+    <div class="form-group" style="margin-bottom:20px">
+      <label>Notes (optional)</label>
+      <textarea id="crNotes" placeholder="Any additional notes…" style="min-height:60px"></textarea>
+    </div>
+    <div style="display:flex;gap:10px;justify-content:flex-end">
+      <button class="btn btn-ghost" onclick="closeModal('calReminderModal')">Cancel</button>
+      <button class="btn btn-primary" onclick="saveCalReminder()">Save Reminder</button>
+    </div>
+  </div>
+</div>
+
 <!-- Mobile nav overlay -->
 <div class="nav-overlay" id="navOverlay"></div>
 
@@ -661,9 +735,12 @@
   <div class="bottom-nav-item active" data-page="dashboard"><span class="bottom-nav-icon">📊</span><span class="bottom-nav-label">Dashboard</span></div>
   <div class="bottom-nav-item" data-page="tracking"><span class="bottom-nav-icon">⏱️</span><span class="bottom-nav-label">Tracking</span></div>
   <div class="bottom-nav-item" data-page="calendar"><span class="bottom-nav-icon">📅</span><span class="bottom-nav-label">Calendar</span></div>
-  <div class="bottom-nav-item" data-page="salary"><span class="bottom-nav-icon">💰</span><span class="bottom-nav-label">Salary</span></div>
+  <div class="bottom-nav-item" data-page="salary" style="position:relative"><span class="bottom-nav-icon">💰</span><span class="bottom-nav-label">Salary</span><span id="salaryBottomBadge" class="nav-badge nav-badge-bottom hidden"></span></div>
   <div class="bottom-nav-item" data-page="employees"><span class="bottom-nav-icon">👥</span><span class="bottom-nav-label">Staff</span></div>
 </nav>
+
+<!-- Toast container -->
+<div id="toastContainer" aria-live="polite" aria-atomic="false"></div>
 
 <script src="app.js"></script>
 </body>
