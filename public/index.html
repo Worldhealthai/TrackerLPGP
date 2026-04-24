@@ -403,9 +403,9 @@
         <label>Annual Salary</label>
         <input type="number" id="empAnnualSalary" min="0" step="0.01" value="0">
       </div>
-      <div class="form-group" id="taxRateField">
-        <label>Effective Tax Rate % <span style="font-weight:400;color:var(--muted)">(payroll only)</span></label>
-        <input type="number" id="empTaxRate" min="0" max="60" step="0.1" placeholder="e.g. 18 — leave blank if none">
+      <div class="form-group" id="pensionRateField">
+        <label>Pension Contribution % <span style="font-weight:400;color:var(--muted)">(employee, payroll only — 0 if not enrolled)</span></label>
+        <input type="number" id="empPensionRate" min="0" max="20" step="0.1" placeholder="e.g. 5 for auto-enrolment">
       </div>
     </div>
     <div id="salaryChangeFields" class="hidden">

@@ -77,6 +77,40 @@ async function q(rawSql, params = []) {
   return { rows };
 }
 
+// UK PAYE + NI + pension auto-calculation (2024/25 thresholds)
+function calcUKNetPay(grossAnnual, pensionRate = 0) {
+  const PERSONAL_ALLOWANCE = 12570;
+  const BASIC_RATE_LIMIT   = 50270;
+  const HIGHER_RATE_LIMIT  = 125140;
+  const NI_PRIMARY = 12570;
+  const NI_UPPER   = 50270;
+  const PENSION_LOWER = 6240;
+  const PENSION_UPPER = 50270;
+
+  const taxable   = Math.max(0, grossAnnual - PERSONAL_ALLOWANCE);
+  const basicTax  = Math.min(taxable, BASIC_RATE_LIMIT - PERSONAL_ALLOWANCE) * 0.20;
+  const higherTax = Math.max(0, Math.min(taxable - (BASIC_RATE_LIMIT - PERSONAL_ALLOWANCE), HIGHER_RATE_LIMIT - BASIC_RATE_LIMIT)) * 0.40;
+  const addlTax   = Math.max(0, taxable - (HIGHER_RATE_LIMIT - PERSONAL_ALLOWANCE)) * 0.45;
+  const annualTax = basicTax + higherTax + addlTax;
+
+  const ni1 = Math.min(Math.max(0, grossAnnual - NI_PRIMARY), NI_UPPER - NI_PRIMARY) * 0.08;
+  const ni2 = Math.max(0, grossAnnual - NI_UPPER) * 0.02;
+  const annualNI = ni1 + ni2;
+
+  const qualifying    = Math.min(Math.max(0, grossAnnual - PENSION_LOWER), PENSION_UPPER - PENSION_LOWER);
+  const annualPension = qualifying * ((pensionRate || 0) / 100);
+
+  const netAnnual = grossAnnual - annualTax - annualNI - annualPension;
+  return {
+    income_tax:         parseFloat(annualTax.toFixed(2)),
+    national_insurance: parseFloat(annualNI.toFixed(2)),
+    pension:            parseFloat(annualPension.toFixed(2)),
+    net_annual:         parseFloat(netAnnual.toFixed(2)),
+    net_monthly:        parseFloat((netAnnual / 12).toFixed(2)),
+    gross_monthly:      parseFloat((grossAnnual / 12).toFixed(2))
+  };
+}
+
 const SHIFT_HOURS = 8;
 const ALLOWED_BREAK_MINUTES = 40;
 const DAY_OFF_ALLOWANCE = { payroll: 20, self_employed: 5 };
@@ -298,25 +332,25 @@ app.get('/api/employees/all', requireAuth, async (req, res) => {
 });
 
 app.post('/api/employees', requireAuth, async (req, res) => {
-  const { name, employment_type, annual_salary, currency, start_date, tax_rate } = req.body;
+  const { name, employment_type, annual_salary, currency, start_date, pension_rate } = req.body;
   if (!name) return res.status(400).json({ error: 'Name required' });
   const annualSal = parseFloat(annual_salary) || 0;
   const daily_rate = parseFloat((annualSal / 260).toFixed(4));
   const cur = ['GBP','AED'].includes(currency) ? currency : 'GBP';
-  const taxRate = (employment_type === 'payroll' && tax_rate != null && tax_rate !== '') ? parseFloat(tax_rate) : null;
+  const pensionRate = (employment_type === 'payroll' && pension_rate != null && pension_rate !== '') ? parseFloat(pension_rate) : 0;
   const { rows } = await q(
-    'INSERT INTO employees (name, daily_rate, employment_type, annual_salary, currency, start_date, tax_rate) VALUES (?, ?, ?, ?, ?, ?, ?) RETURNING id',
-    [name, daily_rate, employment_type || 'payroll', annualSal, cur, start_date || null, taxRate]
+    'INSERT INTO employees (name, daily_rate, employment_type, annual_salary, currency, start_date, pension_rate) VALUES (?, ?, ?, ?, ?, ?, ?) RETURNING id',
+    [name, daily_rate, employment_type || 'payroll', annualSal, cur, start_date || null, pensionRate]
   );
   res.json({ id: rows[0].id, name, daily_rate });
 });
 
 app.put('/api/employees/:id', requireAuth, async (req, res) => {
-  const { name, active, employment_type, annual_salary, currency, salary_reason, salary_effective, start_date, tax_rate } = req.body;
+  const { name, active, employment_type, annual_salary, currency, salary_reason, salary_effective, start_date, pension_rate } = req.body;
   const annualSal = parseFloat(annual_salary) || 0;
   const daily_rate = parseFloat((annualSal / 260).toFixed(4));
   const cur = ['GBP','AED'].includes(currency) ? currency : 'GBP';
-  const taxRate = (employment_type === 'payroll' && tax_rate != null && tax_rate !== '') ? parseFloat(tax_rate) : null;
+  const pensionRate = (employment_type === 'payroll' && pension_rate != null && pension_rate !== '') ? parseFloat(pension_rate) : 0;
 
   // If salary changed, log old salary to history before updating
   const { rows: current } = await q('SELECT annual_salary, currency FROM employees WHERE id = ?', [req.params.id]);
@@ -331,8 +365,8 @@ app.put('/api/employees/:id', requireAuth, async (req, res) => {
   }
 
   await q(
-    'UPDATE employees SET name=?, daily_rate=?, active=?, employment_type=?, annual_salary=?, currency=?, start_date=?, tax_rate=? WHERE id=?',
-    [name, daily_rate, active !== undefined ? active : 1, employment_type || 'payroll', annualSal, cur, start_date || null, taxRate, req.params.id]
+    'UPDATE employees SET name=?, daily_rate=?, active=?, employment_type=?, annual_salary=?, currency=?, start_date=?, pension_rate=? WHERE id=?',
+    [name, daily_rate, active !== undefined ? active : 1, employment_type || 'payroll', annualSal, cur, start_date || null, pensionRate, req.params.id]
   );
   res.json({ success: true });
 });
@@ -579,11 +613,13 @@ app.get('/api/salary-overview', requireAuth, async (req, res) => {
         salaryTarget = yearEnd?.total_expected ?? annualSal;
       }
 
-      // Apply tax rate for payroll employees — target becomes the net (take-home) amount
-      const taxRate   = emp.employment_type === 'payroll' && emp.tax_rate != null ? parseFloat(emp.tax_rate) : 0;
-      const netFactor = 1 - taxRate / 100;
+      // Auto-calculate UK PAYE + NI + pension for payroll employees
+      const ukPay = emp.employment_type === 'payroll' && annualSal > 0
+        ? calcUKNetPay(annualSal, parseFloat(emp.pension_rate) || 0)
+        : null;
+      const netFactor       = ukPay ? ukPay.net_annual / annualSal : 1;
       const netSalaryTarget = parseFloat((salaryTarget * netFactor).toFixed(2));
-      const netMonthly      = parseFloat(((annualSal / 12) * netFactor).toFixed(2));
+      const netMonthly      = ukPay ? ukPay.net_monthly : null;
 
       const totalOffice   = officeRows.reduce((a, b) => a + parseFloat(b.amount), 0);
       const totalPaid     = payments.reduce((a, b) => a + parseFloat(b.amount), 0);
@@ -596,8 +632,9 @@ app.get('/api/salary-overview', requireAuth, async (req, res) => {
         employment_type:     emp.employment_type,
         currency:            emp.currency || 'GBP',
         annual_salary:       annualSal,
-        tax_rate:            taxRate || null,
-        net_monthly:         taxRate ? netMonthly : null,
+        pension_rate:        parseFloat(emp.pension_rate) || 0,
+        paye_breakdown:      ukPay,
+        net_monthly:         netMonthly,
         salary_target:       netSalaryTarget,
         active:              emp.active ? 1 : 0,
         start_date:          startDateStr,

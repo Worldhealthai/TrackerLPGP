@@ -143,18 +143,18 @@ function openEmpModal(emp = null) {
   document.getElementById('empType').value = emp ? (emp.employment_type || 'payroll') : 'payroll';
   document.getElementById('empCurrency').value = emp ? (emp.currency || 'GBP') : 'GBP';
   document.getElementById('empAnnualSalary').value = emp ? emp.annual_salary : 0;
-  document.getElementById('empTaxRate').value = emp && emp.tax_rate != null ? emp.tax_rate : '';
+  document.getElementById('empPensionRate').value = emp && emp.pension_rate != null ? emp.pension_rate : '';
   document.getElementById('empSalaryEffective').value = today();
   document.getElementById('empSalaryReason').value = '';
   document.getElementById('salaryChangeFields').classList.add('hidden');
   document.getElementById('empModalTitle').textContent = emp ? 'Edit Employee' : 'Add Employee';
 
-  const toggleTaxField = () => {
+  const togglePensionField = () => {
     const isPayroll = document.getElementById('empType').value === 'payroll';
-    document.getElementById('taxRateField').style.display = isPayroll ? '' : 'none';
+    document.getElementById('pensionRateField').style.display = isPayroll ? '' : 'none';
   };
-  document.getElementById('empType').onchange = toggleTaxField;
-  toggleTaxField();
+  document.getElementById('empType').onchange = togglePensionField;
+  togglePensionField();
 
   // Show raise fields when salary value changes
   const salaryInput = document.getElementById('empAnnualSalary');
@@ -175,21 +175,21 @@ async function saveEmployee() {
   const annual_salary = parseFloat(document.getElementById('empAnnualSalary').value) || 0;
   const salary_reason = document.getElementById('empSalaryReason').value.trim();
   const salary_effective = document.getElementById('empSalaryEffective').value;
-  const taxRateVal = document.getElementById('empTaxRate').value;
-  const tax_rate = employment_type === 'payroll' && taxRateVal !== '' ? parseFloat(taxRateVal) : null;
+  const pensionRateVal = document.getElementById('empPensionRate').value;
+  const pension_rate = employment_type === 'payroll' && pensionRateVal !== '' ? parseFloat(pensionRateVal) : 0;
   if (!name) return showToast('Name is required', 'error');
 
   if (id) {
     await fetch(`/api/employees/${id}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name, employment_type, annual_salary, currency, active: 1, salary_reason, salary_effective, start_date, tax_rate })
+      body: JSON.stringify({ name, employment_type, annual_salary, currency, active: 1, salary_reason, salary_effective, start_date, pension_rate })
     });
   } else {
     await fetch('/api/employees', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name, employment_type, annual_salary, currency, start_date, tax_rate })
+      body: JSON.stringify({ name, employment_type, annual_salary, currency, start_date, pension_rate })
     });
   }
   closeModal('empModal');
@@ -1030,7 +1030,7 @@ async function loadSalaryPage() {
       const bonusTotal      = parseFloat(emp.total_bonuses) || 0;
       const cur             = emp.currency || 'GBP';
       const sym             = currencySymbol(cur);
-      const taxRate         = emp.tax_rate ? parseFloat(emp.tax_rate) : null;
+      const paye            = emp.paye_breakdown || null;
       const netMonthly      = emp.net_monthly ? parseFloat(emp.net_monthly) : null;
 
       const initials = (emp.name || '?').split(' ').map(w => w[0]).join('').slice(0,2).toUpperCase();
@@ -1075,10 +1075,17 @@ async function loadSalaryPage() {
         ? `<div class="salary-stat" style="border-color:#f59e0b"><div class="salary-stat-label" style="color:#b45309">Bonuses Paid</div><div class="salary-stat-value" style="color:#d97706">+${sym}${bonusTotal.toLocaleString('en-GB', {minimumFractionDigits:2})}</div></div>`
         : '';
 
-      const taxNote = taxRate
-        ? `<div class="salary-stat" style="border-color:#818cf8;background:#eef2ff">
-            <div class="salary-stat-label" style="color:var(--primary)">Net Monthly (after ${taxRate}% tax)</div>
-            <div class="salary-stat-value" style="color:var(--primary)">${sym}${netMonthly.toLocaleString('en-GB', {minimumFractionDigits:2})}</div>
+      const taxNote = paye
+        ? `<div class="salary-stat" style="border-color:#818cf8;background:#eef2ff;grid-column:1/-1">
+            <div class="salary-stat-label" style="color:var(--primary);font-weight:600;margin-bottom:6px">UK PAYE Breakdown (2024/25)</div>
+            <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:6px;font-size:0.82rem">
+              <span>Income Tax: <strong>${sym}${paye.income_tax.toLocaleString('en-GB',{minimumFractionDigits:2})}/yr</strong></span>
+              <span>Nat. Insurance: <strong>${sym}${paye.national_insurance.toLocaleString('en-GB',{minimumFractionDigits:2})}/yr</strong></span>
+              ${paye.pension > 0 ? `<span>Pension (${emp.pension_rate}%): <strong>${sym}${paye.pension.toLocaleString('en-GB',{minimumFractionDigits:2})}/yr</strong></span>` : ''}
+            </div>
+            <div style="margin-top:8px;font-size:0.95rem;font-weight:700;color:var(--primary)">
+              Take-home: ${sym}${paye.net_monthly.toLocaleString('en-GB',{minimumFractionDigits:2})}/mo
+            </div>
           </div>`
         : '';
 
@@ -1720,7 +1727,7 @@ async function renderSalaryReminderPanel() {
         const grossMonthly = (parseFloat(emp.annual_salary) || 0) / 12;
         const netMo = emp.net_monthly ? parseFloat(emp.net_monthly) : null;
         const displayAmount = netMo ?? grossMonthly;
-        const taxLabel = netMo ? ` <span style="font-size:0.72rem;color:var(--muted)">(net, after ${emp.tax_rate}% tax)</span>` : '';
+        const taxLabel = netMo ? ` <span style="font-size:0.72rem;color:var(--muted)">(net take-home)</span>` : '';
         return `
           <div class="salary-reminder-row">
             <div class="salary-reminder-name">${esc(emp.name)}</div>

@@ -56,7 +56,8 @@ async function runMigrations() {
       ADD COLUMN IF NOT EXISTS start_date DATE,
       ADD COLUMN IF NOT EXISTS termination_date DATE,
       ADD COLUMN IF NOT EXISTS termination_reason TEXT DEFAULT '',
-      ADD COLUMN IF NOT EXISTS tax_rate NUMERIC(5,2)
+      ADD COLUMN IF NOT EXISTS tax_rate NUMERIC(5,2),
+      ADD COLUMN IF NOT EXISTS pension_rate NUMERIC(5,2) DEFAULT 0
   `);
 
   await sql(`
