@@ -1687,6 +1687,42 @@ tbody tr:hover td strong { color: var(--primary); }
 }
 .sc-prog-fill.overpaid { background: linear-gradient(90deg, #10b981, #34d399); }
 
+/* Employee section search bar */
+#empSearch {
+  border: 1.5px solid var(--border);
+  border-radius: 9px;
+  padding: 9px 13px;
+  font-size: 0.875rem;
+  font-family: inherit;
+  outline: none;
+  transition: all 0.18s;
+  background: var(--bg);
+  color: var(--text);
+  font-weight: 500;
+  width: 100%;
+}
+#empSearch:focus {
+  border-color: var(--primary);
+  background: #fff;
+  box-shadow: 0 0 0 3px rgba(99,102,241,0.1);
+}
+
+/* First-month suggestion callout */
+.sc-firstmonth-tip {
+  display: flex; align-items: flex-start; gap: 10px;
+  margin: 0 22px 14px;
+  padding: 10px 14px;
+  background: #eff6ff;
+  border: 1px solid #bfdbfe;
+  border-radius: 10px;
+  font-size: 0.82rem;
+  color: #1e40af;
+  line-height: 1.45;
+}
+.sc-firstmonth-tip strong { color: #1d4ed8; }
+.sc-fm-icon { font-size: 1rem; flex-shrink: 0; margin-top: 1px; }
+.sc-fm-sub { display: block; font-size: 0.73rem; color: #60a5fa; margin-top: 2px; }
+
 /* Key figures strip */
 .sc-figures {
   display: grid; grid-template-columns: repeat(3, 1fr);

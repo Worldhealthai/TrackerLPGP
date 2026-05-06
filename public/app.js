@@ -1,6 +1,7 @@
 // ─── STATE ───────────────────────────────────────────────────────────────────
 let currentUser = null;
 let employees = [];
+let allEmployeesData = [];
 let currentAdjRecord = null;
 
 const SHIFT_MINS = 480;
@@ -106,14 +107,27 @@ async function loadEmployees() {
 
 async function loadEmpTable() {
   const res = await fetch('/api/employees/all');
-  const all = await res.json();
+  allEmployeesData = await res.json();
+  renderEmpTable();
+}
+
+function filterEmpTable() {
+  renderEmpTable();
+}
+
+function renderEmpTable() {
+  const search = (document.getElementById('empSearch')?.value || '').trim().toLowerCase();
+  const list = search
+    ? allEmployeesData.filter(e => (e.name || '').toLowerCase().includes(search))
+    : allEmployeesData;
   const tbody = document.getElementById('empTable');
   tbody.innerHTML = '';
-  if (!all.length) {
-    tbody.innerHTML = `<tr><td colspan="6"><div class="empty-state"><div class="icon">👥</div><div>No employees yet.</div></div></td></tr>`;
+  if (!list.length) {
+    const msg = search ? 'No employees match your search.' : 'No employees yet.';
+    tbody.innerHTML = `<tr><td colspan="6"><div class="empty-state"><div class="icon">👥</div><div>${msg}</div></div></td></tr>`;
     return;
   }
-  all.forEach(emp => {
+  list.forEach(emp => {
     const typeLabel  = emp.employment_type === 'self_employed' ? 'Self-Employed' : 'Payroll';
     const typeBadge  = emp.employment_type === 'self_employed' ? 'badge-yellow' : 'badge-blue';
     const terminated = !emp.active && emp.termination_date;
@@ -1033,6 +1047,14 @@ async function loadSalaryPage() {
       const paye            = emp.paye_breakdown || null;
       const netMonthly      = emp.net_monthly ? parseFloat(emp.net_monthly) : null;
 
+      // First-month suggestion: only when employee started mid-month
+      const pr = emp.pro_rated;
+      const isPartialFirstMonth = pr && pr.first_month_days < pr.first_month_total_days;
+      const payeNetFactor = paye && annualSalary > 0 ? paye.net_annual / annualSalary : 1;
+      const suggestedFirstMonthNet = isPartialFirstMonth
+        ? parseFloat((pr.first_month_pay * payeNetFactor).toFixed(2))
+        : null;
+
       const initials = (emp.name || '?').split(' ').map(w => w[0]).join('').slice(0,2).toUpperCase();
       const typeLabel = emp.employment_type === 'self_employed' ? 'Self-Employed' : 'Payroll';
       const typeBadge = emp.employment_type === 'self_employed' ? 'badge-yellow' : 'badge-blue';
@@ -1087,6 +1109,21 @@ async function loadSalaryPage() {
             <div class="sc-prog-fill${isOverpaid ? ' overpaid' : ''}" style="width:${Math.min(pctPaid,100)}%"></div>
           </div>
         </div>
+
+        ${suggestedFirstMonthNet !== null ? (() => {
+          const firstMonthName = MONTHS[parseInt(pr.first_month.split('-')[1])] || pr.first_month;
+          const afterLabel = paye
+            ? `after PAYE/NI${paye.pension > 0 ? '/pension' : ''}`
+            : 'self-employed';
+          return `<div class="sc-firstmonth-tip">
+            <span class="sc-fm-icon">💡</span>
+            <div>
+              Started partway through ${firstMonthName} — suggested first month pay:
+              <strong>${sym}${suggestedFirstMonthNet.toLocaleString('en-GB',{minimumFractionDigits:2})}</strong>
+              <span class="sc-fm-sub">${pr.first_month_days} of ${pr.first_month_total_days} working days · ${afterLabel}</span>
+            </div>
+          </div>`;
+        })() : ''}
 
         <div class="sc-figures">
           ${paye ? `
