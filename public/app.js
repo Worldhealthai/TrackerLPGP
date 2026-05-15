@@ -287,19 +287,21 @@ async function loadDashboard() {
     </div>
   `;
 
-  const [summaryRes, salaryRes, upcomingRes, allEmpRes, hotelRes] = await Promise.all([
+  const [summaryRes, salaryRes, upcomingRes, expiringRes, allEmpRes, hotelRes] = await Promise.all([
     fetch(`/api/summary?from=${year}-01-01&to=${year}-12-31`),
     fetch(`/api/salary-overview?year=${year}`),
     fetch(`/api/calendar-reminders/upcoming?days=7`),
+    fetch(`/api/contracts/expiring?days=60`),
     fetch(`/api/employees/all`),
     fetch(`/api/hotel-expenses`)
   ]);
 
-  const summary       = summaryRes.ok  ? await summaryRes.json()  : [];
-  const salaryData    = salaryRes.ok   ? await salaryRes.json()   : [];
-  const upcoming      = upcomingRes.ok ? await upcomingRes.json() : [];
-  const allEmps       = allEmpRes.ok   ? await allEmpRes.json()   : [];
-  const hotelData     = hotelRes.ok    ? await hotelRes.json()    : [];
+  const summary       = summaryRes.ok   ? await summaryRes.json()   : [];
+  const salaryData    = salaryRes.ok    ? await salaryRes.json()    : [];
+  const upcoming      = upcomingRes.ok  ? await upcomingRes.json()  : [];
+  const expiring      = expiringRes.ok  ? await expiringRes.json()  : [];
+  const allEmps       = allEmpRes.ok    ? await allEmpRes.json()    : [];
+  const hotelData     = hotelRes.ok     ? await hotelRes.json()     : [];
 
   const activeEmps    = allEmps.filter(e => e.active);
   const unpaidCount   = getUnpaidThisMonth(salaryData, year, month).length;
