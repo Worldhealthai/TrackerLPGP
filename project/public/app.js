@@ -371,36 +371,36 @@ async function loadDashboard() {
   const unpaidSub    = unpaidCount > 0 ? 'Action required &rarr;' : 'All paid up';
   const salaryFmt    = fmtK(totalGBPRemaining);
 
-  document.getElementById('dashStats').innerHTML =
-    '<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:16px">' +
-      '<div class="dash-mini-card dash-mini--indigo" style="cursor:pointer" onclick="navigate(\'salary\')">' +
-        '<div class="dash-mini-icon">&pound;</div>' +
-        '<div class="dash-mini-body">' +
-          '<div class="dash-mini-label">Salaries Remaining</div>' +
-          '<div class="dash-mini-value">&pound;' + salaryFmt + '</div>' +
-          '<div class="dash-mini-sub">GBP outstanding &middot; ' + year + '</div>' +
-        '</div>' +
+  const miniCardsHtml =
+    '<div class="dash-mini-card dash-mini--indigo" style="cursor:pointer" onclick="navigate(\'salary\')">' +
+      '<div class="dash-mini-icon">&pound;</div>' +
+      '<div class="dash-mini-body">' +
+        '<div class="dash-mini-label">Salaries Remaining</div>' +
+        '<div class="dash-mini-value">&pound;' + salaryFmt + '</div>' +
+        '<div class="dash-mini-sub">GBP outstanding &middot; ' + year + '</div>' +
       '</div>' +
-      '<div class="dash-mini-card ' + hotelClass + '" style="cursor:pointer" onclick="navigate(\'hotels\')">' +
-        '<div class="dash-mini-icon">&#127968;</div>' +
-        '<div class="dash-mini-body">' +
-          '<div class="dash-mini-label">Hotel Fees Remaining</div>' +
-          '<div class="dash-mini-value">' + hotelEvents + '</div>' +
-          '<div class="dash-mini-sub">' + hotelSub + '</div>' +
-        '</div>' +
+    '</div>' +
+    '<div class="dash-mini-card ' + hotelClass + '" style="cursor:pointer" onclick="navigate(\'hotels\')">' +
+      '<div class="dash-mini-icon">&#127968;</div>' +
+      '<div class="dash-mini-body">' +
+        '<div class="dash-mini-label">Hotel Fees Remaining</div>' +
+        '<div class="dash-mini-value">' + hotelEvents + '</div>' +
+        '<div class="dash-mini-sub">' + hotelSub + '</div>' +
       '</div>' +
-      '<div class="dash-mini-card ' + unpaidClass + '" style="cursor:pointer" onclick="navigate(\'salary\')">' +
-        '<div class="dash-mini-icon">' + unpaidIcon + '</div>' +
-        '<div class="dash-mini-body">' +
-          '<div class="dash-mini-label">Unpaid This Month</div>' +
-          '<div class="dash-mini-value">' + unpaidCount + '</div>' +
-          '<div class="dash-mini-sub">' + unpaidSub + '</div>' +
-        '</div>' +
+    '</div>' +
+    '<div class="dash-mini-card ' + unpaidClass + '" style="cursor:pointer" onclick="navigate(\'salary\')">' +
+      '<div class="dash-mini-icon">' + unpaidIcon + '</div>' +
+      '<div class="dash-mini-body">' +
+        '<div class="dash-mini-label">Unpaid This Month</div>' +
+        '<div class="dash-mini-value">' + unpaidCount + '</div>' +
+        '<div class="dash-mini-sub">' + unpaidSub + '</div>' +
       '</div>' +
     '</div>';
 
-  // Contract expiry panel
-  renderContractExpiryPanel(expiring);
+  document.getElementById('dashStats').innerHTML = '';
+
+  // Contract expiry panel (now also carries the 3 mini cards in the left column)
+  renderContractExpiryPanel(expiring, miniCardsHtml);
 
   // Headcount by department (combined with hero stats)
   renderHeadcountPanel(activeEmps, payrollCount, seCount, totalHeadcount, year);
@@ -442,33 +442,43 @@ async function loadDashboard() {
   }
 }
 
-function renderContractExpiryPanel(expiring) {
-  const el = document.getElementById('contractExpiryPanel');
+function renderContractExpiryPanel(expiring, miniCardsHtml) {
+  var el = document.getElementById('contractExpiryPanel');
   if (!el) return;
-  if (!expiring.length) { el.innerHTML = ''; return; }
-  const today = new Date().toISOString().slice(0,10);
-  el.innerHTML = `
-    <div class="dash-panel dash-panel--alert">
-      <div class="dash-panel-header">
-        <span class="dash-panel-icon">⚠️</span>
-        <span class="dash-panel-title">Contracts Expiring (Next 60 Days)</span>
-        <span class="dash-panel-count">${expiring.length}</span>
-      </div>
-      <div class="dash-panel-body">
-        ${expiring.map(e => {
-          const expired = e.contract_end_date < today;
-          const badge = expired ? 'badge-red' : 'badge-yellow';
-          const label = expired ? 'Expired' : `Ends ${e.contract_end_date}`;
-          return `<div class="dash-panel-row">
-            <div>
-              <div style="font-weight:700;font-size:0.88rem">${esc(e.name)}</div>
-              ${e.job_title || e.department ? `<div style="font-size:0.74rem;color:var(--muted)">${esc([e.job_title,e.department].filter(Boolean).join(' · '))}</div>` : ''}
-            </div>
-            <span class="badge ${badge}">${label}</span>
-          </div>`;
-        }).join('')}
-      </div>
-    </div>`;
+
+  var html = '<div style="display:flex;flex-direction:column;gap:12px;height:100%">';
+
+  // Always show the 3 mini action cards stacked
+  if (miniCardsHtml) html += miniCardsHtml;
+
+  // Expiry alert below if contracts are expiring
+  if (expiring && expiring.length) {
+    var today = new Date().toISOString().slice(0,10);
+    html += '<div class="dash-panel dash-panel--alert" style="margin-top:4px">' +
+      '<div class="dash-panel-header">' +
+        '<span class="dash-panel-icon">⚠️</span>' +
+        '<span class="dash-panel-title">Contracts Expiring</span>' +
+        '<span class="dash-panel-count">' + expiring.length + '</span>' +
+      '</div>' +
+      '<div class="dash-panel-body">' +
+        expiring.map(function(e) {
+          var expired = e.contract_end_date < today;
+          var badge = expired ? 'badge-red' : 'badge-yellow';
+          var label = expired ? 'Expired' : 'Ends ' + e.contract_end_date;
+          return '<div class="dash-panel-row">' +
+            '<div>' +
+              '<div style="font-weight:700;font-size:0.88rem">' + esc(e.name) + '</div>' +
+              ((e.job_title || e.department) ? '<div style="font-size:0.74rem;color:var(--muted)">' + esc([e.job_title,e.department].filter(Boolean).join(' · ')) + '</div>' : '') +
+            '</div>' +
+            '<span class="badge ' + badge + '">' + label + '</span>' +
+          '</div>';
+        }).join('') +
+      '</div>' +
+    '</div>';
+  }
+
+  html += '</div>';
+  el.innerHTML = html;
 }
 
 function renderHeadcountPanel(activeEmps, payrollCount, seCount, totalHeadcount, year) {
@@ -1552,15 +1562,38 @@ async function loadSalaryPage() {
       const paye            = emp.paye_breakdown || null;
       const netMonthly      = emp.net_monthly ? parseFloat(emp.net_monthly) : null;
 
-      // First-month suggestion: use end-of-month calculation (not earned-to-today)
+      // First-month suggestion: server-provided or client-side fallback
       const pr = emp.pro_rated;
       const fm = emp.first_month_full;
-      // Partial = employee started mid-month (not day 1)
       const isPartialFirstMonth = fm && fm.first_month_days < fm.first_month_total_days;
       const payeNetFactor = paye && annualSalary > 0 ? paye.net_annual / annualSalary : 1;
-      const suggestedFirstMonthNet = isPartialFirstMonth
+      let suggestedFirstMonthNet = isPartialFirstMonth
         ? parseFloat((fm.first_month_pay * payeNetFactor).toFixed(2))
         : null;
+      let fmMeta = isPartialFirstMonth ? {
+        monthName: MONTHS[parseInt(fm.first_month.split('-')[1]) - 1] || fm.first_month,
+        startDate: fm.start_date || emp.start_date,
+        daysWorked: fm.first_month_days,
+        daysTotal: fm.first_month_total_days
+      } : null;
+
+      // Client-side fallback: derive from emp.start_date when server didn't provide fm data
+      if (suggestedFirstMonthNet === null && emp.start_date && !emp.is_terminated) {
+        const sd = new Date(emp.start_date + 'T00:00:00');
+        const startDay = sd.getDate();
+        if (startDay > 1) {
+          const daysInMonth = new Date(sd.getFullYear(), sd.getMonth() + 1, 0).getDate();
+          const daysWorked = daysInMonth - startDay + 1;
+          const netM = (paye ? paye.net_monthly : null) || netMonthly || (annualSalary / 12);
+          suggestedFirstMonthNet = parseFloat((netM * (daysWorked / daysInMonth)).toFixed(2));
+          fmMeta = {
+            monthName: MONTHS[sd.getMonth()],
+            startDate: emp.start_date,
+            daysWorked,
+            daysTotal: daysInMonth
+          };
+        }
+      }
 
       const initials = (emp.name || '?').split(' ').map(w => w[0]).join('').slice(0,2).toUpperCase();
       const typeLabel = emp.employment_type === 'self_employed' ? 'Self-Employed' : 'Payroll';
@@ -1618,20 +1651,14 @@ async function loadSalaryPage() {
           </div>
         </div>
 
-        ${suggestedFirstMonthNet !== null ? (() => {
-          const firstMonthName = MONTHS[parseInt(fm.first_month.split('-')[1])] || fm.first_month;
-          const afterLabel = paye
-            ? `after PAYE/NI${paye.pension > 0 ? '/pension' : ''}`
-            : 'gross';
-          return `<div class="sc-firstmonth-tip">
+        ${suggestedFirstMonthNet !== null && fmMeta ? `<div class="sc-firstmonth-tip">
             <span class="sc-fm-icon">💡</span>
             <div>
-              Suggested payment for ${firstMonthName} (started ${fm.start_date}):
+              Suggested payment for ${fmMeta.monthName} (started ${fmMeta.startDate}):
               <strong>${sym}${suggestedFirstMonthNet.toLocaleString('en-GB',{minimumFractionDigits:2})}</strong>
-              <span class="sc-fm-sub">${fm.first_month_days} of ${fm.first_month_total_days} working days · ${afterLabel}</span>
+              <span class="sc-fm-sub">${fmMeta.daysWorked} of ${fmMeta.daysTotal} days · ${paye ? 'after PAYE/NI' + (paye.pension > 0 ? '/pension' : '') : 'pro-rata'}</span>
             </div>
-          </div>`;
-        })() : ''}
+          </div>` : ''}
 
         <div class="sc-figures">
           ${paye ? `
