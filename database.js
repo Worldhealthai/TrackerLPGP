@@ -252,6 +252,8 @@ async function runMigrations() {
       ['admin', hash]);
     console.log('Default admin created: username=admin password=admin123');
   }
+
+  await sql('ALTER TABLE employees ADD COLUMN IF NOT EXISTS portal_pin TEXT DEFAULT NULL');
 }
 
 module.exports = { sql, initDb };
