@@ -820,6 +820,16 @@ tbody tr:hover td strong { color: var(--primary); }
 .soc-value.outstanding { color: var(--danger); }
 .soc-value.outstanding.overpaid { color: var(--success); }
 .soc-value.outstanding.clear    { color: var(--muted); }
+.soc-conversion {
+  font-size: 0.69rem; color: var(--muted); padding: 4px 16px 10px;
+  border-top: 1px dashed var(--border-light); margin-top: 2px;
+  font-style: italic;
+}
+.salary-overview-card.soc-gbp-total::before {
+  background: linear-gradient(90deg, #059669, #34d399, #6ee7b7);
+}
+.salary-overview-card.soc-gbp-total .soc-header { color: var(--success); }
+.salary-overview-card.soc-gbp-total .soc-value.outstanding { color: var(--success); }
 
 @media (max-width: 768px) {
   .salary-overview-grid { grid-template-columns: repeat(2, 1fr); gap: 10px; }

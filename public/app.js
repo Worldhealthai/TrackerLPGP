@@ -1129,17 +1129,22 @@ async function loadSalaryPage() {
     });
     const TYPE_LABEL = { payroll: 'Payroll', self_employed: 'Self-Employed' };
     const TYPE_CLASS  = { payroll: 'payroll', self_employed: 'self-employed' };
-    const totalHtml = groups.map(g => {
+    // AED → GBP approximate rate (shown clearly to user)
+    const AED_TO_GBP = 1 / 4.67;
+
+    const groupCards = groups.map(g => {
       const s        = currencySymbol(g.currency);
       const tTarget  = g.rows.reduce((a, b) => a + (parseFloat(b.salary_target ?? b.annual_salary) || 0), 0);
       const tPaid    = g.rows.reduce((a, b) => a + (parseFloat(b.total_paid)    || 0), 0);
       const tDeduct  = g.rows.reduce((a, b) => a + (parseFloat(b.excess_deduction) || 0) + (parseFloat(b.total_office_deductions) || 0), 0);
       const tRemain  = g.rows.reduce((a, b) => a + (parseFloat(b.net_remaining) || 0), 0);
       const typeLabel = groups.length > 1 ? `${TYPE_LABEL[g.type]} · ${g.currency}` : TYPE_LABEL[g.type];
-      // Show employee name when the card represents a single person
       const empName   = g.rows.length === 1 ? g.rows[0].name : null;
       const header    = empName ? `${empName} &nbsp;·&nbsp; ${typeLabel}` : typeLabel;
       const remainClass = tRemain < 0 ? 'overpaid' : tRemain === 0 ? 'clear' : '';
+      const aedConversion = g.currency === 'AED' && tRemain > 0
+        ? `<div class="soc-conversion">≈ £${(tRemain * AED_TO_GBP).toLocaleString('en-GB',{maximumFractionDigits:0})} at 4.67 AED/GBP</div>`
+        : '';
       return `
         <div class="salary-overview-card ${TYPE_CLASS[g.type]}">
           <div class="soc-header">${header}</div>
@@ -1160,9 +1165,34 @@ async function loadSalaryPage() {
             <span class="soc-label">Outstanding</span>
             <span class="soc-value outstanding ${remainClass}">${tRemain < 0 ? '−' : ''}${s}${fmtK(Math.abs(tRemain))}</span>
           </div>
+          ${aedConversion}
         </div>`;
-    }).join('');
-    document.getElementById('salaryTotals').innerHTML = totalHtml || '';
+    });
+
+    // Grand total GBP card — converts all currencies to GBP
+    const gbpTotal = groups.reduce((sum, g) => {
+      const tRemain = g.rows.reduce((a, b) => a + (parseFloat(b.net_remaining) || 0), 0);
+      if (g.currency === 'GBP') return sum + tRemain;
+      if (g.currency === 'AED') return sum + tRemain * AED_TO_GBP;
+      return sum; // other currencies not converted
+    }, 0);
+    const hasMultiCurrency = groups.some(g => g.currency !== 'GBP');
+    const gbpCard = hasMultiCurrency ? `
+      <div class="salary-overview-card soc-gbp-total">
+        <div class="soc-header">Total Outstanding · GBP</div>
+        <div class="soc-row" style="padding-top:10px">
+          <span class="soc-label">All salaries (converted)</span>
+        </div>
+        <div class="soc-row soc-row--outstanding">
+          <span class="soc-label">Remaining to pay</span>
+          <span class="soc-value outstanding ${gbpTotal <= 0 ? 'overpaid' : ''}" style="font-size:1.35rem">
+            £${Math.abs(gbpTotal).toLocaleString('en-GB',{minimumFractionDigits:2,maximumFractionDigits:2})}
+          </span>
+        </div>
+        <div class="soc-conversion">GBP + AED at 4.67 · end of ${year}</div>
+      </div>` : '';
+
+    document.getElementById('salaryTotals').innerHTML = (groupCards.join('') + gbpCard) || '';
 
     // ── Per-employee cards ──
     if (!rows.length) {

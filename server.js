@@ -1030,18 +1030,19 @@ app.get('/api/export/payroll-csv', requireAuth, async (req, res) => {
 
     const rows = await Promise.all(employees.map(async emp => {
       const annualSal = parseFloat(emp.annual_salary) || 0;
-      const { rows: payments } = await q(
-        'SELECT SUM(amount) AS total FROM monthly_payments WHERE employee_id = ? AND payment_year = ?',
-        [emp.id, year]
-      );
-      const totalPaid = parseFloat(payments[0]?.total || 0);
+      const [{ rows: payments }, { rows: officeRows }] = await Promise.all([
+        q('SELECT SUM(amount) AS total FROM monthly_payments WHERE employee_id = ? AND payment_year = ?', [emp.id, year]),
+        q('SELECT COALESCE(SUM(amount),0) AS total FROM office_deductions WHERE employee_id = ?', [emp.id])
+      ]);
+      const totalPaid   = parseFloat(payments[0]?.total || 0);
+      const totalOffice = parseFloat(officeRows[0]?.total || 0);
       const ukPay = emp.employment_type === 'payroll' && annualSal > 0
         ? calcUKNetPay(annualSal, parseFloat(emp.pension_rate) || 0) : null;
-      const netMonthly = ukPay ? ukPay.net_monthly : annualSal / 12;
-      const grossMonthly = ukPay ? ukPay.gross_monthly : annualSal / 12;
-      const outstanding = parseFloat(emp.employment_type === 'payroll' && ukPay
-        ? (ukPay.net_annual - totalPaid).toFixed(2)
-        : (annualSal - totalPaid).toFixed(2));
+      const netMonthly    = ukPay ? ukPay.net_monthly : annualSal / 12;
+      const grossMonthly  = ukPay ? ukPay.gross_monthly : annualSal / 12;
+      const grossTarget   = emp.employment_type === 'payroll' && ukPay ? ukPay.net_annual : annualSal;
+      const outstanding   = parseFloat((grossTarget - totalPaid).toFixed(2));
+      const netOutstanding = parseFloat((outstanding - totalOffice).toFixed(2));
       return {
         name: emp.name,
         department: emp.department || '',
@@ -1055,12 +1056,15 @@ app.get('/api/export/payroll-csv', requireAuth, async (req, res) => {
         ni_yr: ukPay ? ukPay.national_insurance : 0,
         pension_yr: ukPay ? ukPay.pension : 0,
         total_paid: totalPaid,
-        outstanding
+        office_deductions: totalOffice,
+        outstanding,
+        net_outstanding: netOutstanding
       };
     }));
 
     const headers = ['Name','Department','Job Title','Type','Currency','Annual Salary',
-      'Gross/Month','Net/Month','Income Tax/Yr','NI/Yr','Pension/Yr','Total Paid','Outstanding'];
+      'Gross/Month','Net/Month','Income Tax/Yr','NI/Yr','Pension/Yr',
+      'Total Paid','Office Deductions','Outstanding (before office)','Net Outstanding'];
     const escape = v => `"${String(v).replace(/"/g,'""')}"`;
     const csv = [
       headers.map(escape).join(','),
@@ -1068,7 +1072,7 @@ app.get('/api/export/payroll-csv', requireAuth, async (req, res) => {
         r.name, r.department, r.job_title, r.employment_type, r.currency,
         r.annual_salary, r.gross_monthly, r.net_monthly,
         r.income_tax_yr, r.ni_yr, r.pension_yr,
-        r.total_paid, r.outstanding
+        r.total_paid, r.office_deductions, r.outstanding, r.net_outstanding
       ].map(escape).join(','))
     ].join('\r\n');
 
