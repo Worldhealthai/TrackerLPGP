@@ -644,7 +644,7 @@ function renderDashActivity(summary, expiring, hotelData, salaryData) {
   if (!items.length) { el.innerHTML = ''; return; }
 
   const TONE_COLOR = { pos:'var(--positive)', neg:'var(--negative)', warn:'var(--warning)', info:'var(--info)' };
-  const rows = items.slice(0,6).map(it =>
+  const rows = items.slice(0,5).map(it =>
     '<div style="display:flex;gap:10px;padding:11px 16px;border-bottom:1px solid var(--line);align-items:flex-start">' +
       '<div style="width:28px;height:28px;border-radius:6px;background:var(--surface-2);border:1px solid var(--border);display:grid;place-items:center;flex-shrink:0;color:' + TONE_COLOR[it.tone] + '">' + it.icon + '</div>' +
       '<div style="flex:1;min-width:0">' +
