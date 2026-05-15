@@ -2210,12 +2210,15 @@ async function loadCalendar() {
 
   const empFilter = document.getElementById('calEmpFilter').value;
 
-  const [calRes, remRes] = await Promise.all([
+  const [calRes, remRes, pendingRes] = await Promise.all([
     fetch(`/api/calendar?year=${calYear}&month=${calMonth}`),
-    fetch(`/api/calendar-reminders?year=${calYear}&month=${calMonth}`)
+    fetch(`/api/calendar-reminders?year=${calYear}&month=${calMonth}`),
+    fetch(`/api/day-off-requests`)
   ]);
   calData = await calRes.json();
   calReminders = remRes.ok ? await remRes.json() : [];
+  const pendingRequests = pendingRes.ok ? await pendingRes.json() : [];
+  renderDayOffRequestsBanner(pendingRequests);
 
   // Update calSub
   const calSub = document.getElementById('calSub');
@@ -2346,6 +2349,62 @@ function renderCalSummary(byDate, empFilter) {
     summary.innerHTML = statTiles;
   }
   summary.classList.remove('hidden');
+}
+
+function renderDayOffRequestsBanner(pending) {
+  let banner = document.getElementById('dayOffRequestsBanner');
+  if (!banner) {
+    const calPage = document.getElementById('page-calendar');
+    if (!calPage) return;
+    banner = document.createElement('div');
+    banner.id = 'dayOffRequestsBanner';
+    calPage.insertBefore(banner, calPage.firstChild);
+  }
+  if (!pending.length) { banner.innerHTML = ''; return; }
+
+  const MONS = ['JAN','FEB','MAR','APR','MAY','JUN','JUL','AUG','SEP','OCT','NOV','DEC'];
+  const rows = pending.map(r => {
+    const d = new Date(r.request_date);
+    const typeLabel = parseFloat(r.is_day_off) === 1 ? 'Full day' : 'Half day';
+    return '<div style="display:flex;align-items:center;gap:12px;padding:10px 16px;border-bottom:1px solid var(--border)">' +
+      '<div style="width:36px;text-align:center;background:#1a1f2e;border:1px solid var(--border);border-radius:6px;padding:5px 0;flex-shrink:0">' +
+        '<div style="font:800 13px/1 var(--font-mono);color:var(--text)">' + d.getUTCDate() + '</div>' +
+        '<div style="font:600 9px/1 var(--font-mono);color:var(--muted)">' + MONS[d.getUTCMonth()] + '</div>' +
+      '</div>' +
+      '<div style="flex:1">' +
+        '<div style="font:600 13px/1 var(--font-sans);color:var(--text)">' + esc(r.employee_name) + '</div>' +
+        '<div style="font:500 11px/1 var(--font-mono);color:var(--muted);margin-top:3px">' + typeLabel + (r.department ? ' · ' + esc(r.department) : '') + '</div>' +
+      '</div>' +
+      '<div style="display:flex;gap:6px">' +
+        '<button class="btn btn-primary btn-sm" onclick="approveLeave(' + r.id + ')">Approve</button>' +
+        '<button class="btn btn-danger btn-sm" onclick="declineLeave(' + r.id + ')">Decline</button>' +
+      '</div>' +
+    '</div>';
+  }).join('');
+
+  banner.innerHTML =
+    '<div class="card" style="margin-bottom:16px;border:1px solid var(--warning)">' +
+      '<div class="card-header" style="background:var(--warning)22">' +
+        '<span class="card-title">Pending Day-Off Requests</span>' +
+        '<span style="font:700 11px/1 var(--font-mono);color:var(--muted)">' + pending.length + ' pending</span>' +
+      '</div>' +
+      '<div>' + rows + '</div>' +
+    '</div>';
+}
+
+async function approveLeave(id) {
+  const res = await fetch('/api/day-off-requests/' + id + '/approve', { method: 'PUT' });
+  if (res.ok) { showToast('Day off approved', 'success'); loadCalendar(); }
+  else showToast('Failed to approve', 'error');
+}
+
+async function declineLeave(id) {
+  const reason = prompt('Reason for declining (optional):') ?? '';
+  const res = await fetch('/api/day-off-requests/' + id + '/decline', {
+    method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ reason })
+  });
+  if (res.ok) { showToast('Request declined', 'success'); loadCalendar(); }
+  else showToast('Failed to decline', 'error');
 }
 
 function openDayModal(dateStr, entries, remindersToday = []) {
@@ -2892,7 +2951,14 @@ async function checkUserRole() {
 
 async function initEmployeePortal(user) {
   window.currentUser = user;
-  // Hide all nav items except dashboard and calendar
+
+  // Wire logout
+  document.getElementById('logoutBtn')?.addEventListener('click', async () => {
+    await fetch('/api/logout', { method: 'POST' });
+    window.location.href = '/login.html';
+  });
+
+  // Hide non-allowed nav items
   document.querySelectorAll('.nav-item').forEach(el => {
     const page = el.dataset.page;
     if (page !== 'dashboard' && page !== 'calendar') el.style.display = 'none';
@@ -2901,32 +2967,102 @@ async function initEmployeePortal(user) {
     const page = el.dataset.page;
     if (page !== 'dashboard' && page !== 'calendar') el.style.display = 'none';
   });
-  // Hide admin-only UI elements
   const addEmpBtn = document.getElementById('addEmpBtn');
   if (addEmpBtn) addEmpBtn.style.display = 'none';
 
-  // Show employee greeting in sidebar
-  const sidebar = document.querySelector('.sidebar-footer') || document.querySelector('.nav-user');
-  // Set page title
   document.title = 'LPGP – My Portal';
 
-  // Load employee dashboard
-  navigate('dashboard');
-  loadEmployeeDashboard(user);
-
-  // Override navigate to only allow dashboard and calendar
-  window._origNavigate = window.navigate;
+  // Override navigate
   window.navigate = function(page) {
     if (page !== 'dashboard' && page !== 'calendar') return;
     document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
-    document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
-    document.querySelectorAll('.bottom-nav-item').forEach(n => n.classList.remove('active'));
+    document.querySelectorAll('.nav-item, .bottom-nav-item').forEach(n => n.classList.remove('active'));
     const pageEl = document.getElementById('page-' + page);
     if (pageEl) pageEl.classList.add('active');
     document.querySelectorAll('[data-page="' + page + '"]').forEach(n => n.classList.add('active'));
     if (page === 'dashboard') loadEmployeeDashboard(user);
     if (page === 'calendar') loadEmployeeCalendar();
   };
+
+  // Attach click handlers since admin init was skipped
+  document.querySelectorAll('.nav-item').forEach(el => {
+    el.addEventListener('click', () => window.navigate(el.dataset.page));
+  });
+  document.querySelectorAll('.bottom-nav-item').forEach(el => {
+    el.addEventListener('click', () => window.navigate(el.dataset.page));
+  });
+
+  // Poll notifications
+  loadEmpNotifications();
+  setInterval(loadEmpNotifications, 30000);
+
+  // Show dashboard
+  window.navigate('dashboard');
+}
+
+async function loadEmpNotifications() {
+  const res = await fetch('/api/employee/notifications');
+  if (!res.ok) return;
+  const notifs = await res.json();
+  const unread = notifs.filter(n => !n.is_read).length;
+
+  // Show badge in nav (use userLabel area or a dedicated badge)
+  let badge = document.getElementById('empNotifBadge');
+  if (!badge) {
+    // Insert badge near logout button area
+    const sidebar = document.querySelector('.sidebar-footer') || document.querySelector('.nav-bottom');
+    if (sidebar) {
+      const wrap = document.createElement('div');
+      wrap.id = 'empNotifBadge';
+      wrap.style.cssText = 'margin:8px 16px;padding:10px 14px;background:var(--surface-2);border:1px solid var(--border);border-radius:10px;cursor:pointer';
+      wrap.onclick = () => openEmpNotificationsModal(notifs);
+      sidebar.insertBefore(wrap, sidebar.firstChild);
+      badge = wrap;
+    }
+  }
+  if (badge) {
+    badge.onclick = () => openEmpNotificationsModal(notifs);
+    const dot = unread > 0 ? '<span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--negative);margin-right:6px"></span>' : '';
+    badge.innerHTML = dot + '<span style="font:600 11px/1 var(--font-mono);color:var(--muted)">Notifications ' +
+      (unread > 0 ? '<span style="color:var(--negative);font-weight:800">' + unread + ' new</span>' : '(none)') + '</span>';
+  }
+}
+
+function openEmpNotificationsModal(notifs) {
+  // Mark all read
+  fetch('/api/employee/notifications/read-all', { method: 'PUT' });
+  // Re-render badge
+  setTimeout(loadEmpNotifications, 500);
+
+  const existing = document.getElementById('empNotifModal');
+  if (existing) existing.remove();
+
+  const TYPE_COLOR = { approved: 'var(--positive)', declined: 'var(--negative)', info: 'var(--muted)' };
+  const rows = notifs.length
+    ? notifs.map(n => {
+        const d = new Date(n.created_at).toLocaleDateString('en-GB', {day:'2-digit',month:'short'});
+        const color = TYPE_COLOR[n.type] || 'var(--muted)';
+        return '<div style="padding:12px 0;border-bottom:1px solid var(--border)">' +
+          '<div style="display:flex;justify-content:space-between;margin-bottom:4px">' +
+            '<span style="font:700 11px/1 var(--font-mono);text-transform:uppercase;color:' + color + '">' + (n.type === 'approved' ? '✓ Approved' : n.type === 'declined' ? '✕ Declined' : 'Info') + '</span>' +
+            '<span style="font:500 10px/1 var(--font-mono);color:var(--muted)">' + d + '</span>' +
+          '</div>' +
+          '<div style="font:500 12px/1.4 var(--font-sans);color:var(--text)">' + esc(n.message) + '</div>' +
+        '</div>';
+      }).join('')
+    : '<div style="color:var(--muted);font-size:0.82rem;padding:16px 0;text-align:center">No notifications yet</div>';
+
+  const modal = document.createElement('div');
+  modal.id = 'empNotifModal';
+  modal.className = 'modal';
+  modal.innerHTML =
+    '<div class="modal-overlay" onclick="document.getElementById(\'empNotifModal\').remove()"></div>' +
+    '<div class="modal-box" style="max-width:420px">' +
+      '<div class="modal-header"><span class="modal-title">Notifications</span>' +
+        '<button class="modal-close" onclick="document.getElementById(\'empNotifModal\').remove()">×</button></div>' +
+      '<div class="modal-body" style="max-height:400px;overflow-y:auto">' + rows + '</div>' +
+    '</div>';
+  document.body.appendChild(modal);
 }
 
 async function loadEmployeeDashboard(user) {
@@ -3054,16 +3190,18 @@ async function loadEmployeeCalendar() {
   container.innerHTML = '<div class="skeleton" style="height:300px;border-radius:12px"></div>';
 
   try {
-    const [recordsRes, upcomingRes] = await Promise.all([
-      fetch('/api/employee/my-records?year=' + empCalYear + '&month=' + empCalMonth),
+    const [requestsRes, upcomingRes] = await Promise.all([
+      fetch('/api/employee/day-off-requests'),
       fetch('/api/calendar-reminders/upcoming?days=60')
     ]);
-    const records  = recordsRes.ok  ? await recordsRes.json()  : [];
+    const allRequests = requestsRes.ok ? await requestsRes.json() : [];
     const upcoming = upcomingRes.ok ? await upcomingRes.json() : [];
 
-    // Build a map: date → record
+    // Filter requests to current month and build map: date → request
+    const monthPrefix = empCalYear + '-' + String(empCalMonth).padStart(2,'0');
+    const requests = allRequests.filter(r => (r.request_date||'').startsWith(monthPrefix));
     const recordMap = {};
-    records.forEach(r => { recordMap[r.record_date] = r; });
+    requests.forEach(r => { recordMap[r.request_date.slice(0,10)] = r; });
 
     // Build calendar grid
     const firstDay = new Date(empCalYear, empCalMonth - 1, 1);
@@ -3085,15 +3223,24 @@ async function loadEmployeeCalendar() {
       const rec = recordMap[dateStr];
       const isToday = dateStr === today;
       const isPast  = dateStr < today;
+      const status = rec ? rec.status : null;
       let bg = 'var(--surface-2)';
       let label = '';
-      if (rec) {
-        bg = parseFloat(rec.is_day_off) === 1 ? '#7c3aed44' : '#d9770644';
-        label = parseFloat(rec.is_day_off) === 1 ? '<div style="font:600 9px/1 var(--font-mono);color:#a78bfa;margin-top:2px">FULL</div>' : '<div style="font:600 9px/1 var(--font-mono);color:#fb923c;margin-top:2px">HALF</div>';
+      if (status === 'pending') {
+        bg = '#d9770622';
+        label = '<div style="font:700 8px/1 var(--font-mono);color:#fb923c;margin-top:2px">PENDING</div>';
+      } else if (status === 'approved') {
+        bg = '#7c3aed33';
+        label = '<div style="font:700 8px/1 var(--font-mono);color:#a78bfa;margin-top:2px">APPR\'D</div>';
+      } else if (status === 'declined') {
+        bg = '#ef444422';
+        label = '<div style="font:700 8px/1 var(--font-mono);color:#f87171;margin-top:2px">DECL\'D</div>';
       }
-      gridHtml += '<div style="background:' + bg + ';border:1px solid ' + (isToday ? 'var(--primary)' : 'var(--border)') + ';border-radius:6px;padding:6px 4px;text-align:center;min-height:44px;cursor:' + (isPast?'default':'pointer') + '"' +
-        (!isPast && !rec ? ' onclick="openEmpDayOffModalDate(\'' + dateStr + '\')"' : '') +
-        (rec ? ' title="Click to cancel" onclick="cancelEmpDayOff(\'' + dateStr + '\')"' : '') + '>' +
+      const clickable = !isPast && !rec;
+      const cancelable = rec && rec.status === 'pending';
+      gridHtml += '<div style="background:' + bg + ';border:1px solid ' + (isToday ? 'var(--primary)' : 'var(--border)') + ';border-radius:6px;padding:6px 4px;text-align:center;min-height:44px;cursor:' + (clickable||cancelable?'pointer':'default') + '"' +
+        (clickable ? ' onclick="openEmpDayOffModalDate(\'' + dateStr + '\')"' : '') +
+        (cancelable ? ' title="Click to cancel pending request" onclick="cancelEmpDayOff(\'' + dateStr + '\')"' : '') + '>' +
         '<div style="font:' + (isToday?'800':'600') + ' 12px/1 var(--font-mono);color:' + (isToday?'var(--primary)':rec?'var(--text)':'var(--muted)') + '">' + d + '</div>' +
         label +
       '</div>';
@@ -3128,8 +3275,8 @@ async function loadEmployeeCalendar() {
         '<button class="btn btn-ghost" onclick="empCalNext()">Next ›</button>' +
       '</div>' +
       '<div style="display:grid;grid-template-columns:3fr 2fr;gap:16px">' +
-        '<div class="card"><div class="card-header"><span class="card-title">Days Off</span><span style="font:700 11px/1 var(--font-mono);color:var(--muted)">' + records.length + ' this month</span></div><div style="padding:16px">' + gridHtml + '</div>' +
-          '<div style="padding:8px 16px 14px;font:500 11px/1 var(--font-mono);color:var(--muted)">Click a future date to request a day off · Click an existing booking to cancel it</div>' +
+        '<div class="card"><div class="card-header"><span class="card-title">Days Off</span><span style="font:700 11px/1 var(--font-mono);color:var(--muted)">' + requests.length + ' this month</span></div><div style="padding:16px">' + gridHtml + '</div>' +
+          '<div style="padding:8px 16px 14px;font:500 11px/1 var(--font-mono);color:var(--muted)">Click a future date to request a day off · Click a pending request to cancel it</div>' +
         '</div>' +
         '<div class="card"><div class="card-header"><span class="card-title">Upcoming</span><span style="font:700 11px/1 var(--font-mono);color:var(--muted)">NEXT 60D</span></div>' +
           '<div style="padding:4px 16px 12px">' + (remHtml || '<div style="color:var(--muted);font-size:0.82rem;padding:12px 0">No upcoming reminders</div>') + '</div>' +
@@ -3164,9 +3311,9 @@ async function submitEmpDayOff() {
 }
 
 async function cancelEmpDayOff(date) {
-  if (!await showConfirm('Cancel your day off on ' + date + '?')) return;
+  if (!await showConfirm('Cancel your pending day off request for ' + date + '?')) return;
   const res = await fetch('/api/employee/day-off/' + date, { method:'DELETE' });
-  if (res.ok) { showToast('Booking cancelled', 'success'); loadEmployeeCalendar(); }
+  if (res.ok) { showToast('Request cancelled', 'success'); loadEmployeeCalendar(); }
   else showToast('Failed to cancel', 'error');
 }
 
