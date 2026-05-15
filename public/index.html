@@ -336,17 +336,26 @@
         <div class="page-head">
           <div>
             <h1>Reports</h1>
-            <div class="sub">// Filter, build, export · CSV / PDF</div>
+            <div class="sub">// Filter, build, export · payroll analytics</div>
           </div>
         </div>
-        <div class="filter-bar">
+        <div class="filter-bar" style="flex-wrap:wrap;gap:10px;align-items:flex-end">
+          <div class="form-group" style="min-width:160px">
+            <label>Report Type</label>
+            <select id="repType">
+              <option value="payroll">Payroll Summary</option>
+              <option value="deductions">Deductions Detail</option>
+            </select>
+          </div>
           <div class="form-group"><label>From</label><input type="date" id="repFrom"></div>
           <div class="form-group"><label>To</label><input type="date" id="repTo"></div>
-          <div class="form-group">
+          <div class="form-group" style="min-width:160px">
             <label>Employee</label>
             <select id="repEmp"><option value="">All Employees</option></select>
           </div>
-          <button class="btn btn-primary" onclick="loadReport()">Generate</button>
+          <div style="display:flex;gap:8px;margin-top:auto">
+            <button class="btn btn-primary" onclick="loadReport()">Generate</button>
+          </div>
         </div>
         <div id="reportContent">
           <div class="empty-state"><div class="icon">📋</div><div>Select a date range and generate a report.</div></div>
