@@ -1659,14 +1659,6 @@ async function loadSalaryPage() {
           </div>
         </div>
 
-        ${suggestedFirstMonthNet !== null && fmMeta ? `<div class="sc-firstmonth-tip">
-            <span class="sc-fm-icon">💡</span>
-            <div>
-              Suggested payment for ${fmMeta.monthName} (started ${fmMeta.startDate}):
-              <strong>${sym}${suggestedFirstMonthNet.toLocaleString('en-GB',{minimumFractionDigits:2})}</strong>
-              <span class="sc-fm-sub">${fmMeta.daysWorked} of ${fmMeta.daysTotal} days · ${paye ? 'after PAYE/NI' + (paye.pension > 0 ? '/pension' : '') : 'pro-rata'}</span>
-            </div>
-          </div>` : ''}
 
         ${(() => {
           const monthlyVal = paye ? paye.net_monthly : annualSalary / 12;
@@ -1809,9 +1801,29 @@ async function loadSalaryPage() {
           </div>` : ''}
 
           <!-- Pro-rated breakdown -->
-          ${(emp.pro_rated || emp.first_month_full) ? (() => {
+          ${(emp.pro_rated || emp.first_month_full || (suggestedFirstMonthNet !== null && fmMeta)) ? (() => {
             const pr = emp.pro_rated;
             const fmr = emp.first_month_full;
+            // Client-side fallback only (no server data)
+            if (!pr && !fmr && suggestedFirstMonthNet !== null && fmMeta) {
+              const grossMonthly = annualSalary / 12;
+              const grossProrata = grossMonthly * (fmMeta.daysWorked / fmMeta.daysTotal);
+              const payLabel = paye ? ('Net after PAYE/NI' + (paye.pension > 0 ? '/pension' : '')) : 'Pro-rata amount';
+              return `
+          <div class="sc-section">
+            <button class="sc-sec-toggle" onclick="toggleSection(this)">
+              <span class="sc-sec-title">Pro-Rated Pay — started ${fmMeta.startDate}</span>
+              <span class="sc-chevron">›</span>
+            </button>
+            <div class="sc-sec-body">
+              <div class="sc-breakdown">
+                <div class="sc-breakdown-title">First month payment — ${fmMeta.monthName}</div>
+                <div class="sc-breakdown-row"><span>${fmMeta.daysWorked} of ${fmMeta.daysTotal} days in ${fmMeta.monthName}</span><span>${sym}${grossProrata.toLocaleString('en-GB',{minimumFractionDigits:2})} gross</span></div>
+                <div class="sc-breakdown-row total"><span>${payLabel}</span><span>${sym}${suggestedFirstMonthNet.toLocaleString('en-GB',{minimumFractionDigits:2})}</span></div>
+              </div>
+            </div>
+          </div>`;
+            }
             const showFmFull = fmr && fmr.first_month_days < fmr.first_month_total_days;
             const fmrName = fmr ? (MONTHS[parseInt(fmr.first_month.split('-')[1])] || fmr.first_month) : null;
             const fmrGross = fmr ? fmr.first_month_pay : 0;
