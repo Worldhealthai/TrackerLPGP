@@ -41,15 +41,15 @@ document.addEventListener('DOMContentLoaded', async () => {
   });
 
   // Hamburger / drawer
-  document.getElementById('hamburgerBtn').addEventListener('click', toggleMobileNav);
-  document.getElementById('navOverlay').addEventListener('click', closeMobileNav);
+  document.getElementById('hamburgerBtn')?.addEventListener('click', toggleMobileNav);
+  document.getElementById('navOverlay')?.addEventListener('click', closeMobileNav);
 
-  document.getElementById('logoutBtn').addEventListener('click', async () => {
+  document.getElementById('logoutBtn')?.addEventListener('click', async () => {
     await fetch('/api/logout', { method: 'POST' });
     window.location.href = '/login.html';
   });
 
-  await loadEmployees();
+  await loadEmployees().catch(err => console.error('loadEmployees failed:', err));
   loadDashboard();
 
   // Initial badge — silent, non-blocking
@@ -92,7 +92,8 @@ function navigate(page) {
 // ─── EMPLOYEES ───────────────────────────────────────────────────────────────
 async function loadEmployees() {
   const res = await fetch('/api/employees');
-  employees = await res.json();
+  const raw = await res.json();
+  employees = Array.isArray(raw) ? raw : [];
   ['trackEmp', 'repEmp', 'calEmpFilter', 'salaryEmpFilter'].forEach(id => {
     const sel = document.getElementById(id);
     const prev = sel.value;
@@ -298,6 +299,7 @@ async function reactivateEmployee(id) {
 
 // ─── DASHBOARD ───────────────────────────────────────────────────────────────
 async function loadDashboard() {
+  try {
   const year = new Date().getFullYear();
   const now = new Date();
   const month = now.getMonth() + 1;
@@ -350,68 +352,56 @@ async function loadDashboard() {
   const totalDeduct = summary.reduce((a, row) => a + (parseFloat(row.total_deduction) || 0), 0);
   const flaggedCount = summary.filter(row => (parseFloat(row.excess_days) || 0) > 0).length;
 
-  document.getElementById('dashStats').innerHTML = `
-    <div style="display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:1px;background:var(--border);border:1px solid var(--border);border-radius:var(--radius);overflow:hidden;margin-bottom:16px">
-      <div style="background:var(--surface);padding:18px 20px;display:flex;flex-direction:column;gap:10px">
-        <div style="font:600 10px/1 var(--font-mono);text-transform:uppercase;letter-spacing:1px;color:var(--muted)">Headcount</div>
-        <div style="font:600 32px/1 var(--font-mono);color:var(--text);letter-spacing:-1px">${String(activeEmps.length).padStart(2,'0')}</div>
-        <div style="font:500 11px/1 var(--font-mono);color:var(--positive)">↑ active employees</div>
-      </div>
-      <div style="background:var(--surface);padding:18px 20px;display:flex;flex-direction:column;gap:10px">
-        <div style="font:600 10px/1 var(--font-mono);text-transform:uppercase;letter-spacing:1px;color:var(--muted)">Payroll · Self-emp</div>
-        <div style="font:600 32px/1 var(--font-mono);color:var(--text);letter-spacing:-1px">${payrollCount}<span style="color:var(--dim);font-size:20px">·</span>${seCount}</div>
-        <div style="font:500 11px/1 var(--font-mono);color:var(--muted)">stable</div>
-      </div>
-      <div style="background:var(--surface);padding:18px 20px;display:flex;flex-direction:column;gap:10px">
-        <div style="font:600 10px/1 var(--font-mono);text-transform:uppercase;letter-spacing:1px;color:var(--muted)">Total Deductions</div>
-        <div style="font:600 28px/1 var(--font-mono);color:var(--text);letter-spacing:-1px">£${totalDeduct.toFixed(0)}</div>
-        <div style="font:500 11px/1 var(--font-mono);color:var(--negative)">↓ YTD this year</div>
-      </div>
-      <div style="background:var(--surface);padding:18px 20px;display:flex;flex-direction:column;gap:10px">
-        <div style="font:600 10px/1 var(--font-mono);text-transform:uppercase;letter-spacing:1px;color:var(--muted)">Flagged Employees</div>
-        <div style="font:600 32px/1 var(--font-mono);color:${flaggedCount > 0 ? 'var(--negative)' : 'var(--text)'};letter-spacing:-1px">${String(flaggedCount).padStart(2,'0')}</div>
-        <div style="font:500 11px/1 var(--font-mono);color:var(--muted)">${flaggedCount > 0 ? `${flaggedCount} over allowance` : 'all within allowance'}</div>
-      </div>
-    </div>
-    <div class="dash-bento">
-      <div class="dash-hero-card">
-        <div class="dash-hero-glow"></div>
-        <div class="dash-hero-label">Active Headcount</div>
-        <div class="dash-hero-value">${totalHeadcount}</div>
-        <div class="dash-hero-pills">
-          <span class="dash-hero-pill dash-hero-pill--blue">${payrollCount} Payroll</span>
-          <span class="dash-hero-pill dash-hero-pill--amber">${seCount} Self-Emp</span>
-        </div>
-        <div class="dash-hero-footer">Total workforce · ${year}</div>
-      </div>
-      <div class="dash-mini-grid">
-        <div class="dash-mini-card dash-mini--indigo" style="cursor:pointer" onclick="navigate('salary')" title="Go to salary page">
-          <div class="dash-mini-icon">💷</div>
-          <div class="dash-mini-body">
-            <div class="dash-mini-label">Salaries Remaining</div>
-            <div class="dash-mini-value">£${fmtK(totalGBPRemaining)}</div>
-            <div class="dash-mini-sub">GBP outstanding · ${year}</div>
-          </div>
-        </div>
-        <div class="dash-mini-card ${hotelUnpaidCount > 0 ? 'dash-mini--alert' : 'dash-mini--green'}" style="cursor:pointer" onclick="navigate('hotels')" title="View hotel expenses">
-          <div class="dash-mini-icon">🏨</div>
-          <div class="dash-mini-body">
-            <div class="dash-mini-label">Hotel Fees Remaining</div>
-            <div class="dash-mini-value">${hotelUnpaidCount} event${hotelUnpaidCount !== 1 ? 's' : ''}</div>
-            <div class="dash-mini-sub">${hotelUnpaidCount > 0 ? `${hotelUnpaidCount} unpaid / partial →` : 'All settled'}</div>
-          </div>
-        </div>
-        <div class="dash-mini-card ${unpaidCount > 0 ? 'dash-mini--alert' : 'dash-mini--green'}" style="cursor:pointer" onclick="navigate('salary')" title="Go to salary page">
-          <div class="dash-mini-icon">${unpaidCount > 0 ? '🔔' : '✅'}</div>
-          <div class="dash-mini-body">
-            <div class="dash-mini-label">Unpaid This Month</div>
-            <div class="dash-mini-value">${unpaidCount}</div>
-            <div class="dash-mini-sub">${unpaidCount > 0 ? 'Action required →' : 'All paid up'}</div>
-          </div>
-        </div>
-      </div>
-    </div>
-  `;
+  // Pre-compute all conditional strings to avoid nested template literals
+  const flaggedColor = flaggedCount > 0 ? 'var(--negative)' : 'var(--text)';
+  const flaggedLabel = flaggedCount > 0 ? (flaggedCount + ' over allowance') : 'all within allowance';
+  const hotelClass   = hotelUnpaidCount > 0 ? 'dash-mini--alert' : 'dash-mini--green';
+  const hotelSub     = hotelUnpaidCount > 0 ? (hotelUnpaidCount + ' unpaid / partial →') : 'All settled';
+  const hotelEvents  = hotelUnpaidCount + ' event' + (hotelUnpaidCount !== 1 ? 's' : '');
+  const unpaidClass  = unpaidCount > 0 ? 'dash-mini--alert' : 'dash-mini--green';
+  const unpaidIcon   = unpaidCount > 0 ? '&#128276;' : '&#9989;';
+  const unpaidSub    = unpaidCount > 0 ? 'Action required &rarr;' : 'All paid up';
+  const salaryFmt    = fmtK(totalGBPRemaining);
+
+  document.getElementById('dashStats').innerHTML =
+    '<div class="dash-bento">' +
+      '<div class="dash-hero-card">' +
+        '<div class="dash-hero-glow"></div>' +
+        '<div class="dash-hero-label">Active Headcount</div>' +
+        '<div class="dash-hero-value">' + totalHeadcount + '</div>' +
+        '<div class="dash-hero-pills">' +
+          '<span class="dash-hero-pill dash-hero-pill--blue">' + payrollCount + ' Payroll</span>' +
+          '<span class="dash-hero-pill dash-hero-pill--amber">' + seCount + ' Self-Emp</span>' +
+        '</div>' +
+        '<div class="dash-hero-footer">Total workforce &middot; ' + year + '</div>' +
+      '</div>' +
+      '<div class="dash-mini-grid">' +
+        '<div class="dash-mini-card dash-mini--indigo" style="cursor:pointer" onclick="navigate(\'salary\')">' +
+          '<div class="dash-mini-icon">&pound;</div>' +
+          '<div class="dash-mini-body">' +
+            '<div class="dash-mini-label">Salaries Remaining</div>' +
+            '<div class="dash-mini-value">&pound;' + salaryFmt + '</div>' +
+            '<div class="dash-mini-sub">GBP outstanding &middot; ' + year + '</div>' +
+          '</div>' +
+        '</div>' +
+        '<div class="dash-mini-card ' + hotelClass + '" style="cursor:pointer" onclick="navigate(\'hotels\')">' +
+          '<div class="dash-mini-icon">&#127968;</div>' +
+          '<div class="dash-mini-body">' +
+            '<div class="dash-mini-label">Hotel Fees Remaining</div>' +
+            '<div class="dash-mini-value">' + hotelEvents + '</div>' +
+            '<div class="dash-mini-sub">' + hotelSub + '</div>' +
+          '</div>' +
+        '</div>' +
+        '<div class="dash-mini-card ' + unpaidClass + '" style="cursor:pointer" onclick="navigate(\'salary\')">' +
+          '<div class="dash-mini-icon">' + unpaidIcon + '</div>' +
+          '<div class="dash-mini-body">' +
+            '<div class="dash-mini-label">Unpaid This Month</div>' +
+            '<div class="dash-mini-value">' + unpaidCount + '</div>' +
+            '<div class="dash-mini-sub">' + unpaidSub + '</div>' +
+          '</div>' +
+        '</div>' +
+      '</div>' +
+    '</div>';
 
   // Contract expiry panel
   renderContractExpiryPanel(expiring);
@@ -419,8 +409,11 @@ async function loadDashboard() {
   // Headcount by department
   renderHeadcountPanel(activeEmps);
 
-  // Upcoming reminders widget
-  renderUpcomingWidget(upcoming);
+  // Upcoming reminders panel
+  renderDashUpcoming(upcoming);
+
+  // Activity feed
+  renderDashActivity(summary, expiring, hotelData, salaryData);
 
   const tbody = document.getElementById('dashTable');
   tbody.innerHTML = '';
@@ -446,6 +439,11 @@ async function loadDashboard() {
     `;
     tbody.appendChild(tr);
   });
+  } catch(e) {
+    console.error('loadDashboard error:', e);
+    const el = document.getElementById('dashStats');
+    if (el) el.innerHTML = `<div style="padding:20px;color:var(--negative);font-family:var(--font-mono);font-size:12px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius)">Dashboard error: ${e.message}</div>`;
+  }
 }
 
 function renderContractExpiryPanel(expiring) {
@@ -508,6 +506,97 @@ function renderHeadcountPanel(activeEmps) {
           </div>`).join('')}
       </div>
     </div>`;
+}
+
+function renderDashUpcoming(upcoming) {
+  const el = document.getElementById('upcomingPanel');
+  if (!el) return;
+  const MONTHS = ['JAN','FEB','MAR','APR','MAY','JUN','JUL','AUG','SEP','OCT','NOV','DEC'];
+  if (!upcoming || !upcoming.length) { el.innerHTML = ''; return; }
+  const rows = upcoming.slice(0,6).map(r => {
+    const d = new Date(r.virtual_date);
+    const day = d.getUTCDate();
+    const mon = MONTHS[d.getUTCMonth()];
+    const amtStr = r.amount ? ' &nbsp;&middot;&nbsp; ' + (r.currency === 'GBP' ? '&pound;' : r.currency === 'USD' ? '$' : r.currency + ' ') + parseFloat(r.amount).toLocaleString('en-GB', {minimumFractionDigits:0}) : '';
+    return '<div style="display:flex;gap:12px;padding:11px 16px;border-bottom:1px solid var(--line);align-items:center">' +
+      '<div style="width:38px;padding:5px 0;text-align:center;background:var(--surface-2);border:1px solid var(--border);border-radius:6px;flex-shrink:0">' +
+        '<div style="font:700 14px/1 var(--font-mono);color:var(--text)">' + day + '</div>' +
+        '<div style="font:500 9px/1 var(--font-mono);color:var(--muted);margin-top:3px;letter-spacing:0.5px">' + mon + '</div>' +
+      '</div>' +
+      '<div style="flex:1;min-width:0">' +
+        '<div style="font:600 12.5px/1 var(--font-sans);color:var(--text)">' + esc(r.title) + '</div>' +
+        '<div style="font:500 10.5px/1 var(--font-mono);color:var(--muted);text-transform:uppercase;letter-spacing:0.4px;margin-top:3px">' + esc(r.category||'') + '</div>' +
+      '</div>' +
+      '<div style="font:700 12.5px/1 var(--font-mono);color:var(--text);white-space:nowrap">' + amtStr + '</div>' +
+    '</div>';
+  }).join('');
+  el.innerHTML = '<div class="card" style="margin-bottom:0">' +
+    '<div class="card-header" style="padding:12px 16px">' +
+      '<span class="card-title" style="display:flex;align-items:center;gap:6px"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg> Upcoming reminders</span>' +
+      '<span style="font-size:0.72rem;color:var(--muted);font-family:var(--font-mono)">next 30d</span>' +
+    '</div>' +
+    '<div style="padding:0">' + rows + '</div>' +
+  '</div>';
+}
+
+function renderDashActivity(summary, expiring, hotelData, salaryData) {
+  const el = document.getElementById('activityPanel');
+  if (!el) return;
+
+  const items = [];
+  const ICONS = {
+    pay:     '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="5" width="20" height="14" rx="2"/><line x1="2" y1="10" x2="22" y2="10"/></svg>',
+    breach:  '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>',
+    hotel:   '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>',
+    expiry:  '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>',
+    deduct:  '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"/></svg>',
+  };
+
+  // Salary payments from salaryData
+  salaryData.filter(e => !e.is_terminated && (e.payments||[]).length).slice(0,2).forEach(e => {
+    const last = e.payments[e.payments.length - 1];
+    const sym = e.currency === 'AED' ? 'AED ' : '£';
+    items.push({ icon: ICONS.pay, tone: 'pos', title: 'Logged payment', detail: sym + parseFloat(last.amount||0).toLocaleString('en-GB') + ' &rarr; ' + esc(e.name) });
+  });
+
+  // Allowance breaches
+  summary.filter(r => (parseFloat(r.excess_days)||0) > 0).slice(0,2).forEach(r => {
+    items.push({ icon: ICONS.breach, tone: 'neg', title: 'Allowance breach', detail: esc(r.name) + ' &middot; ' + r.year_days_off + '/' + r.allowance_days + ' days &middot; &pound;' + parseFloat(r.excess_day_deduction||0).toFixed(2) + ' deduct' });
+  });
+
+  // Contract expiring
+  expiring.slice(0,2).forEach(e => {
+    const days = Math.floor((new Date(e.contract_end_date) - new Date()) / 86400000);
+    items.push({ icon: ICONS.expiry, tone: 'warn', title: 'Contract expiring', detail: esc(e.name) + ' &middot; ' + e.contract_end_date + ' &middot; ' + Math.abs(days) + 'd' });
+  });
+
+  // Hotel events
+  hotelData.filter(h => h.status !== 'paid').slice(0,2).forEach(h => {
+    const sym = hotelCurrencySymbol(h.paid_currency || 'USD');
+    const amtStr = h.paid_amount ? sym + parseFloat(h.paid_amount).toLocaleString('en-GB') + ' &middot; ' : '';
+    items.push({ icon: ICONS.hotel, tone: 'info', title: 'Hotel expense', detail: esc(h.event_name) + ' &middot; ' + amtStr + h.status });
+  });
+
+  if (!items.length) { el.innerHTML = ''; return; }
+
+  const TONE_COLOR = { pos:'var(--positive)', neg:'var(--negative)', warn:'var(--warning)', info:'var(--info)' };
+  const rows = items.slice(0,6).map(it =>
+    '<div style="display:flex;gap:10px;padding:11px 16px;border-bottom:1px solid var(--line);align-items:flex-start">' +
+      '<div style="width:28px;height:28px;border-radius:6px;background:var(--surface-2);border:1px solid var(--border);display:grid;place-items:center;flex-shrink:0;color:' + TONE_COLOR[it.tone] + '">' + it.icon + '</div>' +
+      '<div style="flex:1;min-width:0">' +
+        '<div style="font:600 12.5px/1.3 var(--font-sans);color:var(--text)">' + it.title + '</div>' +
+        '<div style="font:400 11px/1.4 var(--font-mono);color:var(--muted);margin-top:3px">' + it.detail + '</div>' +
+      '</div>' +
+    '</div>'
+  ).join('');
+
+  el.innerHTML = '<div class="card" style="margin-bottom:0">' +
+    '<div class="card-header" style="padding:12px 16px">' +
+      '<span class="card-title" style="display:flex;align-items:center;gap:6px"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg> Activity</span>' +
+      '<span style="font-size:0.72rem;color:var(--muted);font-family:var(--font-mono)">last 24h</span>' +
+    '</div>' +
+    '<div style="padding:0">' + rows + '</div>' +
+  '</div>';
 }
 
 function goToTracking(empId) {
@@ -937,114 +1026,185 @@ async function deletePayment(id) {
 }
 
 // ─── REPORTS ─────────────────────────────────────────────────────────────────
+function _repTile(label, value, sub, color) {
+  return '<div style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:20px 22px;display:flex;flex-direction:column;gap:8px">' +
+    '<div style="font:600 10px/1 var(--font-mono);text-transform:uppercase;letter-spacing:1.2px;color:var(--muted)">' + label + '</div>' +
+    '<div style="font:700 30px/1 var(--font-mono);color:' + color + ';letter-spacing:-1px">' + value + '</div>' +
+    '<div style="font:500 11px/1 var(--font-mono);color:var(--muted)">' + sub + '</div>' +
+  '</div>';
+}
+
 async function loadReport() {
-  const from = document.getElementById('repFrom').value;
-  const to   = document.getElementById('repTo').value;
-  const empId = document.getElementById('repEmp').value;
+  const from    = document.getElementById('repFrom').value;
+  const to      = document.getElementById('repTo').value;
+  const empId   = document.getElementById('repEmp').value;
   const container = document.getElementById('reportContent');
 
   if (!from || !to) return showToast('Please select a date range', 'info');
 
-  container.innerHTML = `<div class="empty-state"><div class="icon">⏳</div><div>Generating report…</div></div>`;
+  container.innerHTML = '<div class="empty-state"><div class="icon">⏳</div><div>Generating report…</div></div>';
 
   try {
     const params = new URLSearchParams({ from, to });
-    const summaryRes = await fetch('/api/summary?' + params);
-    if (!summaryRes.ok) {
-      const err = await summaryRes.json().catch(() => ({}));
-      throw new Error(err.error || `Server error ${summaryRes.status}`);
-    }
-    const summary = await summaryRes.json();
-    if (!Array.isArray(summary)) throw new Error(summary.error || 'Unexpected response from server');
+    const year   = new Date(from).getFullYear();
 
-    const filtered = empId ? summary.filter(e => e.employee_id === parseInt(empId)) : summary;
+    const [summaryRes, salaryRes] = await Promise.all([
+      fetch('/api/summary?' + params),
+      fetch('/api/salary-overview?year=' + year)
+    ]);
+
+    if (!summaryRes.ok) throw new Error('Server error ' + summaryRes.status);
+    const summary = await summaryRes.json();
+    if (!Array.isArray(summary)) throw new Error(summary.error || 'Unexpected response');
+
+    const salaryData = salaryRes.ok ? await salaryRes.json() : [];
+    const filtered   = empId ? summary.filter(e => e.employee_id === parseInt(empId)) : summary;
 
     if (!filtered.length) {
-      container.innerHTML = `<div class="empty-state"><div class="icon">📋</div><div>No records found for the selected range.</div></div>`;
+      container.innerHTML = '<div class="empty-state"><div class="icon">📋</div><div>No records found for the selected range.</div></div>';
       return;
     }
 
-    const grandTotal   = filtered.reduce((a, b) => a + (b.total_deduction || 0), 0);
-    const grandTimeDeduct = filtered.reduce((a, b) => a + (b.total_time_deduction || 0), 0);
-    const grandDayDeduct  = filtered.reduce((a, b) => a + (b.excess_day_deduction || 0), 0);
+    // ── Period stats ──────────────────────────────────────────────────────────
+    const fromDate   = new Date(from);
+    const toDate     = new Date(to);
+    const periodDays = Math.ceil((toDate - fromDate) / 86400000) + 1;
+    const dateLabel  = fromDate.toLocaleDateString('en-GB',{day:'numeric',month:'short',year:'numeric'})
+                     + ' – ' + toDate.toLocaleDateString('en-GB',{day:'numeric',month:'short',year:'numeric'});
 
-    let html = `
-      <div class="card" style="margin-bottom:20px">
-        <div class="card-header"><span class="card-title">Report: ${from} → ${to}</span></div>
-        <div class="stats-grid">
-          <div class="stat-card blue"><div class="stat-label">Employees</div><div class="stat-value">${filtered.length}</div></div>
-          <div class="stat-card yellow"><div class="stat-label">Time Deductions</div><div class="stat-value">£${grandTimeDeduct.toFixed(2)}</div></div>
-          <div class="stat-card yellow"><div class="stat-label">Day-Off Deductions</div><div class="stat-value">£${grandDayDeduct.toFixed(2)}</div></div>
-          <div class="stat-card red"><div class="stat-label">Total Deductions</div><div class="stat-value">£${grandTotal.toFixed(2)}</div></div>
-        </div>
-      </div>`;
+    const filteredIds = new Set(filtered.map(e => e.employee_id));
+    const relSalary   = salaryData.filter(e => !empId || filteredIds.has(e.employee_id));
 
-    for (const emp of filtered) {
-      const typeLabel  = emp.employment_type === 'self_employed' ? 'Self-Employed (5 days/yr)' : 'Payroll (20 days/yr)';
-      const typeBadge  = emp.employment_type === 'self_employed' ? 'badge-yellow' : 'badge-blue';
-      const annualSal  = parseFloat(emp.annual_salary) || 0;
-      const totalPaid  = parseFloat(emp.total_paid_year) || 0;
-      const remaining  = parseFloat(emp.salary_remaining) || 0;
-      const excessDeduct = parseFloat(emp.excess_day_deduction) || 0;
+    // Total payroll paid in period (use payment_month/payment_year to bucket)
+    const fromYM = year * 100 + fromDate.getMonth() + 1;
+    const toYM   = new Date(to).getFullYear() * 100 + new Date(to).getMonth() + 1;
+    let totalPayrollPaid = 0;
+    relSalary.forEach(e => {
+      (e.payments || []).forEach(p => {
+        const ym = (parseInt(p.payment_year) || 0) * 100 + (parseInt(p.payment_month) || 0);
+        if (ym >= fromYM && ym <= toYM) totalPayrollPaid += parseFloat(p.amount || 0);
+      });
+    });
 
-      const recRes = await fetch(`/api/records/${emp.employee_id}?from=${from}&to=${to}`);
-      if (!recRes.ok) continue;
-      const records = await recRes.json();
+    const totalDeduct  = filtered.reduce((a, b) => a + (parseFloat(b.total_deduction) || 0), 0);
+    const timeDeduct   = filtered.reduce((a, b) => a + (parseFloat(b.total_time_deduction) || 0), 0);
+    const dayDeduct    = filtered.reduce((a, b) => a + (parseFloat(b.excess_day_deduction) || 0), 0);
+    const deductPct    = totalPayrollPaid > 0 ? ((totalDeduct / totalPayrollPaid) * 100).toFixed(1) : '0.0';
+    const activeCount  = filtered.length;
 
-      html += `
-        <div class="card" style="margin-bottom:16px">
-          <div class="card-header">
-            <div>
-              <span class="card-title">${esc(emp.name)}</span>
-              <span class="badge ${typeBadge}" style="margin-left:8px">${typeLabel}</span>
-            </div>
-            ${annualSal > 0 ? `<div style="font-size:0.82rem;color:var(--muted);text-align:right">
-              Salary: £${annualSal.toLocaleString('en-GB',{minimumFractionDigits:2})} &nbsp;·&nbsp;
-              Paid: £${totalPaid.toLocaleString('en-GB',{minimumFractionDigits:2})} &nbsp;·&nbsp;
-              <strong>Remaining: £${remaining.toLocaleString('en-GB',{minimumFractionDigits:2})}</strong>
-            </div>` : ''}
-          </div>
-          <div style="margin-bottom:14px;display:flex;gap:16px;flex-wrap:wrap;font-size:0.86rem">
-            <span>Days off this year: <strong>${emp.year_days_off} / ${emp.allowance_days}</strong></span>
-            ${emp.excess_days > 0
-              ? `<span class="text-danger fw-bold">${emp.excess_days} excess = £${excessDeduct.toFixed(2)} deduction</span>`
-              : '<span class="text-success">Within allowance ✓</span>'}
-            <span>Time deductions: <strong>£${(emp.total_time_deduction||0).toFixed(2)}</strong></span>
-            <span class="text-danger fw-bold">Total: £${(emp.total_deduction||0).toFixed(2)}</span>
-          </div>`;
+    // ── Monthly trend data ────────────────────────────────────────────────────
+    const MONTHS_SHORT = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+    const curMonth     = new Date().getMonth();
+    const monthlyTotals = new Array(12).fill(0);
+    relSalary.forEach(e => {
+      (e.payments || []).forEach(p => {
+        const m = parseInt(p.payment_month) - 1;
+        const y = parseInt(p.payment_year);
+        if (!isNaN(m) && y === year && m >= 0 && m < 12) monthlyTotals[m] += parseFloat(p.amount || 0);
+      });
+    });
 
-      if (records.length) {
-        html += `<div class="table-wrap"><table>
-          <thead><tr><th>Date</th><th>Break</th><th>Phone</th><th>Wasted</th><th>Late</th><th>Day Off</th><th>Adj</th><th>Mins</th><th>Amount</th><th>Notes</th></tr></thead>
-          <tbody>`;
-        records.forEach(r => {
-          const adjSign    = r.manual_adj_minutes > 0 ? '+' : '';
-          const dayOffLabel = r.is_day_off === 1 ? '<span class="badge badge-red">Full</span>'
-                            : r.is_day_off === 0.5 ? '<span class="badge badge-yellow">Half</span>' : '—';
-          html += `<tr${r.is_day_off > 0 ? ' class="day-off-row"' : ''}>
-            <td><strong>${r.record_date}</strong></td>
-            <td>${r.break_minutes}m${Math.max(0,r.break_minutes-ALLOWED_BREAK)>0?` <span class="badge badge-red">+${Math.max(0,r.break_minutes-ALLOWED_BREAK)}m</span>`:''}</td>
-            <td>${r.phone_minutes>0?r.phone_minutes+'m':'—'}</td>
-            <td>${r.wasted_minutes>0?r.wasted_minutes+'m':'—'}</td>
-            <td>${r.late_minutes>0?r.late_minutes+'m':'—'}</td>
-            <td>${dayOffLabel}</td>
-            <td>${r.manual_adj_minutes!==0?`${adjSign}${r.manual_adj_minutes}m`:'—'}</td>
-            <td><strong>${r.total_deductible_minutes}m</strong></td>
-            <td class="${(r.total_deduction||0)>0?'text-danger fw-bold':''}">£${(r.total_deduction||0).toFixed(2)}</td>
-            <td style="max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(r.notes||'')||'—'}</td>
-          </tr>`;
-        });
-        html += `</tbody></table></div>`;
-      } else {
-        html += `<div style="color:var(--muted);font-size:0.85rem;padding:8px 0">No daily records in this period.</div>`;
-      }
-      html += `</div>`;
-    }
+    const chartLabels = MONTHS_SHORT.slice(0, curMonth + 1);
+    const chartVals   = monthlyTotals.slice(0, curMonth + 1);
+    const maxVal      = Math.max(...chartVals, 1);
+
+    // ── Build HTML ────────────────────────────────────────────────────────────
+    let html = '';
+
+    // Stat tiles
+    html += '<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:20px">';
+    html += _repTile('Period', periodDays + ' days', dateLabel, 'var(--text)');
+    html += _repTile('Total Payroll', '£' + Math.round(totalPayrollPaid).toLocaleString('en-GB'), 'paid this period', 'var(--positive)');
+    html += _repTile('Total Deductions', '£' + Math.round(totalDeduct).toLocaleString('en-GB'), deductPct + '% of gross', 'var(--negative)');
+    html += _repTile('Active Records', String(activeCount), 'across ' + activeCount + ' staff', 'var(--primary)');
+    html += '</div>';
+
+    // Chart + breakdown row
+    html += '<div style="display:grid;grid-template-columns:3fr 2fr;gap:16px;margin-bottom:20px">';
+
+    // Payroll trend chart
+    html += '<div class="card">';
+    html += '<div class="card-header"><span class="card-title">Payroll Trend</span>' +
+            '<span style="font:500 11px/1 var(--font-mono);color:var(--muted)">' + year + ' · monthly</span></div>';
+    html += '<div style="display:flex;align-items:flex-end;gap:6px;height:150px;padding:4px 4px 0">';
+    chartLabels.forEach(function(m, i) {
+      var val  = chartVals[i];
+      var barH = val > 0 ? Math.max(10, Math.round((val / maxVal) * 110)) : 4;
+      var lbl  = val > 0 ? (val >= 1000 ? '£' + (val/1000).toFixed(1) + 'k' : '£' + Math.round(val)) : '';
+      var isNow = (i === curMonth);
+      var barBg = isNow ? 'var(--primary)' : '#2a3040';
+      html += '<div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:4px;min-width:0">';
+      html += '<div style="font:600 9px/1 var(--font-mono);color:' + (isNow ? 'var(--primary)' : 'var(--muted)') + ';text-align:center;white-space:nowrap">' + lbl + '</div>';
+      html += '<div style="background:' + barBg + ';border-radius:3px 3px 0 0;width:100%;height:' + barH + 'px"></div>';
+      html += '<div style="font:500 9px/1 var(--font-mono);color:' + (isNow ? 'var(--text)' : 'var(--muted)') + '">' + m + '</div>';
+      html += '</div>';
+    });
+    html += '</div></div>';
+
+    // Deductions breakdown
+    html += '<div class="card">';
+    html += '<div class="card-header"><span class="card-title">Deductions Breakdown</span></div>';
+    var deductBase = timeDeduct + dayDeduct || 1;
+    var cats = [
+      { label: 'Time deductions', val: timeDeduct, color: 'var(--primary)' },
+      { label: 'Day-off overage', val: dayDeduct, color: 'var(--negative)' }
+    ];
+    cats.forEach(function(c) {
+      var pct = Math.round((c.val / deductBase) * 100);
+      html += '<div style="margin-bottom:16px">';
+      html += '<div style="display:flex;justify-content:space-between;font:500 11px/1 var(--font-mono);color:var(--muted);margin-bottom:7px">';
+      html += '<span>' + c.label + '</span><span>£' + c.val.toFixed(0) + ' &middot; ' + pct + '%</span></div>';
+      html += '<div style="height:6px;background:var(--border);border-radius:3px">';
+      html += '<div style="height:100%;width:' + pct + '%;background:' + c.color + ';border-radius:3px"></div>';
+      html += '</div></div>';
+    });
+    html += '</div>';
+    html += '</div>'; // end 2-col row
+
+    // Payroll ledger table
+    html += '<div class="card">';
+    html += '<div class="card-header"><span class="card-title">Payroll Ledger YTD</span>' +
+            '<span style="font:500 11px/1 var(--font-mono);color:var(--muted)">' + year + '</span></div>';
+    html += '<div class="table-wrap"><table><thead><tr>';
+    html += '<th>Employee</th><th>Type</th>';
+    chartLabels.forEach(function(m) { html += '<th style="text-align:right">' + m + '</th>'; });
+    html += '<th style="text-align:right;color:var(--primary)">YTD Total</th>';
+    html += '</tr></thead><tbody>';
+
+    relSalary.forEach(function(emp) {
+      var initials = (emp.name || '').split(' ').map(function(w){ return w[0]||''; }).join('').slice(0,2).toUpperCase();
+      var typeLabel = emp.employment_type === 'self_employed' ? 'SE' : 'PR';
+      var typeCls   = emp.employment_type === 'self_employed' ? 'badge-yellow' : 'badge-blue';
+      var empMonthly = new Array(12).fill(0);
+      (emp.payments || []).forEach(function(p) {
+        var m = parseInt(p.payment_month) - 1;
+        var y = parseInt(p.payment_year);
+        if (!isNaN(m) && y === year && m >= 0 && m < 12) empMonthly[m] += parseFloat(p.amount || 0);
+      });
+      var ytd = empMonthly.slice(0, curMonth + 1).reduce(function(a,b){ return a+b; }, 0);
+
+      html += '<tr>';
+      html += '<td><div style="display:flex;align-items:center;gap:10px">';
+      html += '<div style="width:30px;height:30px;border-radius:50%;background:var(--primary);display:flex;align-items:center;justify-content:center;font:700 10px/1 var(--font-mono);color:#000;flex-shrink:0">' + initials + '</div>';
+      html += '<div><div style="font-weight:700;font-size:0.84rem">' + esc(emp.name || '') + '</div>';
+      html += '<div style="font-size:0.71rem;color:var(--muted)">' + esc(emp.job_title || '') + '</div></div></div></td>';
+      html += '<td><span class="badge ' + typeCls + '">' + typeLabel + '</span></td>';
+      chartLabels.forEach(function(m, i) {
+        var v = empMonthly[i];
+        html += '<td style="text-align:right;font:500 12px/1 var(--font-mono);color:' + (v > 0 ? 'var(--text)' : 'var(--dim)') + '">' +
+                (v > 0 ? '£' + v.toLocaleString('en-GB',{maximumFractionDigits:0}) : '&mdash;') + '</td>';
+      });
+      html += '<td style="text-align:right;font:700 13px/1 var(--font-mono);color:var(--primary)">' +
+              (ytd > 0 ? '£' + ytd.toLocaleString('en-GB') : '&mdash;') + '</td>';
+      html += '</tr>';
+    });
+
+    html += '</tbody></table></div></div>';
 
     container.innerHTML = html;
 
   } catch (e) {
-    container.innerHTML = `<div class="alert alert-error">Failed to generate report: ${esc(e.message)}</div>`;
+    container.innerHTML = '<div class="alert alert-error">Failed to generate report: ' + esc(e.message) + '</div>';
   }
 }
 
@@ -1270,67 +1430,50 @@ async function loadSalaryPage() {
     // AED → GBP approximate rate (shown clearly to user)
     const AED_TO_GBP = 1 / 4.67;
 
-    const groupCards = groups.map(g => {
-      const s        = currencySymbol(g.currency);
-      const tTarget  = g.rows.reduce((a, b) => a + (parseFloat(b.salary_target ?? b.annual_salary) || 0), 0);
-      const tPaid    = g.rows.reduce((a, b) => a + (parseFloat(b.total_paid)    || 0), 0);
-      const tDeduct  = g.rows.reduce((a, b) => a + (parseFloat(b.excess_deduction) || 0) + (parseFloat(b.total_office_deductions) || 0), 0);
-      const tRemain  = g.rows.reduce((a, b) => a + (parseFloat(b.net_remaining) || 0), 0);
-      const typeLabel = groups.length > 1 ? `${TYPE_LABEL[g.type]} · ${g.currency}` : TYPE_LABEL[g.type];
-      const empName   = g.rows.length === 1 ? g.rows[0].name : null;
-      const header    = empName ? `${empName} &nbsp;·&nbsp; ${typeLabel}` : typeLabel;
-      const remainClass = tRemain < 0 ? 'overpaid' : tRemain === 0 ? 'clear' : '';
-      const aedConversion = g.currency === 'AED' && tRemain > 0
-        ? `<div class="soc-conversion">≈ £${(tRemain * AED_TO_GBP).toLocaleString('en-GB',{maximumFractionDigits:0})} at 4.67 AED/GBP</div>`
-        : '';
-      return `
-        <div class="salary-overview-card ${TYPE_CLASS[g.type]}">
-          <div class="soc-header">${header}</div>
-          <div class="soc-row">
-            <span class="soc-label">Target for ${year}</span>
-            <span class="soc-value target">${s}${fmtK(tTarget)}</span>
-          </div>
-          <div class="soc-row">
-            <span class="soc-label">Total Paid</span>
-            <span class="soc-value paid">${s}${fmtK(tPaid)}</span>
-          </div>
-          ${tDeduct > 0 ? `
-          <div class="soc-row">
-            <span class="soc-label">Deductions</span>
-            <span class="soc-value deduct">−${s}${fmtK(tDeduct)}</span>
-          </div>` : ''}
-          <div class="soc-row soc-row--outstanding">
-            <span class="soc-label">Outstanding</span>
-            <span class="soc-value outstanding ${remainClass}">${tRemain < 0 ? '−' : ''}${s}${fmtK(Math.abs(tRemain))}</span>
-          </div>
-          ${aedConversion}
-        </div>`;
-    });
-
-    // Grand total GBP card — converts all currencies to GBP
-    const gbpTotal = groups.reduce((sum, g) => {
-      const tRemain = g.rows.reduce((a, b) => a + (parseFloat(b.net_remaining) || 0), 0);
-      if (g.currency === 'GBP') return sum + tRemain;
-      if (g.currency === 'AED') return sum + tRemain * AED_TO_GBP;
-      return sum; // other currencies not converted
+    // Aggregate GBP totals across all currencies for stat tiles
+    const totalPaidGBP = groups.reduce((sum, g) => {
+      const v = g.rows.reduce((a, b) => a + (parseFloat(b.total_paid) || 0), 0);
+      return sum + (g.currency === 'AED' ? v * AED_TO_GBP : v);
     }, 0);
-    const hasMultiCurrency = groups.some(g => g.currency !== 'GBP');
-    const gbpCard = hasMultiCurrency ? `
-      <div class="salary-overview-card soc-gbp-total">
-        <div class="soc-header">Total Outstanding · GBP</div>
-        <div class="soc-row" style="padding-top:10px">
-          <span class="soc-label">All salaries (converted)</span>
-        </div>
-        <div class="soc-row soc-row--outstanding">
-          <span class="soc-label">Remaining to pay</span>
-          <span class="soc-value outstanding ${gbpTotal <= 0 ? 'overpaid' : ''}" style="font-size:1.35rem">
-            £${Math.abs(gbpTotal).toLocaleString('en-GB',{minimumFractionDigits:2,maximumFractionDigits:2})}
-          </span>
-        </div>
-        <div class="soc-conversion">GBP + AED at 4.67 · end of ${year}</div>
-      </div>` : '';
+    const totalDueGBP = groups.reduce((sum, g) => {
+      const v = g.rows.reduce((a, b) => a + (parseFloat(b.salary_target ?? b.annual_salary) || 0), 0);
+      return sum + (g.currency === 'AED' ? v * AED_TO_GBP : v);
+    }, 0);
+    const totalOutstandingGBP = groups.reduce((sum, g) => {
+      const v = g.rows.reduce((a, b) => a + (parseFloat(b.net_remaining) || 0), 0);
+      return sum + (g.currency === 'AED' ? v * AED_TO_GBP : v);
+    }, 0);
+    const totalBonusGBP = groups.reduce((sum, g) => {
+      const v = g.rows.reduce((a, b) => a + (parseFloat(b.bonus_total) || 0), 0);
+      return sum + (g.currency === 'AED' ? v * AED_TO_GBP : v);
+    }, 0);
+    const paidPct = totalDueGBP > 0 ? (totalPaidGBP / totalDueGBP * 100) : 0;
+    const unpaidCount = activeRows.filter(r => (parseFloat(r.net_remaining) || 0) > 0).length;
+    const fmtGBP = v => v >= 1000 ? `£${(v/1000).toFixed(1)}k` : `£${v.toFixed(0)}`;
 
-    document.getElementById('salaryTotals').innerHTML = (groupCards.join('') + gbpCard) || '';
+    document.getElementById('salaryTotals').innerHTML = `
+      <div style="display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:1px;background:var(--border);border:1px solid var(--border);border-radius:var(--radius);overflow:hidden">
+        <div style="background:var(--surface);padding:18px 20px;display:flex;flex-direction:column;gap:10px">
+          <div style="font:600 10px/1 var(--font-mono);text-transform:uppercase;letter-spacing:1px;color:var(--muted)">Paid YTD</div>
+          <div style="font:600 28px/1 var(--font-mono);color:var(--text);letter-spacing:-1px">${fmtGBP(totalPaidGBP)}</div>
+          <div style="font:500 11px/1 var(--font-mono);color:var(--positive)">${paidPct.toFixed(0)}% of target</div>
+        </div>
+        <div style="background:var(--surface);padding:18px 20px;display:flex;flex-direction:column;gap:10px">
+          <div style="font:600 10px/1 var(--font-mono);text-transform:uppercase;letter-spacing:1px;color:var(--muted)">Due YTD</div>
+          <div style="font:600 28px/1 var(--font-mono);color:var(--text);letter-spacing:-1px">${fmtGBP(totalDueGBP)}</div>
+          <div style="font:500 11px/1 var(--font-mono);color:var(--muted)">salary target ${year}</div>
+        </div>
+        <div style="background:var(--surface);padding:18px 20px;display:flex;flex-direction:column;gap:10px">
+          <div style="font:600 10px/1 var(--font-mono);text-transform:uppercase;letter-spacing:1px;color:var(--muted)">Outstanding</div>
+          <div style="font:600 28px/1 var(--font-mono);color:${totalOutstandingGBP > 0 ? 'var(--negative)' : 'var(--positive)'};letter-spacing:-1px">${fmtGBP(Math.abs(totalOutstandingGBP))}</div>
+          <div style="font:500 11px/1 var(--font-mono);color:var(--muted)">${unpaidCount > 0 ? `${unpaidCount} employee${unpaidCount !== 1 ? 's' : ''} unpaid` : 'all paid up'}</div>
+        </div>
+        <div style="background:var(--surface);padding:18px 20px;display:flex;flex-direction:column;gap:10px">
+          <div style="font:600 10px/1 var(--font-mono);text-transform:uppercase;letter-spacing:1px;color:var(--muted)">Bonuses YTD</div>
+          <div style="font:600 28px/1 var(--font-mono);color:var(--text);letter-spacing:-1px">${fmtGBP(totalBonusGBP)}</div>
+          <div style="font:500 11px/1 var(--font-mono);color:var(--muted)">across all staff</div>
+        </div>
+      </div>`;
 
     // ── Per-employee cards ──
     if (!rows.length) {
@@ -1338,6 +1481,7 @@ async function loadSalaryPage() {
       return;
     }
 
+    container.style.cssText = 'display:grid;grid-template-columns:repeat(auto-fill,minmax(380px,1fr));gap:16px;margin-top:16px';
     container.innerHTML = rows.map(emp => {
       const annualSalary    = parseFloat(emp.annual_salary) || 0;
       const salaryTarget    = parseFloat(emp.salary_target ?? emp.annual_salary) || 0;
@@ -2341,27 +2485,30 @@ async function renderSalaryReminderPanel() {
 
     panel.classList.remove('hidden');
     const monthName = MONTHS[month];
-    panel.innerHTML = `
-      <div class="salary-reminder-header">
-        <span>💳 ${unpaid.length} employee${unpaid.length > 1 ? 's' : ''} not yet paid for ${monthName} ${year}</span>
-        <button class="btn btn-ghost btn-sm" onclick="dismissAllReminders()">Dismiss all</button>
-      </div>
-      ${unpaid.map(emp => {
-        const sym = currencySymbol(emp.currency || 'GBP');
-        const grossMonthly = (parseFloat(emp.annual_salary) || 0) / 12;
-        const netMo = emp.net_monthly ? parseFloat(emp.net_monthly) : null;
-        const displayAmount = netMo ?? grossMonthly;
-        const taxLabel = netMo ? ` <span style="font-size:0.72rem;color:var(--muted)">(net take-home)</span>` : '';
-        return `
-          <div class="salary-reminder-row">
-            <div class="salary-reminder-name">${esc(emp.name)}</div>
-            <div class="salary-reminder-amount">${sym}${displayAmount.toLocaleString('en-GB',{minimumFractionDigits:2})} /mo${taxLabel}</div>
-            <div class="salary-reminder-actions">
-              <button class="btn btn-ghost btn-sm" onclick="skipSalaryReminder(${emp.employee_id},${year},${month})">Skip</button>
-              <button class="btn btn-primary btn-sm" onclick="openSalaryPaymentModal(${emp.employee_id})">Log Payment</button>
-            </div>
-          </div>`;
-      }).join('')}`;
+    const isOpen = localStorage.getItem('salaryReminderOpen') === '1';
+    const rows = unpaid.map(emp => {
+      const sym = currencySymbol(emp.currency || 'GBP');
+      const grossMonthly = (parseFloat(emp.annual_salary) || 0) / 12;
+      const netMo = emp.net_monthly ? parseFloat(emp.net_monthly) : null;
+      const displayAmount = netMo ?? grossMonthly;
+      const taxLabel = netMo ? ' <span style="font-size:0.72rem;color:var(--muted)">(net take-home)</span>' : '';
+      return '<div class="salary-reminder-row">' +
+        '<div class="salary-reminder-name">' + esc(emp.name) + '</div>' +
+        '<div class="salary-reminder-amount">' + sym + displayAmount.toLocaleString('en-GB',{minimumFractionDigits:2}) + ' /mo' + taxLabel + '</div>' +
+        '<div class="salary-reminder-actions">' +
+          '<button class="btn btn-ghost btn-sm" onclick="skipSalaryReminder(' + emp.employee_id + ',' + year + ',' + month + ')">Skip</button>' +
+          '<button class="btn btn-primary btn-sm" onclick="openSalaryPaymentModal(' + emp.employee_id + ')">Log Payment</button>' +
+        '</div></div>';
+    }).join('');
+    panel.innerHTML =
+      '<div class="salary-reminder-header" style="cursor:pointer" onclick="toggleSalaryReminder()">' +
+        '<span>&#128179; ' + unpaid.length + ' employee' + (unpaid.length > 1 ? 's' : '') + ' not yet paid for ' + monthName + ' ' + year + '</span>' +
+        '<div style="display:flex;gap:8px;align-items:center">' +
+          '<button class="btn btn-ghost btn-sm" onclick="event.stopPropagation();dismissAllReminders()">Dismiss all</button>' +
+          '<button class="btn btn-ghost btn-sm" id="salaryReminderToggleBtn" style="font-size:11px;padding:4px 8px">' + (isOpen ? '&#9650; Hide' : '&#9660; Show ' + unpaid.length) + '</button>' +
+        '</div>' +
+      '</div>' +
+      '<div id="salaryReminderBody" style="' + (isOpen ? '' : 'display:none') + '">' + rows + '</div>';
   } catch(e) {
     panel.classList.add('hidden');
   }
@@ -2370,6 +2517,16 @@ async function renderSalaryReminderPanel() {
 function skipSalaryReminder(empId, year, month) {
   localStorage.setItem(`paySkip_${year}_${month}_${empId}`, '1');
   renderSalaryReminderPanel();
+}
+
+function toggleSalaryReminder() {
+  const body = document.getElementById('salaryReminderBody');
+  const btn  = document.getElementById('salaryReminderToggleBtn');
+  if (!body) return;
+  const opening = body.style.display === 'none';
+  body.style.display = opening ? '' : 'none';
+  if (btn) btn.innerHTML = opening ? '&#9650; Hide' : '&#9660; Show';
+  localStorage.setItem('salaryReminderOpen', opening ? '1' : '0');
 }
 
 function dismissAllReminders() {
@@ -2478,25 +2635,46 @@ function fmtHotelNum(v) {
   return parseFloat(v).toLocaleString('en-GB', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
+function fmtHotelAmount(v) {
+  if (v >= 1000000) return (v / 1000000).toFixed(1) + 'M';
+  if (v >= 1000)    return (v / 1000).toFixed(1) + 'k';
+  return v.toFixed(0);
+}
+
 function renderHotelSummary() {
-  const total   = hotelData.length;
-  const paid    = hotelData.filter(r => r.status === 'paid').length;
-  const partial = hotelData.filter(r => r.status === 'partial').length;
-  const pending = hotelData.filter(r => r.status === 'pending').length;
+  const total       = hotelData.length;
+  const paidCount   = hotelData.filter(r => r.status === 'paid').length;
+  const partialCount = hotelData.filter(r => r.status === 'partial').length;
+  const pendingCount = hotelData.filter(r => r.status === 'pending').length;
+  const outstandingCount = partialCount + pendingCount;
 
-  // Update hotelSub
+  // Use paid_amount (numeric) as the reliable money field
+  const totalPaid = hotelData.reduce((s, r) => s + (parseFloat(r.paid_amount) || 0), 0);
+  const paidEventsPaid = hotelData.filter(r => r.status === 'paid').reduce((s, r) => s + (parseFloat(r.paid_amount) || 0), 0);
+  const paidPct = total > 0 ? Math.round(paidCount / total * 100) : 0;
+
+  // Detect dominant currency for display
+  const currencies = hotelData.map(r => r.paid_currency || 'USD');
+  const domCur = currencies.sort((a,b) => currencies.filter(c=>c===b).length - currencies.filter(c=>c===a).length)[0] || 'USD';
+  const sym = hotelCurrencySymbol(domCur);
+
   const hotelSub = document.getElementById('hotelSub');
-  if (hotelSub) {
-    const unpaid = pending + partial;
-    hotelSub.textContent = `// ${total} event${total !== 1 ? 's' : ''} · ${paid} paid · ${unpaid > 0 ? unpaid + ' outstanding' : 'all settled'}`;
-  }
+  if (hotelSub) hotelSub.textContent = '// ' + total + ' event' + (total !== 1 ? 's' : '') + ' · ' + paidCount + ' paid · ' + (outstandingCount > 0 ? outstandingCount + ' outstanding' : 'all settled');
 
-  document.getElementById('hotelSummary').innerHTML = `
-    <div class="stat-card blue"><div class="stat-label">Total Events</div><div class="stat-value">${total}</div></div>
-    <div class="stat-card green"><div class="stat-label">Paid</div><div class="stat-value">${paid}</div></div>
-    <div class="stat-card yellow"><div class="stat-label">Partial</div><div class="stat-value">${partial}</div></div>
-    <div class="stat-card red"><div class="stat-label">Pending</div><div class="stat-value">${pending}</div></div>
-  `;
+  const tile = (label, icon, value, delta, deltaColor) =>
+    '<div style="background:var(--surface);padding:18px 20px;display:flex;flex-direction:column;gap:8px">' +
+      '<div style="font:600 10px/1 var(--font-mono);text-transform:uppercase;letter-spacing:1px;color:var(--muted)">' + icon + ' ' + label + '</div>' +
+      '<div style="font:700 28px/1 var(--font-mono);color:var(--text);letter-spacing:-1px">' + value + '</div>' +
+      '<div style="font:500 11px/1 var(--font-mono);color:' + deltaColor + '">' + delta + '</div>' +
+    '</div>';
+
+  // Set directly on the element so tiles stretch full width (overrides stats-grid class)
+  const el = document.getElementById('hotelSummary');
+  el.style.cssText = 'display:grid;grid-template-columns:repeat(3,1fr);gap:1px;background:var(--border);border:1px solid var(--border);border-radius:var(--radius);overflow:hidden;margin-bottom:20px';
+  el.innerHTML =
+    tile('Total events', '&#128197;', String(total).padStart(2,'0'), total + ' tracked · ' + outstandingCount + ' outstanding', outstandingCount > 0 ? 'var(--negative)' : 'var(--positive)') +
+    tile('Paid so far', '&#10003;', sym + fmtHotelAmount(totalPaid), paidPct + '% of events paid', paidPct >= 80 ? 'var(--positive)' : 'var(--warning)') +
+    tile('Pending', '&#9201;', String(outstandingCount).padStart(2,'0'), partialCount + ' partial · ' + pendingCount + ' pending', outstandingCount > 0 ? 'var(--negative)' : 'var(--muted)');
 }
 
 function renderHotelTable() {
