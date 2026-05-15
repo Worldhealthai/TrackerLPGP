@@ -62,11 +62,19 @@ function requireAuth(req, res, next) {
   const token = req.cookies.token;
   if (!token) return res.status(401).json({ error: 'Not authenticated' });
   try {
-    req.admin = jwt.verify(token, JWT_SECRET);
+    const decoded = jwt.verify(token, JWT_SECRET);
+    req.user = decoded; req.admin = req.user;
     next();
   } catch {
     res.status(401).json({ error: 'Session expired, please log in again' });
   }
+}
+
+function requireAdmin(req, res, next) {
+  if (!req.user || req.user.role === 'employee') {
+    return res.status(403).json({ error: 'Admin access required' });
+  }
+  next();
 }
 
 // neon() returns rows array directly; wrap in { rows } for consistent usage throughout
@@ -275,8 +283,25 @@ app.post('/api/logout', (req, res) => {
   res.json({ success: true });
 });
 
+app.post('/api/employee-login', async (req, res) => {
+  try {
+    const { email, pin } = req.body;
+    if (!email || !pin) return res.status(400).json({ error: 'Email and PIN required' });
+    const { rows } = await q(`SELECT * FROM employees WHERE LOWER(email) = LOWER(?) AND active = 1`, [email.trim()]);
+    const emp = rows[0];
+    if (!emp || !emp.portal_pin) return res.status(401).json({ error: 'Invalid email or PIN' });
+    if (!bcrypt.compareSync(String(pin), emp.portal_pin)) return res.status(401).json({ error: 'Invalid email or PIN' });
+    const token = jwt.sign({ role: 'employee', employee_id: emp.id, name: emp.name, email: emp.email }, JWT_SECRET, { expiresIn: '12h' });
+    res.cookie('token', token, { httpOnly: true, sameSite: 'strict', maxAge: 12 * 60 * 60 * 1000 });
+    res.json({ success: true, role: 'employee', name: emp.name, employee_id: emp.id });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 app.get('/api/me', requireAuth, (req, res) => {
-  res.json({ username: req.admin.username, role: req.admin.role });
+  if (req.user.role === 'employee') {
+    return res.json({ role: 'employee', employee_id: req.user.employee_id, name: req.user.name, email: req.user.email });
+  }
+  res.json({ username: req.user.username, role: req.user.role || 'admin' });
 });
 
 // ─── ADMINS ──────────────────────────────────────────────────────────────────
@@ -403,6 +428,67 @@ app.post('/api/employees/:id/reactivate', requireAuth, async (req, res) => {
 
 app.delete('/api/employees/:id', requireAuth, async (req, res) => {
   await q('UPDATE employees SET active = 0 WHERE id = ?', [req.params.id]);
+  res.json({ success: true });
+});
+
+// Admin: set portal PIN for employee
+app.put('/api/employees/:id/portal-pin', requireAuth, requireAdmin, async (req, res) => {
+  const { pin } = req.body;
+  if (!pin || String(pin).length < 4) return res.status(400).json({ error: 'PIN must be at least 4 characters' });
+  const hash = bcrypt.hashSync(String(pin), 10);
+  await q('UPDATE employees SET portal_pin = ? WHERE id = ?', [hash, req.params.id]);
+  res.json({ success: true });
+});
+
+// Employee: own profile
+app.get('/api/employee/profile', requireAuth, async (req, res) => {
+  if (req.user.role !== 'employee') return res.status(403).json({ error: 'Employees only' });
+  const empId = req.user.employee_id;
+  const { rows } = await q('SELECT id, name, email, job_title, department, employment_type, annual_salary, currency, start_date FROM employees WHERE id = ?', [empId]);
+  if (!rows[0]) return res.status(404).json({ error: 'Not found' });
+  const emp = rows[0];
+  const year = new Date().getFullYear();
+  const allowance = DAY_OFF_ALLOWANCE[emp.employment_type] || 20;
+  const calc = await calcExcessDeductions(empId, year, parseFloat(emp.annual_salary) || 0, allowance);
+  res.json({ ...emp, year, days_used: calc.total_days_off, allowance_days: allowance, excess_days: calc.excess_days });
+});
+
+// Employee: own calendar records for a month
+app.get('/api/employee/my-records', requireAuth, async (req, res) => {
+  if (req.user.role !== 'employee') return res.status(403).json({ error: 'Employees only' });
+  const year  = parseInt(req.query.year  || new Date().getFullYear());
+  const month = parseInt(req.query.month || new Date().getMonth() + 1);
+  const { rows } = await q(
+    `SELECT record_date::TEXT AS record_date, is_day_off, notes FROM daily_records
+     WHERE employee_id = ? AND EXTRACT(YEAR FROM record_date) = ? AND EXTRACT(MONTH FROM record_date) = ?
+     ORDER BY record_date`,
+    [req.user.employee_id, year, month]
+  );
+  res.json(rows);
+});
+
+// Employee: submit day-off request
+app.post('/api/employee/day-off', requireAuth, async (req, res) => {
+  if (req.user.role !== 'employee') return res.status(403).json({ error: 'Employees only' });
+  const { date, is_day_off } = req.body;
+  if (!date || !is_day_off) return res.status(400).json({ error: 'date and is_day_off required' });
+  const val = parseFloat(is_day_off);
+  if (![0.5, 1].includes(val)) return res.status(400).json({ error: 'is_day_off must be 0.5 or 1' });
+  try {
+    await q(
+      `INSERT INTO daily_records (employee_id, record_date, is_day_off, break_minutes, phone_minutes, wasted_minutes, late_minutes, notes)
+       VALUES (?, ?, ?, 0, 0, 0, 0, 'Submitted via employee portal')
+       ON CONFLICT (employee_id, record_date) DO UPDATE SET is_day_off = EXCLUDED.is_day_off`,
+      [req.user.employee_id, date, val]
+    );
+    res.json({ success: true });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// Employee: cancel own day-off request
+app.delete('/api/employee/day-off/:date', requireAuth, async (req, res) => {
+  if (req.user.role !== 'employee') return res.status(403).json({ error: 'Employees only' });
+  await q('DELETE FROM daily_records WHERE employee_id = ? AND record_date = ? AND is_day_off > 0', [req.user.employee_id, req.params.date]);
   res.json({ success: true });
 });
 
