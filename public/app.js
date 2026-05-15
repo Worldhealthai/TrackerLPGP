@@ -287,19 +287,19 @@ async function loadDashboard() {
     </div>
   `;
 
-  const [summaryRes, salaryRes, upcomingRes, expiringRes, allEmpRes] = await Promise.all([
+  const [summaryRes, salaryRes, upcomingRes, allEmpRes, hotelRes] = await Promise.all([
     fetch(`/api/summary?from=${year}-01-01&to=${year}-12-31`),
     fetch(`/api/salary-overview?year=${year}`),
     fetch(`/api/calendar-reminders/upcoming?days=7`),
-    fetch(`/api/contracts/expiring?days=60`),
-    fetch(`/api/employees/all`)
+    fetch(`/api/employees/all`),
+    fetch(`/api/hotel-expenses`)
   ]);
 
   const summary       = summaryRes.ok  ? await summaryRes.json()  : [];
   const salaryData    = salaryRes.ok   ? await salaryRes.json()   : [];
   const upcoming      = upcomingRes.ok ? await upcomingRes.json() : [];
-  const expiring      = expiringRes.ok ? await expiringRes.json() : [];
   const allEmps       = allEmpRes.ok   ? await allEmpRes.json()   : [];
+  const hotelData     = hotelRes.ok    ? await hotelRes.json()    : [];
 
   const activeEmps    = allEmps.filter(e => e.active);
   const unpaidCount   = getUnpaidThisMonth(salaryData, year, month).length;
@@ -308,12 +308,15 @@ async function loadDashboard() {
   const totalHeadcount  = activeEmps.length;
   const payrollCount    = activeEmps.filter(e => e.employment_type === 'payroll').length;
   const seCount         = activeEmps.filter(e => e.employment_type === 'self_employed').length;
-  const expiringCount   = expiring.length;
 
   // Total GBP salary remaining to pay this year
   const totalGBPRemaining = salaryData
     .filter(e => (e.currency || 'GBP') === 'GBP')
     .reduce((a, e) => a + Math.max(0, parseFloat(e.net_remaining) || 0), 0);
+
+  // Hotel fees remaining (unpaid + partial rows: paid_amount vs cost where parseable)
+  const hotelUnpaidCount = hotelData.filter(h => h.status !== 'paid').length;
+  const hotelPaidTotal   = hotelData.reduce((a, h) => a + (parseFloat(h.paid_amount) || 0), 0);
 
   document.getElementById('dashStats').innerHTML = `
     <div class="dash-bento">
@@ -336,12 +339,12 @@ async function loadDashboard() {
             <div class="dash-mini-sub">GBP outstanding · ${year}</div>
           </div>
         </div>
-        <div class="dash-mini-card ${expiringCount > 0 ? 'dash-mini--alert' : 'dash-mini--green'}" style="cursor:pointer" onclick="navigate('employees')" title="View employees">
-          <div class="dash-mini-icon">${expiringCount > 0 ? '⚠️' : '📋'}</div>
+        <div class="dash-mini-card ${hotelUnpaidCount > 0 ? 'dash-mini--alert' : 'dash-mini--green'}" style="cursor:pointer" onclick="navigate('hotels')" title="View hotel expenses">
+          <div class="dash-mini-icon">🏨</div>
           <div class="dash-mini-body">
-            <div class="dash-mini-label">Contracts Expiring</div>
-            <div class="dash-mini-value">${expiringCount}</div>
-            <div class="dash-mini-sub">${expiringCount > 0 ? 'Within 60 days →' : 'All clear'}</div>
+            <div class="dash-mini-label">Hotel Fees Remaining</div>
+            <div class="dash-mini-value">${hotelUnpaidCount} event${hotelUnpaidCount !== 1 ? 's' : ''}</div>
+            <div class="dash-mini-sub">${hotelUnpaidCount > 0 ? `${hotelUnpaidCount} unpaid / partial →` : 'All settled'}</div>
           </div>
         </div>
         <div class="dash-mini-card ${unpaidCount > 0 ? 'dash-mini--alert' : 'dash-mini--green'}" style="cursor:pointer" onclick="navigate('salary')" title="Go to salary page">
