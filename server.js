@@ -1082,6 +1082,47 @@ app.get('/api/export/payroll-csv', requireAuth, async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+// ─── HOTEL EXPENSES ──────────────────────────────────────────────────────────
+
+app.get('/api/hotel-expenses', requireAuth, async (req, res) => {
+  try {
+    const { rows } = await q('SELECT * FROM hotel_expenses ORDER BY sort_order, id');
+    res.json(rows);
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.post('/api/hotel-expenses', requireAuth, async (req, res) => {
+  try {
+    const { event_name, hotel, cost, av_amount, av_currency, paid_amount, paid_currency, staff_hotel, flights, printing, status, notes } = req.body;
+    const { rows } = await q(
+      `INSERT INTO hotel_expenses (event_name, hotel, cost, av_amount, av_currency, paid_amount, paid_currency, staff_hotel, flights, printing, status, notes, created_by)
+       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?) RETURNING *`,
+      [event_name, hotel||'', cost||'', av_amount||null, av_currency||'USD', paid_amount||null, paid_currency||'USD', staff_hotel||null, flights||null, printing||null, status||'pending', notes||'', req.user?.id||null]
+    );
+    res.json(rows[0]);
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.put('/api/hotel-expenses/:id', requireAuth, async (req, res) => {
+  try {
+    const { event_name, hotel, cost, av_amount, av_currency, paid_amount, paid_currency, staff_hotel, flights, printing, status, notes } = req.body;
+    const { rows } = await q(
+      `UPDATE hotel_expenses SET event_name=?, hotel=?, cost=?, av_amount=?, av_currency=?, paid_amount=?, paid_currency=?, staff_hotel=?, flights=?, printing=?, status=?, notes=?
+       WHERE id=? RETURNING *`,
+      [event_name, hotel||'', cost||'', av_amount||null, av_currency||'USD', paid_amount||null, paid_currency||'USD', staff_hotel||null, flights||null, printing||null, status||'pending', notes||'', req.params.id]
+    );
+    if (!rows.length) return res.status(404).json({ error: 'Not found' });
+    res.json(rows[0]);
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.delete('/api/hotel-expenses/:id', requireAuth, async (req, res) => {
+  try {
+    await q('DELETE FROM hotel_expenses WHERE id = ?', [req.params.id]);
+    res.json({ ok: true });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 // ─── GLOBAL ERROR HANDLER ────────────────────────────────────────────────────
 // Catches any unhandled async errors thrown in routes (e.g. DB failures)
 // eslint-disable-next-line no-unused-vars

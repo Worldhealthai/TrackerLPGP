@@ -80,12 +80,13 @@ function navigate(page) {
   document.getElementById('page-' + page).classList.add('active');
   document.querySelector(`.nav-item[data-page="${page}"]`)?.classList.add('active');
   document.querySelector(`.bottom-nav-item[data-page="${page}"]`)?.classList.add('active');
-  const titles = { dashboard:'Dashboard', tracking:'Daily Tracking', salary:'Salary Tracker', employees:'Employees', reports:'Reports', calendar:'Calendar', admins:'Admin Users' };
+  const titles = { dashboard:'Dashboard', tracking:'Daily Tracking', salary:'Salary Tracker', employees:'Employees', reports:'Reports', calendar:'Calendar', admins:'Admin Users', hotels:'Hotel Expenses' };
   document.getElementById('pageTitle').textContent = titles[page] || page;
   if (page === 'employees') loadEmpTable();
   if (page === 'admins') loadAdmins();
   if (page === 'calendar') loadCalendar();
   if (page === 'salary') { loadSalaryPage(); renderSalaryReminderPanel(); }
+  if (page === 'hotels') loadHotelExpenses();
 }
 
 // ─── EMPLOYEES ───────────────────────────────────────────────────────────────
@@ -2273,4 +2274,154 @@ function renderUpcomingWidget(upcoming) {
         </div>`).join('')}
     </div>`;
   stats.insertAdjacentElement('afterend', widget);
+}
+
+// ─── HOTEL EXPENSES ──────────────────────────────────────────────────────────
+
+let hotelData = [];
+
+async function loadHotelExpenses() {
+  const res = await fetch('/api/hotel-expenses');
+  if (!res.ok) { showToast('Failed to load hotel expenses', 'error'); return; }
+  hotelData = await res.json();
+  renderHotelSummary();
+  renderHotelTable();
+}
+
+function hotelCurrencySymbol(c) {
+  if (c === 'GBP') return '£';
+  if (c === 'EUR') return '€';
+  if (c === 'CHF') return 'CHF ';
+  if (c === 'AED') return 'AED ';
+  return '$';
+}
+
+function fmtHotelNum(v) {
+  if (v == null || v === '') return '—';
+  return parseFloat(v).toLocaleString('en-GB', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
+function renderHotelSummary() {
+  const total   = hotelData.length;
+  const paid    = hotelData.filter(r => r.status === 'paid').length;
+  const partial = hotelData.filter(r => r.status === 'partial').length;
+  const pending = hotelData.filter(r => r.status === 'pending').length;
+  document.getElementById('hotelSummary').innerHTML = `
+    <div class="stat-card blue"><div class="stat-label">Total Events</div><div class="stat-value">${total}</div></div>
+    <div class="stat-card green"><div class="stat-label">Paid</div><div class="stat-value">${paid}</div></div>
+    <div class="stat-card yellow"><div class="stat-label">Partial</div><div class="stat-value">${partial}</div></div>
+    <div class="stat-card red"><div class="stat-label">Pending</div><div class="stat-value">${pending}</div></div>
+  `;
+}
+
+function renderHotelTable() {
+  const search = (document.getElementById('hotelSearch')?.value || '').toLowerCase();
+  const statusF = document.getElementById('hotelStatusFilter')?.value || '';
+  const filtered = hotelData.filter(r => {
+    const matchSearch = !search || r.event_name.toLowerCase().includes(search) || (r.hotel||'').toLowerCase().includes(search);
+    const matchStatus = !statusF || r.status === statusF;
+    return matchSearch && matchStatus;
+  });
+
+  const tbody = document.getElementById('hotelTableBody');
+  const empty = document.getElementById('hotelEmpty');
+  document.getElementById('hotelRowCount').textContent = `${filtered.length} event${filtered.length !== 1 ? 's' : ''}`;
+
+  if (!filtered.length) {
+    tbody.innerHTML = '';
+    empty.classList.remove('hidden');
+    return;
+  }
+  empty.classList.add('hidden');
+
+  const STATUS_BADGE = {
+    paid:    '<span class="badge badge-green">Paid</span>',
+    partial: '<span class="badge badge-yellow">Partial</span>',
+    pending: '<span class="badge badge-grey">Pending</span>'
+  };
+
+  tbody.innerHTML = filtered.map(r => {
+    const rowClass = r.status === 'paid' ? 'hotel-row-paid' : r.status === 'partial' ? 'hotel-row-partial' : '';
+    const avSym   = hotelCurrencySymbol(r.av_currency || 'USD');
+    const paidSym = hotelCurrencySymbol(r.paid_currency || 'USD');
+    const avStr   = r.av_amount != null ? `${avSym}${fmtHotelNum(r.av_amount)}` : '—';
+    const paidStr = r.paid_amount != null ? `${paidSym}${fmtHotelNum(r.paid_amount)}` : '—';
+    const shStr   = r.staff_hotel != null ? `${fmtHotelNum(r.staff_hotel)}` : '—';
+    const flStr   = r.flights    != null ? `${fmtHotelNum(r.flights)}` : '—';
+    const prStr   = r.printing   != null ? `${fmtHotelNum(r.printing)}` : '—';
+    return `<tr class="${rowClass}" title="${esc(r.notes||'')}">
+      <td><strong>${esc(r.event_name)}</strong></td>
+      <td style="font-size:0.82rem">${esc(r.hotel||'—')}</td>
+      <td style="font-size:0.82rem;color:var(--text-2)">${esc(r.cost||'—')}</td>
+      <td style="font-size:0.82rem">${avStr}</td>
+      <td style="font-size:0.82rem;font-weight:600">${paidStr}</td>
+      <td style="font-size:0.82rem;color:var(--muted)">${shStr}</td>
+      <td style="font-size:0.82rem;color:var(--muted)">${flStr}</td>
+      <td style="font-size:0.82rem;color:var(--muted)">${prStr}</td>
+      <td>${STATUS_BADGE[r.status] || ''}</td>
+      <td>
+        <div style="display:flex;gap:4px">
+          <button class="btn btn-ghost btn-sm" onclick="openHotelModal(${r.id})">Edit</button>
+          <button class="btn btn-danger btn-sm" onclick="deleteHotelExpense(${r.id})">×</button>
+        </div>
+      </td>
+    </tr>`;
+  }).join('');
+}
+
+function openHotelModal(id) {
+  const r = id ? hotelData.find(x => x.id === id) : null;
+  document.getElementById('hotelModalTitle').textContent = r ? 'Edit Hotel Expense' : 'Add Hotel Expense';
+  document.getElementById('hotelEditId').value = r ? r.id : '';
+  document.getElementById('hotelEventName').value  = r ? r.event_name : '';
+  document.getElementById('hotelHotelName').value  = r ? (r.hotel || '') : '';
+  document.getElementById('hotelCost').value        = r ? (r.cost || '') : '';
+  document.getElementById('hotelStatus').value      = r ? r.status : 'pending';
+  document.getElementById('hotelAvCurrency').value  = r ? (r.av_currency || 'USD') : 'USD';
+  document.getElementById('hotelAvAmount').value    = r && r.av_amount != null ? r.av_amount : '';
+  document.getElementById('hotelPaidCurrency').value= r ? (r.paid_currency || 'USD') : 'USD';
+  document.getElementById('hotelPaidAmount').value  = r && r.paid_amount != null ? r.paid_amount : '';
+  document.getElementById('hotelStaffHotel').value  = r && r.staff_hotel != null ? r.staff_hotel : '';
+  document.getElementById('hotelFlights').value     = r && r.flights    != null ? r.flights    : '';
+  document.getElementById('hotelPrinting').value    = r && r.printing   != null ? r.printing   : '';
+  document.getElementById('hotelNotes').value       = r ? (r.notes || '') : '';
+  document.getElementById('hotelModal').classList.add('open');
+}
+
+function closeHotelModal() {
+  document.getElementById('hotelModal').classList.remove('open');
+}
+
+async function saveHotelExpense() {
+  const id = document.getElementById('hotelEditId').value;
+  const payload = {
+    event_name:    document.getElementById('hotelEventName').value.trim(),
+    hotel:         document.getElementById('hotelHotelName').value.trim(),
+    cost:          document.getElementById('hotelCost').value.trim(),
+    status:        document.getElementById('hotelStatus').value,
+    av_currency:   document.getElementById('hotelAvCurrency').value,
+    av_amount:     document.getElementById('hotelAvAmount').value || null,
+    paid_currency: document.getElementById('hotelPaidCurrency').value,
+    paid_amount:   document.getElementById('hotelPaidAmount').value || null,
+    staff_hotel:   document.getElementById('hotelStaffHotel').value || null,
+    flights:       document.getElementById('hotelFlights').value || null,
+    printing:      document.getElementById('hotelPrinting').value || null,
+    notes:         document.getElementById('hotelNotes').value.trim()
+  };
+  if (!payload.event_name) { showToast('Event name is required', 'error'); return; }
+  const method = id ? 'PUT' : 'POST';
+  const url    = id ? `/api/hotel-expenses/${id}` : '/api/hotel-expenses';
+  const res = await fetch(url, { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+  if (!res.ok) { const e = await res.json(); showToast(e.error || 'Save failed', 'error'); return; }
+  showToast(id ? 'Updated' : 'Added', 'success');
+  closeHotelModal();
+  loadHotelExpenses();
+}
+
+async function deleteHotelExpense(id) {
+  if (!confirm('Delete this hotel expense record?')) return;
+  const res = await fetch(`/api/hotel-expenses/${id}`, { method: 'DELETE' });
+  if (!res.ok) { showToast('Delete failed', 'error'); return; }
+  showToast('Deleted', 'success');
+  loadHotelExpenses();
 }

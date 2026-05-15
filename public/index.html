@@ -28,6 +28,7 @@
       <div class="nav-section-label">Management</div>
       <div class="nav-item" data-page="salary"><span class="icon">💰</span> Salary<span id="salaryNavBadge" class="nav-badge hidden"></span></div>
       <div class="nav-item" data-page="employees"><span class="icon">👥</span> Employees</div>
+      <div class="nav-item" data-page="hotels"><span class="icon">🏨</span> Hotel Expenses</div>
       <div class="nav-item" data-page="reports"><span class="icon">📋</span> Reports</div>
       <div class="nav-item admin-only hidden" data-page="admins"><span class="icon">🔐</span> Admin Users</div>
     </div>
@@ -282,6 +283,56 @@
               <thead><tr><th>Username</th><th>Role</th><th>Created</th><th></th></tr></thead>
               <tbody id="adminTable"></tbody>
             </table>
+          </div>
+        </div>
+      </div>
+
+      <!-- ══ HOTEL EXPENSES ══ -->
+      <div class="page" id="page-hotels">
+        <div class="filter-bar" style="align-items:center">
+          <div class="form-group" style="margin:0">
+            <label>Status Filter</label>
+            <select id="hotelStatusFilter" onchange="renderHotelTable()">
+              <option value="">All</option>
+              <option value="pending">Pending</option>
+              <option value="partial">Partial</option>
+              <option value="paid">Paid</option>
+            </select>
+          </div>
+          <input type="search" id="hotelSearch" placeholder="Search events or hotels…" oninput="renderHotelTable()" style="border:1.5px solid var(--border);border-radius:9px;padding:9px 13px;font-size:0.875rem;font-family:inherit;outline:none;background:var(--bg-2);color:var(--text);min-width:220px" />
+          <button class="btn btn-primary" style="margin-left:auto" onclick="openHotelModal()">+ Add Event</button>
+        </div>
+
+        <!-- Summary cards -->
+        <div id="hotelSummary" class="stats-grid" style="margin-bottom:20px"></div>
+
+        <div class="card" style="padding:0;overflow:hidden">
+          <div class="card-header" style="padding:16px 20px;margin:0;border-radius:var(--radius) var(--radius) 0 0">
+            <span class="card-title">Hotel & Event Expenses</span>
+            <span id="hotelRowCount" style="font-size:0.78rem;color:var(--muted)"></span>
+          </div>
+          <div class="table-wrap">
+            <table id="hotelTable">
+              <thead>
+                <tr>
+                  <th style="width:160px">Event</th>
+                  <th style="min-width:200px">Hotel</th>
+                  <th style="min-width:180px">Cost</th>
+                  <th style="width:130px">AV</th>
+                  <th style="width:140px">Paid So Far</th>
+                  <th style="width:90px">Staff Hotel</th>
+                  <th style="width:80px">Flights</th>
+                  <th style="width:80px">Printing</th>
+                  <th style="width:90px">Status</th>
+                  <th style="width:80px"></th>
+                </tr>
+              </thead>
+              <tbody id="hotelTableBody"></tbody>
+            </table>
+          </div>
+          <div id="hotelEmpty" class="empty-state hidden">
+            <div class="icon">🏨</div>
+            <div>No hotel expenses yet. Click "+ Add Event" to get started.</div>
           </div>
         </div>
       </div>
@@ -803,6 +854,88 @@
     <div style="display:flex;gap:10px;justify-content:flex-end">
       <button class="btn btn-ghost" onclick="closeModal('calReminderModal')">Cancel</button>
       <button class="btn btn-primary" onclick="saveCalReminder()">Save Reminder</button>
+    </div>
+  </div>
+</div>
+
+<!-- Hotel Expense Modal -->
+<div class="modal-overlay" id="hotelModal">
+  <div class="modal" style="width:620px;max-width:95vw">
+    <div class="modal-header">
+      <h2 id="hotelModalTitle">Add Hotel Expense</h2>
+      <button class="modal-close" onclick="closeHotelModal()">✕</button>
+    </div>
+    <input type="hidden" id="hotelEditId" />
+    <div class="modal-section-label">Event Details</div>
+    <div class="form-row" style="grid-template-columns:1fr 1fr">
+      <div class="form-group">
+        <label>Event Name *</label>
+        <input type="text" id="hotelEventName" placeholder="e.g. CFO Miami" />
+      </div>
+      <div class="form-group">
+        <label>Hotel</label>
+        <input type="text" id="hotelHotelName" placeholder="Hotel name" />
+      </div>
+    </div>
+    <div class="form-row" style="grid-template-columns:1fr 1fr">
+      <div class="form-group">
+        <label>Cost (display)</label>
+        <input type="text" id="hotelCost" placeholder="e.g. $18k ++ or £23,076" />
+      </div>
+      <div class="form-group">
+        <label>Status</label>
+        <select id="hotelStatus">
+          <option value="pending">Pending</option>
+          <option value="partial">Partial</option>
+          <option value="paid">Paid</option>
+        </select>
+      </div>
+    </div>
+    <div class="modal-section-label">AV & Payments</div>
+    <div class="form-row" style="grid-template-columns:90px 1fr 90px 1fr">
+      <div class="form-group">
+        <label>AV Currency</label>
+        <select id="hotelAvCurrency">
+          <option>USD</option><option>GBP</option><option>EUR</option><option>CHF</option><option>AED</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label>AV Amount</label>
+        <input type="number" id="hotelAvAmount" placeholder="0.00" step="0.01" min="0" />
+      </div>
+      <div class="form-group">
+        <label>Paid Currency</label>
+        <select id="hotelPaidCurrency">
+          <option>USD</option><option>GBP</option><option>EUR</option><option>CHF</option><option>AED</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label>Paid So Far</label>
+        <input type="number" id="hotelPaidAmount" placeholder="0.00" step="0.01" min="0" />
+      </div>
+    </div>
+    <div class="modal-section-label">Additional Costs</div>
+    <div class="form-row" style="grid-template-columns:1fr 1fr 1fr">
+      <div class="form-group">
+        <label>Staff Hotel</label>
+        <input type="number" id="hotelStaffHotel" placeholder="0" step="0.01" min="0" />
+      </div>
+      <div class="form-group">
+        <label>Flights</label>
+        <input type="number" id="hotelFlights" placeholder="0" step="0.01" min="0" />
+      </div>
+      <div class="form-group">
+        <label>Printing</label>
+        <input type="number" id="hotelPrinting" placeholder="0" step="0.01" min="0" />
+      </div>
+    </div>
+    <div class="form-group" style="margin-top:8px">
+      <label>Notes</label>
+      <textarea id="hotelNotes" rows="2" placeholder="Any additional notes…"></textarea>
+    </div>
+    <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:20px">
+      <button class="btn btn-ghost" onclick="closeHotelModal()">Cancel</button>
+      <button class="btn btn-primary" onclick="saveHotelExpense()">Save</button>
     </div>
   </div>
 </div>

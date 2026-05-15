@@ -190,6 +190,57 @@ async function runMigrations() {
     )
   `);
 
+  await sql(`
+    CREATE TABLE IF NOT EXISTS hotel_expenses (
+      id SERIAL PRIMARY KEY,
+      event_name TEXT NOT NULL,
+      hotel TEXT NOT NULL DEFAULT '',
+      cost TEXT NOT NULL DEFAULT '',
+      av_amount NUMERIC(12,2),
+      av_currency TEXT NOT NULL DEFAULT 'USD',
+      paid_amount NUMERIC(12,2),
+      paid_currency TEXT NOT NULL DEFAULT 'USD',
+      staff_hotel NUMERIC(12,2),
+      flights NUMERIC(12,2),
+      printing NUMERIC(12,2),
+      status TEXT NOT NULL DEFAULT 'pending'
+                CHECK (status IN ('pending','partial','paid')),
+      notes TEXT NOT NULL DEFAULT '',
+      sort_order INT NOT NULL DEFAULT 0,
+      created_by INT REFERENCES admins(id) ON DELETE SET NULL,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `);
+
+  // Seed initial hotel expense rows if table is empty
+  const heCount = await sql('SELECT COUNT(*) AS c FROM hotel_expenses');
+  if (parseInt(heCount[0].c) === 0) {
+    const seedRows = [
+      { event: 'Ops Miami',               hotel: 'Eden Roc Miami Beach Hotel',                          cost: '$11500 ++',                                              av_a: 6888.00,  av_c: 'USD', paid_a: 23896.90, paid_c: 'USD', sh: 1000, fl: 4000, pr: 550,  status: 'paid', ord: 1 },
+      { event: 'Berlin',                  hotel: 'Waldorf Astoria',                                     cost: '€11500 + anticipated revenue reception €1,125.00',       av_a: 4189.40,  av_c: 'EUR', paid_a: 11964.60, paid_c: 'EUR', sh: null, fl: 300,  pr: 800,  status: 'partial', ord: 2 },
+      { event: 'Switzerland',             hotel: 'Park Hyatt Zurich',                                   cost: 'CHF 19300',                                              av_a: 1140.00,  av_c: 'CHF', paid_a: 17230.50, paid_c: 'CHF', sh: 250,  fl: 600,  pr: 550,  status: 'paid', ord: 3 },
+      { event: 'NYC Fundraising/DL',      hotel: 'Marriott Marquis',                                    cost: '$34K approx',                                            av_a: 10765.00, av_c: 'USD', paid_a: 39463.08, paid_c: 'USD', sh: null, fl: null, pr: null, status: 'paid', ord: 4 },
+      { event: 'Ops NYC / Data tech NYC', hotel: 'RENAISSANCE NEW YORK MIDTOWN HOTEL',                  cost: '40++',                                                   av_a: 8359.47,  av_c: 'USD', paid_a: 24435.00, paid_c: 'USD', sh: null, fl: null, pr: null, status: 'pending', ord: 5 },
+      { event: 'CFO Miami',               hotel: 'Four Seasons Hotel Miami',                            cost: '$18k ++',                                                av_a: 13057.46, av_c: 'USD', paid_a: 53566.50, paid_c: 'USD', sh: null, fl: null, pr: null, status: 'paid', ord: 6 },
+      { event: 'CFO Sanfran',             hotel: 'Hyatt Regency San Francisco',                         cost: '$18k ++',                                                av_a: null,     av_c: 'USD', paid_a: 5400.00,  paid_c: 'USD', sh: null, fl: null, pr: null, status: 'pending', ord: 7 },
+      { event: 'CFO London',              hotel: 'Park Plaza Victoria',                                 cost: '£23076',                                                 av_a: null,     av_c: 'GBP', paid_a: 20768.40, paid_c: 'GBP', sh: null, fl: null, pr: null, status: 'pending', ord: 8 },
+      { event: 'London Fundraising / Sports', hotel: 'Park Plaza Victoria',                            cost: '£22140',                                                 av_a: null,     av_c: 'GBP', paid_a: 14391.00, paid_c: 'GBP', sh: null, fl: null, pr: null, status: 'pending', ord: 9 },
+      { event: 'Data Tech London 6th Oct',hotel: 'ME London',                                           cost: '£7480',                                                  av_a: null,     av_c: 'GBP', paid_a: 2992.00,  paid_c: 'GBP', sh: null, fl: null, pr: null, status: 'pending', ord: 10 },
+      { event: 'Chicago',                 hotel: 'DoubleTree by Hilton Chicago – Magnificent Mile',     cost: '$23500 ++ ($31020)',                                      av_a: null,     av_c: 'USD', paid_a: 13000.00, paid_c: 'USD', sh: null, fl: null, pr: null, status: 'pending', ord: 11 },
+      { event: 'PD/CFO LA',              hotel: 'Sofitel',                                             cost: '$19k ++',                                                av_a: null,     av_c: 'USD', paid_a: 10000.00, paid_c: 'USD', sh: null, fl: null, pr: 850,  status: 'pending', ord: 12 },
+      { event: 'OPS LA',                  hotel: 'Regent',                                              cost: '$13k ++',                                                av_a: null,     av_c: 'USD', paid_a: null,     paid_c: 'USD', sh: null, fl: null, pr: null, status: 'pending', ord: 13 },
+      { event: 'CFO NYC',                 hotel: '',                                                    cost: '',                                                       av_a: null,     av_c: 'USD', paid_a: null,     paid_c: 'USD', sh: null, fl: null, pr: null, status: 'pending', ord: 14 },
+      { event: 'Lux',                     hotel: 'Le Royal',                                            cost: '€8170',                                                  av_a: null,     av_c: 'EUR', paid_a: null,     paid_c: 'EUR', sh: null, fl: null, pr: null, status: 'pending', ord: 15 },
+    ];
+    for (const r of seedRows) {
+      await sql(
+        `INSERT INTO hotel_expenses (event_name, hotel, cost, av_amount, av_currency, paid_amount, paid_currency, staff_hotel, flights, printing, status, sort_order)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)`,
+        [r.event, r.hotel, r.cost, r.av_a, r.av_c, r.paid_a, r.paid_c, r.sh, r.fl, r.pr, r.status, r.ord]
+      );
+    }
+  }
+
   const rows = await sql('SELECT COUNT(*) AS c FROM admins');
   if (parseInt(rows[0].c) === 0) {
     const hash = bcrypt.hashSync('admin123', 10);
