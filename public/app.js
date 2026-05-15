@@ -17,6 +17,13 @@ document.addEventListener('DOMContentLoaded', async () => {
   const res = await fetch('/api/me');
   if (!res.ok) { window.location.href = '/login.html'; return; }
   currentUser = await res.json();
+  window.currentUser = currentUser;
+
+  // Check user role before initializing
+  if (currentUser.role === 'employee') {
+    await initEmployeePortal(currentUser);
+    return; // Don't run admin init
+  }
 
   const initials = currentUser.username.slice(0,2).toUpperCase();
   document.getElementById('userLabel').innerHTML = `<div class="sidebar-user-pill"><div class="sidebar-user-avatar">${esc(initials)}</div><span class="sidebar-user-name">${esc(currentUser.username)}</span><span class="sidebar-user-role">${esc(currentUser.role)}</span></div>`;
@@ -182,6 +189,7 @@ function renderEmpTable() {
       <td><span class="badge ${statusBadge}" style="white-space:normal">${esc(statusLabel)}</span></td>
       <td style="text-align:right">
         <button class="btn btn-ghost btn-sm" onclick='openEmpModal(${JSON.stringify(emp)})'>Edit</button>
+        <button class="btn btn-ghost btn-sm" onclick="openSetPinModal(${emp.id},'${esc(emp.name)}')">Set PIN</button>
         ${emp.active
           ? `<button class="btn btn-danger btn-sm" onclick="openTerminateModal(${emp.id},'${esc(emp.name)}')">Terminate</button>`
           : `<button class="btn btn-ghost btn-sm" onclick="reactivateEmployee(${emp.id})">Reactivate</button>`}
@@ -2865,4 +2873,307 @@ async function deleteHotelExpense(id) {
   if (!res.ok) { showToast('Delete failed', 'error'); return; }
   showToast('Deleted', 'success');
   loadHotelExpenses();
+}
+
+// ─── EMPLOYEE PORTAL ──────────────────────────────────────────────────────────
+async function checkUserRole() {
+  try {
+    const res = await fetch('/api/me');
+    if (!res.ok) return null;
+    return await res.json();
+  } catch { return null; }
+}
+
+async function initEmployeePortal(user) {
+  window.currentUser = user;
+  // Hide all nav items except dashboard and calendar
+  document.querySelectorAll('.nav-item').forEach(el => {
+    const page = el.dataset.page;
+    if (page !== 'dashboard' && page !== 'calendar') el.style.display = 'none';
+  });
+  document.querySelectorAll('.bottom-nav-item').forEach(el => {
+    const page = el.dataset.page;
+    if (page !== 'dashboard' && page !== 'calendar') el.style.display = 'none';
+  });
+  // Hide admin-only UI elements
+  const addEmpBtn = document.getElementById('addEmpBtn');
+  if (addEmpBtn) addEmpBtn.style.display = 'none';
+
+  // Show employee greeting in sidebar
+  const sidebar = document.querySelector('.sidebar-footer') || document.querySelector('.nav-user');
+  // Set page title
+  document.title = 'LPGP – My Portal';
+
+  // Load employee dashboard
+  navigate('dashboard');
+  loadEmployeeDashboard(user);
+
+  // Override navigate to only allow dashboard and calendar
+  window._origNavigate = window.navigate;
+  window.navigate = function(page) {
+    if (page !== 'dashboard' && page !== 'calendar') return;
+    document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+    document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+    document.querySelectorAll('.bottom-nav-item').forEach(n => n.classList.remove('active'));
+    const pageEl = document.getElementById('page-' + page);
+    if (pageEl) pageEl.classList.add('active');
+    document.querySelectorAll('[data-page="' + page + '"]').forEach(n => n.classList.add('active'));
+    if (page === 'dashboard') loadEmployeeDashboard(user);
+    if (page === 'calendar') loadEmployeeCalendar();
+  };
+}
+
+async function loadEmployeeDashboard(user) {
+  const el = document.getElementById('dashStats');
+  if (!el) return;
+  el.innerHTML = '<div class="skeleton" style="height:200px;border-radius:16px"></div>';
+
+  try {
+    const [profileRes, upcomingRes] = await Promise.all([
+      fetch('/api/employee/profile'),
+      fetch('/api/calendar-reminders/upcoming?days=30')
+    ]);
+    const profile  = profileRes.ok  ? await profileRes.json()  : {};
+    const upcoming = upcomingRes.ok ? await upcomingRes.json() : [];
+
+    const daysUsed  = parseFloat(profile.days_used) || 0;
+    const allowance = profile.allowance_days || 20;
+    const remaining = Math.max(0, allowance - daysUsed);
+    const pct       = Math.min(100, Math.round((daysUsed / allowance) * 100));
+    const initials  = (profile.name || '?').split(' ').map(w => w[0]).join('').slice(0,2).toUpperCase();
+    const barColor  = pct > 80 ? 'var(--negative)' : pct > 60 ? 'var(--warning)' : 'var(--positive)';
+    const MONS = ['JAN','FEB','MAR','APR','MAY','JUN','JUL','AUG','SEP','OCT','NOV','DEC'];
+
+    let upcomingHtml = '';
+    if (upcoming.length) {
+      upcomingHtml = upcoming.slice(0,4).map(r => {
+        const d = new Date(r.virtual_date);
+        const sym = r.currency === 'GBP' ? '£' : r.currency === 'USD' ? '$' : (r.currency + ' ');
+        const amt = r.amount ? sym + parseFloat(r.amount).toLocaleString('en-GB',{maximumFractionDigits:0}) : '';
+        return '<div style="display:flex;gap:12px;padding:11px 0;border-bottom:1px solid var(--border);align-items:center">' +
+          '<div style="width:38px;min-width:38px;text-align:center;background:#1a1f2e;border:1px solid var(--border);border-radius:7px;padding:6px 0">' +
+            '<div style="font:800 14px/1 var(--font-mono);color:var(--text)">' + d.getUTCDate() + '</div>' +
+            '<div style="font:600 9px/1 var(--font-mono);color:var(--muted);margin-top:3px">' + MONS[d.getUTCMonth()] + '</div>' +
+          '</div>' +
+          '<div style="flex:1"><div style="font:600 12px/1 var(--font-sans);color:var(--text)">' + esc(r.title) + '</div>' +
+            '<div style="font:600 10px/1 var(--font-mono);color:var(--muted);margin-top:4px">' + (r.category||'').toUpperCase() + '</div></div>' +
+          (amt ? '<div style="font:700 12px/1 var(--font-mono);color:var(--text)">' + amt + '</div>' : '') +
+        '</div>';
+      }).join('');
+    }
+
+    el.innerHTML =
+      '<div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:0">' +
+        // Profile card
+        '<div class="card">' +
+          '<div style="padding:24px">' +
+            '<div style="display:flex;align-items:center;gap:16px;margin-bottom:20px">' +
+              '<div style="width:52px;height:52px;border-radius:50%;background:var(--primary);display:flex;align-items:center;justify-content:center;font:800 18px/1 var(--font-mono);color:#000;flex-shrink:0">' + initials + '</div>' +
+              '<div>' +
+                '<div style="font:700 18px/1 var(--font-sans);color:var(--text)">' + esc(profile.name||'') + '</div>' +
+                '<div style="font:500 12px/1 var(--font-mono);color:var(--muted);margin-top:4px">' + esc([profile.job_title, profile.department].filter(Boolean).join(' · ')) + '</div>' +
+              '</div>' +
+            '</div>' +
+            (profile.start_date ? '<div style="font:500 11px/1 var(--font-mono);color:var(--muted);margin-bottom:16px">Since ' + profile.start_date + '</div>' : '') +
+            '<div style="font:600 10px/1 var(--font-mono);text-transform:uppercase;letter-spacing:1px;color:var(--muted);margin-bottom:8px">Days Off ' + (profile.year||new Date().getFullYear()) + '</div>' +
+            '<div style="display:flex;justify-content:space-between;font:600 12px/1 var(--font-mono);color:var(--muted);margin-bottom:6px">' +
+              '<span>' + daysUsed + ' used</span><span style="color:' + barColor + '">' + remaining + ' remaining</span>' +
+            '</div>' +
+            '<div style="height:8px;background:var(--border);border-radius:4px;margin-bottom:8px">' +
+              '<div style="height:100%;width:' + pct + '%;background:' + barColor + ';border-radius:4px"></div>' +
+            '</div>' +
+            '<div style="font:500 11px/1 var(--font-mono);color:var(--muted)">' + daysUsed + ' / ' + allowance + ' days used &middot; ' + pct + '%</div>' +
+          '</div>' +
+        '</div>' +
+        // Upcoming reminders
+        '<div class="card">' +
+          '<div class="card-header"><span class="card-title">Upcoming</span><span style="font:700 11px/1 var(--font-mono);color:var(--muted)">NEXT 30D</span></div>' +
+          '<div style="padding:4px 18px 12px">' + (upcomingHtml || '<div style="color:var(--muted);font-size:0.82rem;padding:16px 0">No upcoming reminders</div>') + '</div>' +
+        '</div>' +
+      '</div>';
+
+    // Hide the other dashboard panels
+    ['contractExpiryPanel','headcountPanel','upcomingPanel','activityPanel'].forEach(id => {
+      const e = document.getElementById(id);
+      if (e) e.innerHTML = '';
+    });
+    const dashTable = document.querySelector('.card .table-wrap');
+    // hide the full employee summary table section
+    const dashTableCard = document.getElementById('dashTable');
+    if (dashTableCard) {
+      const card = dashTableCard.closest('.card');
+      if (card) card.style.display = 'none';
+    }
+
+  } catch(e) {
+    el.innerHTML = '<div class="alert alert-error">Failed to load profile: ' + e.message + '</div>';
+  }
+}
+
+let empCalYear  = new Date().getFullYear();
+let empCalMonth = new Date().getMonth() + 1;
+
+async function loadEmployeeCalendar() {
+  const MONTHS_FULL = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+  const DAYS = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
+
+  // Find or create employee calendar container in #page-calendar
+  let container = document.getElementById('empCalContainer');
+  if (!container) {
+    const page = document.getElementById('page-calendar');
+    if (!page) return;
+    page.innerHTML =
+      '<div class="page-head">' +
+        '<div><h1>My Calendar</h1><div class="sub">// Your days off &amp; upcoming events</div></div>' +
+        '<button class="btn btn-primary" onclick="openEmpDayOffModal()">+ Request Day Off</button>' +
+      '</div>' +
+      '<div id="empCalContainer"></div>' +
+      // Request day-off modal
+      '<div id="empDayOffModal" class="modal hidden">' +
+        '<div class="modal-overlay" onclick="closeModal(\'empDayOffModal\')"></div>' +
+        '<div class="modal-box" style="max-width:380px">' +
+          '<div class="modal-header"><span class="modal-title">Request Day Off</span>' +
+            '<button class="modal-close" onclick="closeModal(\'empDayOffModal\')">×</button></div>' +
+          '<div class="modal-body">' +
+            '<div class="form-group" style="margin-bottom:14px"><label>Date</label><input type="date" id="empDayOffDate"></div>' +
+            '<div class="form-group" style="margin-bottom:20px"><label>Type</label>' +
+              '<select id="empDayOffType"><option value="1">Full Day</option><option value="0.5">Half Day</option></select></div>' +
+            '<button class="btn btn-primary" style="width:100%" onclick="submitEmpDayOff()">Submit Request</button>' +
+          '</div>' +
+        '</div>' +
+      '</div>';
+    container = document.getElementById('empCalContainer');
+  }
+
+  container.innerHTML = '<div class="skeleton" style="height:300px;border-radius:12px"></div>';
+
+  try {
+    const [recordsRes, upcomingRes] = await Promise.all([
+      fetch('/api/employee/my-records?year=' + empCalYear + '&month=' + empCalMonth),
+      fetch('/api/calendar-reminders/upcoming?days=60')
+    ]);
+    const records  = recordsRes.ok  ? await recordsRes.json()  : [];
+    const upcoming = upcomingRes.ok ? await upcomingRes.json() : [];
+
+    // Build a map: date → record
+    const recordMap = {};
+    records.forEach(r => { recordMap[r.record_date] = r; });
+
+    // Build calendar grid
+    const firstDay = new Date(empCalYear, empCalMonth - 1, 1);
+    const daysInMonth = new Date(empCalYear, empCalMonth, 0).getDate();
+    let startDow = firstDay.getDay(); // 0=Sun
+    startDow = startDow === 0 ? 6 : startDow - 1; // Mon=0
+
+    const today = new Date().toISOString().slice(0,10);
+
+    let gridHtml = '<div style="display:grid;grid-template-columns:repeat(7,1fr);gap:4px;margin-bottom:6px">';
+    DAYS.forEach(d => { gridHtml += '<div style="text-align:center;font:600 10px/1 var(--font-mono);color:var(--muted);padding:4px 0">' + d + '</div>'; });
+    gridHtml += '</div><div style="display:grid;grid-template-columns:repeat(7,1fr);gap:4px">';
+
+    // Empty cells before first day
+    for (let i = 0; i < startDow; i++) gridHtml += '<div></div>';
+
+    for (let d = 1; d <= daysInMonth; d++) {
+      const dateStr = empCalYear + '-' + String(empCalMonth).padStart(2,'0') + '-' + String(d).padStart(2,'0');
+      const rec = recordMap[dateStr];
+      const isToday = dateStr === today;
+      const isPast  = dateStr < today;
+      let bg = 'var(--surface-2)';
+      let label = '';
+      if (rec) {
+        bg = parseFloat(rec.is_day_off) === 1 ? '#7c3aed44' : '#d9770644';
+        label = parseFloat(rec.is_day_off) === 1 ? '<div style="font:600 9px/1 var(--font-mono);color:#a78bfa;margin-top:2px">FULL</div>' : '<div style="font:600 9px/1 var(--font-mono);color:#fb923c;margin-top:2px">HALF</div>';
+      }
+      gridHtml += '<div style="background:' + bg + ';border:1px solid ' + (isToday ? 'var(--primary)' : 'var(--border)') + ';border-radius:6px;padding:6px 4px;text-align:center;min-height:44px;cursor:' + (isPast?'default':'pointer') + '"' +
+        (!isPast && !rec ? ' onclick="openEmpDayOffModalDate(\'' + dateStr + '\')"' : '') +
+        (rec ? ' title="Click to cancel" onclick="cancelEmpDayOff(\'' + dateStr + '\')"' : '') + '>' +
+        '<div style="font:' + (isToday?'800':'600') + ' 12px/1 var(--font-mono);color:' + (isToday?'var(--primary)':rec?'var(--text)':'var(--muted)') + '">' + d + '</div>' +
+        label +
+      '</div>';
+    }
+    gridHtml += '</div>';
+
+    // Upcoming reminders list
+    const now = new Date().toISOString().slice(0,10);
+    const MONS = ['JAN','FEB','MAR','APR','MAY','JUN','JUL','AUG','SEP','OCT','NOV','DEC'];
+    const futureReminders = upcoming.filter(r => (r.virtual_date||'').slice(0,10) >= now).slice(0,5);
+    let remHtml = '';
+    if (futureReminders.length) {
+      remHtml = futureReminders.map(r => {
+        const d = new Date(r.virtual_date);
+        const sym = r.currency === 'GBP' ? '£' : r.currency === 'USD' ? '$' : (r.currency+' ');
+        return '<div style="display:flex;gap:12px;padding:10px 0;border-bottom:1px solid var(--border);align-items:center">' +
+          '<div style="width:36px;min-width:36px;text-align:center;background:#1a1f2e;border:1px solid var(--border);border-radius:7px;padding:5px 0">' +
+            '<div style="font:800 13px/1 var(--font-mono);color:var(--text)">' + d.getUTCDate() + '</div>' +
+            '<div style="font:600 9px/1 var(--font-mono);color:var(--muted);margin-top:3px">' + MONS[d.getUTCMonth()] + '</div>' +
+          '</div>' +
+          '<div style="flex:1"><div style="font:600 12px/1 var(--font-sans);color:var(--text)">' + esc(r.title) + '</div>' +
+            '<div style="font:600 10px/1 var(--font-mono);color:var(--muted);margin-top:3px">' + (r.category||'').toUpperCase() + '</div></div>' +
+          (r.amount ? '<div style="font:700 12px/1 var(--font-mono);color:var(--text)">' + sym + parseFloat(r.amount).toLocaleString('en-GB',{maximumFractionDigits:0}) + '</div>' : '') +
+        '</div>';
+      }).join('');
+    }
+
+    container.innerHTML =
+      '<div style="display:flex;gap:12px;align-items:center;margin-bottom:16px">' +
+        '<button class="btn btn-ghost" onclick="empCalPrev()">‹ Prev</button>' +
+        '<div style="flex:1;text-align:center;font:700 16px/1 var(--font-sans);color:var(--text)">' + MONTHS_FULL[empCalMonth-1] + ' ' + empCalYear + '</div>' +
+        '<button class="btn btn-ghost" onclick="empCalNext()">Next ›</button>' +
+      '</div>' +
+      '<div style="display:grid;grid-template-columns:3fr 2fr;gap:16px">' +
+        '<div class="card"><div class="card-header"><span class="card-title">Days Off</span><span style="font:700 11px/1 var(--font-mono);color:var(--muted)">' + records.length + ' this month</span></div><div style="padding:16px">' + gridHtml + '</div>' +
+          '<div style="padding:8px 16px 14px;font:500 11px/1 var(--font-mono);color:var(--muted)">Click a future date to request a day off · Click an existing booking to cancel it</div>' +
+        '</div>' +
+        '<div class="card"><div class="card-header"><span class="card-title">Upcoming</span><span style="font:700 11px/1 var(--font-mono);color:var(--muted)">NEXT 60D</span></div>' +
+          '<div style="padding:4px 16px 12px">' + (remHtml || '<div style="color:var(--muted);font-size:0.82rem;padding:12px 0">No upcoming reminders</div>') + '</div>' +
+        '</div>' +
+      '</div>';
+
+  } catch(e) {
+    container.innerHTML = '<div class="alert alert-error">Failed to load calendar: ' + e.message + '</div>';
+  }
+}
+
+function empCalPrev() { empCalMonth--; if (empCalMonth < 1) { empCalMonth = 12; empCalYear--; } loadEmployeeCalendar(); }
+function empCalNext() { empCalMonth++; if (empCalMonth > 12) { empCalMonth = 1; empCalYear++; } loadEmployeeCalendar(); }
+
+function openEmpDayOffModal() {
+  document.getElementById('empDayOffDate').value = new Date().toISOString().slice(0,10);
+  openModal('empDayOffModal');
+}
+function openEmpDayOffModalDate(date) {
+  document.getElementById('empDayOffDate').value = date;
+  openModal('empDayOffModal');
+}
+
+async function submitEmpDayOff() {
+  const date = document.getElementById('empDayOffDate').value;
+  const is_day_off = document.getElementById('empDayOffType').value;
+  if (!date) return showToast('Please select a date', 'error');
+  const res = await fetch('/api/employee/day-off', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ date, is_day_off }) });
+  const data = await res.json();
+  if (res.ok) { closeModal('empDayOffModal'); showToast('Day off submitted!', 'success'); loadEmployeeCalendar(); }
+  else showToast(data.error || 'Failed', 'error');
+}
+
+async function cancelEmpDayOff(date) {
+  if (!await showConfirm('Cancel your day off on ' + date + '?')) return;
+  const res = await fetch('/api/employee/day-off/' + date, { method:'DELETE' });
+  if (res.ok) { showToast('Booking cancelled', 'success'); loadEmployeeCalendar(); }
+  else showToast('Failed to cancel', 'error');
+}
+
+function openSetPinModal(empId, empName) {
+  // simple prompt approach
+  const pin = prompt('Set portal PIN for ' + empName + ' (min 4 characters):');
+  if (!pin || pin.length < 4) { showToast('PIN must be at least 4 characters', 'error'); return; }
+  fetch('/api/employees/' + empId + '/portal-pin', {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ pin })
+  }).then(r => r.json()).then(d => {
+    if (d.success) showToast('Portal PIN set for ' + empName, 'success');
+    else showToast(d.error || 'Failed', 'error');
+  });
 }
