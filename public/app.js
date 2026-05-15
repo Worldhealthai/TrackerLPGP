@@ -371,36 +371,36 @@ async function loadDashboard() {
   const unpaidSub    = unpaidCount > 0 ? 'Action required &rarr;' : 'All paid up';
   const salaryFmt    = fmtK(totalGBPRemaining);
 
-  document.getElementById('dashStats').innerHTML =
-    '<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:16px">' +
-      '<div class="dash-mini-card dash-mini--indigo" style="cursor:pointer" onclick="navigate(\'salary\')">' +
-        '<div class="dash-mini-icon">&pound;</div>' +
-        '<div class="dash-mini-body">' +
-          '<div class="dash-mini-label">Salaries Remaining</div>' +
-          '<div class="dash-mini-value">&pound;' + salaryFmt + '</div>' +
-          '<div class="dash-mini-sub">GBP outstanding &middot; ' + year + '</div>' +
-        '</div>' +
+  const miniCardsHtml =
+    '<div class="dash-mini-card dash-mini--indigo" style="cursor:pointer" onclick="navigate(\'salary\')">' +
+      '<div class="dash-mini-icon">&pound;</div>' +
+      '<div class="dash-mini-body">' +
+        '<div class="dash-mini-label">Salaries Remaining</div>' +
+        '<div class="dash-mini-value">&pound;' + salaryFmt + '</div>' +
+        '<div class="dash-mini-sub">GBP outstanding &middot; ' + year + '</div>' +
       '</div>' +
-      '<div class="dash-mini-card ' + hotelClass + '" style="cursor:pointer" onclick="navigate(\'hotels\')">' +
-        '<div class="dash-mini-icon">&#127968;</div>' +
-        '<div class="dash-mini-body">' +
-          '<div class="dash-mini-label">Hotel Fees Remaining</div>' +
-          '<div class="dash-mini-value">' + hotelEvents + '</div>' +
-          '<div class="dash-mini-sub">' + hotelSub + '</div>' +
-        '</div>' +
+    '</div>' +
+    '<div class="dash-mini-card ' + hotelClass + '" style="cursor:pointer" onclick="navigate(\'hotels\')">' +
+      '<div class="dash-mini-icon">&#127968;</div>' +
+      '<div class="dash-mini-body">' +
+        '<div class="dash-mini-label">Hotel Fees Remaining</div>' +
+        '<div class="dash-mini-value">' + hotelEvents + '</div>' +
+        '<div class="dash-mini-sub">' + hotelSub + '</div>' +
       '</div>' +
-      '<div class="dash-mini-card ' + unpaidClass + '" style="cursor:pointer" onclick="navigate(\'salary\')">' +
-        '<div class="dash-mini-icon">' + unpaidIcon + '</div>' +
-        '<div class="dash-mini-body">' +
-          '<div class="dash-mini-label">Unpaid This Month</div>' +
-          '<div class="dash-mini-value">' + unpaidCount + '</div>' +
-          '<div class="dash-mini-sub">' + unpaidSub + '</div>' +
-        '</div>' +
+    '</div>' +
+    '<div class="dash-mini-card ' + unpaidClass + '" style="cursor:pointer" onclick="navigate(\'salary\')">' +
+      '<div class="dash-mini-icon">' + unpaidIcon + '</div>' +
+      '<div class="dash-mini-body">' +
+        '<div class="dash-mini-label">Unpaid This Month</div>' +
+        '<div class="dash-mini-value">' + unpaidCount + '</div>' +
+        '<div class="dash-mini-sub">' + unpaidSub + '</div>' +
       '</div>' +
     '</div>';
 
-  // Contract expiry panel
-  renderContractExpiryPanel(expiring);
+  document.getElementById('dashStats').innerHTML = '';
+
+  // Contract expiry panel (now also carries the 3 mini cards in the left column)
+  renderContractExpiryPanel(expiring, miniCardsHtml);
 
   // Headcount by department (combined with hero stats)
   renderHeadcountPanel(activeEmps, payrollCount, seCount, totalHeadcount, year);
@@ -442,33 +442,43 @@ async function loadDashboard() {
   }
 }
 
-function renderContractExpiryPanel(expiring) {
-  const el = document.getElementById('contractExpiryPanel');
+function renderContractExpiryPanel(expiring, miniCardsHtml) {
+  var el = document.getElementById('contractExpiryPanel');
   if (!el) return;
-  if (!expiring.length) { el.innerHTML = ''; return; }
-  const today = new Date().toISOString().slice(0,10);
-  el.innerHTML = `
-    <div class="dash-panel dash-panel--alert">
-      <div class="dash-panel-header">
-        <span class="dash-panel-icon">⚠️</span>
-        <span class="dash-panel-title">Contracts Expiring (Next 60 Days)</span>
-        <span class="dash-panel-count">${expiring.length}</span>
-      </div>
-      <div class="dash-panel-body">
-        ${expiring.map(e => {
-          const expired = e.contract_end_date < today;
-          const badge = expired ? 'badge-red' : 'badge-yellow';
-          const label = expired ? 'Expired' : `Ends ${e.contract_end_date}`;
-          return `<div class="dash-panel-row">
-            <div>
-              <div style="font-weight:700;font-size:0.88rem">${esc(e.name)}</div>
-              ${e.job_title || e.department ? `<div style="font-size:0.74rem;color:var(--muted)">${esc([e.job_title,e.department].filter(Boolean).join(' · '))}</div>` : ''}
-            </div>
-            <span class="badge ${badge}">${label}</span>
-          </div>`;
-        }).join('')}
-      </div>
-    </div>`;
+
+  var html = '<div style="display:flex;flex-direction:column;gap:12px;height:100%">';
+
+  // Always show the 3 mini action cards stacked
+  if (miniCardsHtml) html += miniCardsHtml;
+
+  // Expiry alert below if contracts are expiring
+  if (expiring && expiring.length) {
+    var today = new Date().toISOString().slice(0,10);
+    html += '<div class="dash-panel dash-panel--alert" style="margin-top:4px">' +
+      '<div class="dash-panel-header">' +
+        '<span class="dash-panel-icon">⚠️</span>' +
+        '<span class="dash-panel-title">Contracts Expiring</span>' +
+        '<span class="dash-panel-count">' + expiring.length + '</span>' +
+      '</div>' +
+      '<div class="dash-panel-body">' +
+        expiring.map(function(e) {
+          var expired = e.contract_end_date < today;
+          var badge = expired ? 'badge-red' : 'badge-yellow';
+          var label = expired ? 'Expired' : 'Ends ' + e.contract_end_date;
+          return '<div class="dash-panel-row">' +
+            '<div>' +
+              '<div style="font-weight:700;font-size:0.88rem">' + esc(e.name) + '</div>' +
+              ((e.job_title || e.department) ? '<div style="font-size:0.74rem;color:var(--muted)">' + esc([e.job_title,e.department].filter(Boolean).join(' · ')) + '</div>' : '') +
+            '</div>' +
+            '<span class="badge ' + badge + '">' + label + '</span>' +
+          '</div>';
+        }).join('') +
+      '</div>' +
+    '</div>';
+  }
+
+  html += '</div>';
+  el.innerHTML = html;
 }
 
 function renderHeadcountPanel(activeEmps, payrollCount, seCount, totalHeadcount, year) {
