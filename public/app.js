@@ -302,17 +302,18 @@ async function loadDashboard() {
   const allEmps       = allEmpRes.ok   ? await allEmpRes.json()   : [];
 
   const activeEmps    = allEmps.filter(e => e.active);
-  const totalDeduction = summary.reduce((a, b) => a + b.total_deduction, 0);
   const unpaidCount   = getUnpaidThisMonth(salaryData, year, month).length;
   updateSalaryBadge(unpaidCount);
 
-  // Total annual payroll cost (active payroll employees in GBP)
-  const totalPayrollGBP = activeEmps
-    .filter(e => e.employment_type === 'payroll' && (e.currency || 'GBP') === 'GBP')
-    .reduce((a, e) => a + (parseFloat(e.annual_salary) || 0), 0);
-  const totalHeadcount = activeEmps.length;
-  const payrollCount   = activeEmps.filter(e => e.employment_type === 'payroll').length;
-  const seCount        = activeEmps.filter(e => e.employment_type === 'self_employed').length;
+  const totalHeadcount  = activeEmps.length;
+  const payrollCount    = activeEmps.filter(e => e.employment_type === 'payroll').length;
+  const seCount         = activeEmps.filter(e => e.employment_type === 'self_employed').length;
+  const expiringCount   = expiring.length;
+
+  // Total GBP salary remaining to pay this year
+  const totalGBPRemaining = salaryData
+    .filter(e => (e.currency || 'GBP') === 'GBP')
+    .reduce((a, e) => a + Math.max(0, parseFloat(e.net_remaining) || 0), 0);
 
   document.getElementById('dashStats').innerHTML = `
     <div class="dash-bento">
@@ -327,20 +328,20 @@ async function loadDashboard() {
         <div class="dash-hero-footer">Total workforce · ${year}</div>
       </div>
       <div class="dash-mini-grid">
-        <div class="dash-mini-card dash-mini--indigo">
+        <div class="dash-mini-card dash-mini--indigo" style="cursor:pointer" onclick="navigate('salary')" title="Go to salary page">
           <div class="dash-mini-icon">💷</div>
           <div class="dash-mini-body">
-            <div class="dash-mini-label">Annual Payroll</div>
-            <div class="dash-mini-value">£${fmtK(totalPayrollGBP)}</div>
-            <div class="dash-mini-sub">GBP employees · ${year}</div>
+            <div class="dash-mini-label">Salaries Remaining</div>
+            <div class="dash-mini-value">£${fmtK(totalGBPRemaining)}</div>
+            <div class="dash-mini-sub">GBP outstanding · ${year}</div>
           </div>
         </div>
-        <div class="dash-mini-card dash-mini--red">
-          <div class="dash-mini-icon">📉</div>
+        <div class="dash-mini-card ${expiringCount > 0 ? 'dash-mini--alert' : 'dash-mini--green'}" style="cursor:pointer" onclick="navigate('employees')" title="View employees">
+          <div class="dash-mini-icon">${expiringCount > 0 ? '⚠️' : '📋'}</div>
           <div class="dash-mini-body">
-            <div class="dash-mini-label">Total Deductions</div>
-            <div class="dash-mini-value">£${totalDeduction.toFixed(0)}</div>
-            <div class="dash-mini-sub">Year to date · ${year}</div>
+            <div class="dash-mini-label">Contracts Expiring</div>
+            <div class="dash-mini-value">${expiringCount}</div>
+            <div class="dash-mini-sub">${expiringCount > 0 ? 'Within 60 days →' : 'All clear'}</div>
           </div>
         </div>
         <div class="dash-mini-card ${unpaidCount > 0 ? 'dash-mini--alert' : 'dash-mini--green'}" style="cursor:pointer" onclick="navigate('salary')" title="Go to salary page">
