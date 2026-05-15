@@ -364,28 +364,6 @@ async function loadDashboard() {
   const salaryFmt    = fmtK(totalGBPRemaining);
 
   document.getElementById('dashStats').innerHTML =
-    '<div style="display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:1px;background:var(--border);border:1px solid var(--border);border-radius:var(--radius);overflow:hidden;margin-bottom:16px">' +
-      '<div style="background:var(--surface);padding:18px 20px;display:flex;flex-direction:column;gap:10px">' +
-        '<div style="font:600 10px/1 var(--font-mono);text-transform:uppercase;letter-spacing:1px;color:var(--muted)">Headcount</div>' +
-        '<div style="font:600 32px/1 var(--font-mono);color:var(--text);letter-spacing:-1px">' + String(activeEmps.length).padStart(2,'0') + '</div>' +
-        '<div style="font:500 11px/1 var(--font-mono);color:var(--positive)">&uarr; active employees</div>' +
-      '</div>' +
-      '<div style="background:var(--surface);padding:18px 20px;display:flex;flex-direction:column;gap:10px">' +
-        '<div style="font:600 10px/1 var(--font-mono);text-transform:uppercase;letter-spacing:1px;color:var(--muted)">Payroll &middot; Self-emp</div>' +
-        '<div style="font:600 32px/1 var(--font-mono);color:var(--text);letter-spacing:-1px">' + payrollCount + '<span style="color:var(--dim);font-size:20px">&middot;</span>' + seCount + '</div>' +
-        '<div style="font:500 11px/1 var(--font-mono);color:var(--muted)">stable</div>' +
-      '</div>' +
-      '<div style="background:var(--surface);padding:18px 20px;display:flex;flex-direction:column;gap:10px">' +
-        '<div style="font:600 10px/1 var(--font-mono);text-transform:uppercase;letter-spacing:1px;color:var(--muted)">Total Deductions</div>' +
-        '<div style="font:600 28px/1 var(--font-mono);color:var(--text);letter-spacing:-1px">&pound;' + totalDeduct.toFixed(0) + '</div>' +
-        '<div style="font:500 11px/1 var(--font-mono);color:var(--negative)">&darr; YTD this year</div>' +
-      '</div>' +
-      '<div style="background:var(--surface);padding:18px 20px;display:flex;flex-direction:column;gap:10px">' +
-        '<div style="font:600 10px/1 var(--font-mono);text-transform:uppercase;letter-spacing:1px;color:var(--muted)">Flagged Employees</div>' +
-        '<div style="font:600 32px/1 var(--font-mono);color:' + flaggedColor + ';letter-spacing:-1px">' + String(flaggedCount).padStart(2,'0') + '</div>' +
-        '<div style="font:500 11px/1 var(--font-mono);color:var(--muted)">' + flaggedLabel + '</div>' +
-      '</div>' +
-    '</div>' +
     '<div class="dash-bento">' +
       '<div class="dash-hero-card">' +
         '<div class="dash-hero-glow"></div>' +
@@ -1048,114 +1026,185 @@ async function deletePayment(id) {
 }
 
 // ─── REPORTS ─────────────────────────────────────────────────────────────────
+function _repTile(label, value, sub, color) {
+  return '<div style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:20px 22px;display:flex;flex-direction:column;gap:8px">' +
+    '<div style="font:600 10px/1 var(--font-mono);text-transform:uppercase;letter-spacing:1.2px;color:var(--muted)">' + label + '</div>' +
+    '<div style="font:700 30px/1 var(--font-mono);color:' + color + ';letter-spacing:-1px">' + value + '</div>' +
+    '<div style="font:500 11px/1 var(--font-mono);color:var(--muted)">' + sub + '</div>' +
+  '</div>';
+}
+
 async function loadReport() {
-  const from = document.getElementById('repFrom').value;
-  const to   = document.getElementById('repTo').value;
-  const empId = document.getElementById('repEmp').value;
+  const from    = document.getElementById('repFrom').value;
+  const to      = document.getElementById('repTo').value;
+  const empId   = document.getElementById('repEmp').value;
   const container = document.getElementById('reportContent');
 
   if (!from || !to) return showToast('Please select a date range', 'info');
 
-  container.innerHTML = `<div class="empty-state"><div class="icon">⏳</div><div>Generating report…</div></div>`;
+  container.innerHTML = '<div class="empty-state"><div class="icon">⏳</div><div>Generating report…</div></div>';
 
   try {
     const params = new URLSearchParams({ from, to });
-    const summaryRes = await fetch('/api/summary?' + params);
-    if (!summaryRes.ok) {
-      const err = await summaryRes.json().catch(() => ({}));
-      throw new Error(err.error || `Server error ${summaryRes.status}`);
-    }
-    const summary = await summaryRes.json();
-    if (!Array.isArray(summary)) throw new Error(summary.error || 'Unexpected response from server');
+    const year   = new Date(from).getFullYear();
 
-    const filtered = empId ? summary.filter(e => e.employee_id === parseInt(empId)) : summary;
+    const [summaryRes, salaryRes] = await Promise.all([
+      fetch('/api/summary?' + params),
+      fetch('/api/salary-overview?year=' + year)
+    ]);
+
+    if (!summaryRes.ok) throw new Error('Server error ' + summaryRes.status);
+    const summary = await summaryRes.json();
+    if (!Array.isArray(summary)) throw new Error(summary.error || 'Unexpected response');
+
+    const salaryData = salaryRes.ok ? await salaryRes.json() : [];
+    const filtered   = empId ? summary.filter(e => e.employee_id === parseInt(empId)) : summary;
 
     if (!filtered.length) {
-      container.innerHTML = `<div class="empty-state"><div class="icon">📋</div><div>No records found for the selected range.</div></div>`;
+      container.innerHTML = '<div class="empty-state"><div class="icon">📋</div><div>No records found for the selected range.</div></div>';
       return;
     }
 
-    const grandTotal   = filtered.reduce((a, b) => a + (b.total_deduction || 0), 0);
-    const grandTimeDeduct = filtered.reduce((a, b) => a + (b.total_time_deduction || 0), 0);
-    const grandDayDeduct  = filtered.reduce((a, b) => a + (b.excess_day_deduction || 0), 0);
+    // ── Period stats ──────────────────────────────────────────────────────────
+    const fromDate   = new Date(from);
+    const toDate     = new Date(to);
+    const periodDays = Math.ceil((toDate - fromDate) / 86400000) + 1;
+    const dateLabel  = fromDate.toLocaleDateString('en-GB',{day:'numeric',month:'short',year:'numeric'})
+                     + ' – ' + toDate.toLocaleDateString('en-GB',{day:'numeric',month:'short',year:'numeric'});
 
-    let html = `
-      <div class="card" style="margin-bottom:20px">
-        <div class="card-header"><span class="card-title">Report: ${from} → ${to}</span></div>
-        <div class="stats-grid">
-          <div class="stat-card blue"><div class="stat-label">Employees</div><div class="stat-value">${filtered.length}</div></div>
-          <div class="stat-card yellow"><div class="stat-label">Time Deductions</div><div class="stat-value">£${grandTimeDeduct.toFixed(2)}</div></div>
-          <div class="stat-card yellow"><div class="stat-label">Day-Off Deductions</div><div class="stat-value">£${grandDayDeduct.toFixed(2)}</div></div>
-          <div class="stat-card red"><div class="stat-label">Total Deductions</div><div class="stat-value">£${grandTotal.toFixed(2)}</div></div>
-        </div>
-      </div>`;
+    const filteredIds = new Set(filtered.map(e => e.employee_id));
+    const relSalary   = salaryData.filter(e => !empId || filteredIds.has(e.employee_id));
 
-    for (const emp of filtered) {
-      const typeLabel  = emp.employment_type === 'self_employed' ? 'Self-Employed (5 days/yr)' : 'Payroll (20 days/yr)';
-      const typeBadge  = emp.employment_type === 'self_employed' ? 'badge-yellow' : 'badge-blue';
-      const annualSal  = parseFloat(emp.annual_salary) || 0;
-      const totalPaid  = parseFloat(emp.total_paid_year) || 0;
-      const remaining  = parseFloat(emp.salary_remaining) || 0;
-      const excessDeduct = parseFloat(emp.excess_day_deduction) || 0;
+    // Total payroll paid in period (use payment_month/payment_year to bucket)
+    const fromYM = year * 100 + fromDate.getMonth() + 1;
+    const toYM   = new Date(to).getFullYear() * 100 + new Date(to).getMonth() + 1;
+    let totalPayrollPaid = 0;
+    relSalary.forEach(e => {
+      (e.payments || []).forEach(p => {
+        const ym = (parseInt(p.payment_year) || 0) * 100 + (parseInt(p.payment_month) || 0);
+        if (ym >= fromYM && ym <= toYM) totalPayrollPaid += parseFloat(p.amount || 0);
+      });
+    });
 
-      const recRes = await fetch(`/api/records/${emp.employee_id}?from=${from}&to=${to}`);
-      if (!recRes.ok) continue;
-      const records = await recRes.json();
+    const totalDeduct  = filtered.reduce((a, b) => a + (parseFloat(b.total_deduction) || 0), 0);
+    const timeDeduct   = filtered.reduce((a, b) => a + (parseFloat(b.total_time_deduction) || 0), 0);
+    const dayDeduct    = filtered.reduce((a, b) => a + (parseFloat(b.excess_day_deduction) || 0), 0);
+    const deductPct    = totalPayrollPaid > 0 ? ((totalDeduct / totalPayrollPaid) * 100).toFixed(1) : '0.0';
+    const activeCount  = filtered.length;
 
-      html += `
-        <div class="card" style="margin-bottom:16px">
-          <div class="card-header">
-            <div>
-              <span class="card-title">${esc(emp.name)}</span>
-              <span class="badge ${typeBadge}" style="margin-left:8px">${typeLabel}</span>
-            </div>
-            ${annualSal > 0 ? `<div style="font-size:0.82rem;color:var(--muted);text-align:right">
-              Salary: £${annualSal.toLocaleString('en-GB',{minimumFractionDigits:2})} &nbsp;·&nbsp;
-              Paid: £${totalPaid.toLocaleString('en-GB',{minimumFractionDigits:2})} &nbsp;·&nbsp;
-              <strong>Remaining: £${remaining.toLocaleString('en-GB',{minimumFractionDigits:2})}</strong>
-            </div>` : ''}
-          </div>
-          <div style="margin-bottom:14px;display:flex;gap:16px;flex-wrap:wrap;font-size:0.86rem">
-            <span>Days off this year: <strong>${emp.year_days_off} / ${emp.allowance_days}</strong></span>
-            ${emp.excess_days > 0
-              ? `<span class="text-danger fw-bold">${emp.excess_days} excess = £${excessDeduct.toFixed(2)} deduction</span>`
-              : '<span class="text-success">Within allowance ✓</span>'}
-            <span>Time deductions: <strong>£${(emp.total_time_deduction||0).toFixed(2)}</strong></span>
-            <span class="text-danger fw-bold">Total: £${(emp.total_deduction||0).toFixed(2)}</span>
-          </div>`;
+    // ── Monthly trend data ────────────────────────────────────────────────────
+    const MONTHS_SHORT = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+    const curMonth     = new Date().getMonth();
+    const monthlyTotals = new Array(12).fill(0);
+    relSalary.forEach(e => {
+      (e.payments || []).forEach(p => {
+        const m = parseInt(p.payment_month) - 1;
+        const y = parseInt(p.payment_year);
+        if (!isNaN(m) && y === year && m >= 0 && m < 12) monthlyTotals[m] += parseFloat(p.amount || 0);
+      });
+    });
 
-      if (records.length) {
-        html += `<div class="table-wrap"><table>
-          <thead><tr><th>Date</th><th>Break</th><th>Phone</th><th>Wasted</th><th>Late</th><th>Day Off</th><th>Adj</th><th>Mins</th><th>Amount</th><th>Notes</th></tr></thead>
-          <tbody>`;
-        records.forEach(r => {
-          const adjSign    = r.manual_adj_minutes > 0 ? '+' : '';
-          const dayOffLabel = r.is_day_off === 1 ? '<span class="badge badge-red">Full</span>'
-                            : r.is_day_off === 0.5 ? '<span class="badge badge-yellow">Half</span>' : '—';
-          html += `<tr${r.is_day_off > 0 ? ' class="day-off-row"' : ''}>
-            <td><strong>${r.record_date}</strong></td>
-            <td>${r.break_minutes}m${Math.max(0,r.break_minutes-ALLOWED_BREAK)>0?` <span class="badge badge-red">+${Math.max(0,r.break_minutes-ALLOWED_BREAK)}m</span>`:''}</td>
-            <td>${r.phone_minutes>0?r.phone_minutes+'m':'—'}</td>
-            <td>${r.wasted_minutes>0?r.wasted_minutes+'m':'—'}</td>
-            <td>${r.late_minutes>0?r.late_minutes+'m':'—'}</td>
-            <td>${dayOffLabel}</td>
-            <td>${r.manual_adj_minutes!==0?`${adjSign}${r.manual_adj_minutes}m`:'—'}</td>
-            <td><strong>${r.total_deductible_minutes}m</strong></td>
-            <td class="${(r.total_deduction||0)>0?'text-danger fw-bold':''}">£${(r.total_deduction||0).toFixed(2)}</td>
-            <td style="max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(r.notes||'')||'—'}</td>
-          </tr>`;
-        });
-        html += `</tbody></table></div>`;
-      } else {
-        html += `<div style="color:var(--muted);font-size:0.85rem;padding:8px 0">No daily records in this period.</div>`;
-      }
-      html += `</div>`;
-    }
+    const chartLabels = MONTHS_SHORT.slice(0, curMonth + 1);
+    const chartVals   = monthlyTotals.slice(0, curMonth + 1);
+    const maxVal      = Math.max(...chartVals, 1);
+
+    // ── Build HTML ────────────────────────────────────────────────────────────
+    let html = '';
+
+    // Stat tiles
+    html += '<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:20px">';
+    html += _repTile('Period', periodDays + ' days', dateLabel, 'var(--text)');
+    html += _repTile('Total Payroll', '£' + Math.round(totalPayrollPaid).toLocaleString('en-GB'), 'paid this period', 'var(--positive)');
+    html += _repTile('Total Deductions', '£' + Math.round(totalDeduct).toLocaleString('en-GB'), deductPct + '% of gross', 'var(--negative)');
+    html += _repTile('Active Records', String(activeCount), 'across ' + activeCount + ' staff', 'var(--primary)');
+    html += '</div>';
+
+    // Chart + breakdown row
+    html += '<div style="display:grid;grid-template-columns:3fr 2fr;gap:16px;margin-bottom:20px">';
+
+    // Payroll trend chart
+    html += '<div class="card">';
+    html += '<div class="card-header"><span class="card-title">Payroll Trend</span>' +
+            '<span style="font:500 11px/1 var(--font-mono);color:var(--muted)">' + year + ' · monthly</span></div>';
+    html += '<div style="display:flex;align-items:flex-end;gap:6px;height:150px;padding:4px 4px 0">';
+    chartLabels.forEach(function(m, i) {
+      var val  = chartVals[i];
+      var barH = val > 0 ? Math.max(10, Math.round((val / maxVal) * 110)) : 4;
+      var lbl  = val > 0 ? (val >= 1000 ? '£' + (val/1000).toFixed(1) + 'k' : '£' + Math.round(val)) : '';
+      var isNow = (i === curMonth);
+      var barBg = isNow ? 'var(--primary)' : '#2a3040';
+      html += '<div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:4px;min-width:0">';
+      html += '<div style="font:600 9px/1 var(--font-mono);color:' + (isNow ? 'var(--primary)' : 'var(--muted)') + ';text-align:center;white-space:nowrap">' + lbl + '</div>';
+      html += '<div style="background:' + barBg + ';border-radius:3px 3px 0 0;width:100%;height:' + barH + 'px"></div>';
+      html += '<div style="font:500 9px/1 var(--font-mono);color:' + (isNow ? 'var(--text)' : 'var(--muted)') + '">' + m + '</div>';
+      html += '</div>';
+    });
+    html += '</div></div>';
+
+    // Deductions breakdown
+    html += '<div class="card">';
+    html += '<div class="card-header"><span class="card-title">Deductions Breakdown</span></div>';
+    var deductBase = timeDeduct + dayDeduct || 1;
+    var cats = [
+      { label: 'Time deductions', val: timeDeduct, color: 'var(--primary)' },
+      { label: 'Day-off overage', val: dayDeduct, color: 'var(--negative)' }
+    ];
+    cats.forEach(function(c) {
+      var pct = Math.round((c.val / deductBase) * 100);
+      html += '<div style="margin-bottom:16px">';
+      html += '<div style="display:flex;justify-content:space-between;font:500 11px/1 var(--font-mono);color:var(--muted);margin-bottom:7px">';
+      html += '<span>' + c.label + '</span><span>£' + c.val.toFixed(0) + ' &middot; ' + pct + '%</span></div>';
+      html += '<div style="height:6px;background:var(--border);border-radius:3px">';
+      html += '<div style="height:100%;width:' + pct + '%;background:' + c.color + ';border-radius:3px"></div>';
+      html += '</div></div>';
+    });
+    html += '</div>';
+    html += '</div>'; // end 2-col row
+
+    // Payroll ledger table
+    html += '<div class="card">';
+    html += '<div class="card-header"><span class="card-title">Payroll Ledger YTD</span>' +
+            '<span style="font:500 11px/1 var(--font-mono);color:var(--muted)">' + year + '</span></div>';
+    html += '<div class="table-wrap"><table><thead><tr>';
+    html += '<th>Employee</th><th>Type</th>';
+    chartLabels.forEach(function(m) { html += '<th style="text-align:right">' + m + '</th>'; });
+    html += '<th style="text-align:right;color:var(--primary)">YTD Total</th>';
+    html += '</tr></thead><tbody>';
+
+    relSalary.forEach(function(emp) {
+      var initials = (emp.name || '').split(' ').map(function(w){ return w[0]||''; }).join('').slice(0,2).toUpperCase();
+      var typeLabel = emp.employment_type === 'self_employed' ? 'SE' : 'PR';
+      var typeCls   = emp.employment_type === 'self_employed' ? 'badge-yellow' : 'badge-blue';
+      var empMonthly = new Array(12).fill(0);
+      (emp.payments || []).forEach(function(p) {
+        var m = parseInt(p.payment_month) - 1;
+        var y = parseInt(p.payment_year);
+        if (!isNaN(m) && y === year && m >= 0 && m < 12) empMonthly[m] += parseFloat(p.amount || 0);
+      });
+      var ytd = empMonthly.slice(0, curMonth + 1).reduce(function(a,b){ return a+b; }, 0);
+
+      html += '<tr>';
+      html += '<td><div style="display:flex;align-items:center;gap:10px">';
+      html += '<div style="width:30px;height:30px;border-radius:50%;background:var(--primary);display:flex;align-items:center;justify-content:center;font:700 10px/1 var(--font-mono);color:#000;flex-shrink:0">' + initials + '</div>';
+      html += '<div><div style="font-weight:700;font-size:0.84rem">' + esc(emp.name || '') + '</div>';
+      html += '<div style="font-size:0.71rem;color:var(--muted)">' + esc(emp.job_title || '') + '</div></div></div></td>';
+      html += '<td><span class="badge ' + typeCls + '">' + typeLabel + '</span></td>';
+      chartLabels.forEach(function(m, i) {
+        var v = empMonthly[i];
+        html += '<td style="text-align:right;font:500 12px/1 var(--font-mono);color:' + (v > 0 ? 'var(--text)' : 'var(--dim)') + '">' +
+                (v > 0 ? '£' + v.toLocaleString('en-GB',{maximumFractionDigits:0}) : '&mdash;') + '</td>';
+      });
+      html += '<td style="text-align:right;font:700 13px/1 var(--font-mono);color:var(--primary)">' +
+              (ytd > 0 ? '£' + ytd.toLocaleString('en-GB') : '&mdash;') + '</td>';
+      html += '</tr>';
+    });
+
+    html += '</tbody></table></div></div>';
 
     container.innerHTML = html;
 
   } catch (e) {
-    container.innerHTML = `<div class="alert alert-error">Failed to generate report: ${esc(e.message)}</div>`;
+    container.innerHTML = '<div class="alert alert-error">Failed to generate report: ' + esc(e.message) + '</div>';
   }
 }
 
