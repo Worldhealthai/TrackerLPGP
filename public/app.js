@@ -2348,7 +2348,8 @@ function renderHotelTable() {
     const rowClass = r.status === 'paid' ? 'hotel-row-paid' : r.status === 'partial' ? 'hotel-row-partial' : '';
     const avSym   = hotelCurrencySymbol(r.av_currency || 'USD');
     const paidSym = hotelCurrencySymbol(r.paid_currency || 'USD');
-    const avStr   = r.av_amount != null ? `${avSym}${fmtHotelNum(r.av_amount)}` : '—';
+    const avBillingBadge = r.av_billing === 'included' ? ' <span class="hotel-incl-badge">incl.</span>' : '';
+    const avStr   = r.av_amount != null ? `${avSym}${fmtHotelNum(r.av_amount)}${avBillingBadge}` : '—';
     const paidStr = r.paid_amount != null ? `${paidSym}${fmtHotelNum(r.paid_amount)}` : '—';
     const shStr   = r.staff_hotel != null ? `${fmtHotelNum(r.staff_hotel)}` : '—';
     const flStr   = r.flights    != null ? `${fmtHotelNum(r.flights)}` : '—';
@@ -2383,6 +2384,7 @@ function openHotelModal(id) {
   document.getElementById('hotelStatus').value      = r ? r.status : 'pending';
   document.getElementById('hotelAvCurrency').value  = r ? (r.av_currency || 'USD') : 'USD';
   document.getElementById('hotelAvAmount').value    = r && r.av_amount != null ? r.av_amount : '';
+  document.getElementById('hotelAvBilling').value   = r ? (r.av_billing || 'separate') : 'separate';
   document.getElementById('hotelPaidCurrency').value= r ? (r.paid_currency || 'USD') : 'USD';
   document.getElementById('hotelPaidAmount').value  = r && r.paid_amount != null ? r.paid_amount : '';
   document.getElementById('hotelStaffHotel').value  = r && r.staff_hotel != null ? r.staff_hotel : '';
@@ -2405,6 +2407,7 @@ async function saveHotelExpense() {
     status:        document.getElementById('hotelStatus').value,
     av_currency:   document.getElementById('hotelAvCurrency').value,
     av_amount:     document.getElementById('hotelAvAmount').value || null,
+    av_billing:    document.getElementById('hotelAvBilling').value,
     paid_currency: document.getElementById('hotelPaidCurrency').value,
     paid_amount:   document.getElementById('hotelPaidAmount').value || null,
     staff_hotel:   document.getElementById('hotelStaffHotel').value || null,

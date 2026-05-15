@@ -198,6 +198,7 @@ async function runMigrations() {
       cost TEXT NOT NULL DEFAULT '',
       av_amount NUMERIC(12,2),
       av_currency TEXT NOT NULL DEFAULT 'USD',
+      av_billing TEXT NOT NULL DEFAULT 'separate',
       paid_amount NUMERIC(12,2),
       paid_currency TEXT NOT NULL DEFAULT 'USD',
       staff_hotel NUMERIC(12,2),
@@ -211,6 +212,9 @@ async function runMigrations() {
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     )
   `);
+
+  // Safe migration: add av_billing if it doesn't exist yet
+  await sql(`ALTER TABLE hotel_expenses ADD COLUMN IF NOT EXISTS av_billing TEXT NOT NULL DEFAULT 'separate'`);
 
   // Seed initial hotel expense rows if table is empty
   const heCount = await sql('SELECT COUNT(*) AS c FROM hotel_expenses');

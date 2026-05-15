@@ -1093,11 +1093,11 @@ app.get('/api/hotel-expenses', requireAuth, async (req, res) => {
 
 app.post('/api/hotel-expenses', requireAuth, async (req, res) => {
   try {
-    const { event_name, hotel, cost, av_amount, av_currency, paid_amount, paid_currency, staff_hotel, flights, printing, status, notes } = req.body;
+    const { event_name, hotel, cost, av_amount, av_currency, av_billing, paid_amount, paid_currency, staff_hotel, flights, printing, status, notes } = req.body;
     const { rows } = await q(
-      `INSERT INTO hotel_expenses (event_name, hotel, cost, av_amount, av_currency, paid_amount, paid_currency, staff_hotel, flights, printing, status, notes, created_by)
-       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?) RETURNING *`,
-      [event_name, hotel||'', cost||'', av_amount||null, av_currency||'USD', paid_amount||null, paid_currency||'USD', staff_hotel||null, flights||null, printing||null, status||'pending', notes||'', req.user?.id||null]
+      `INSERT INTO hotel_expenses (event_name, hotel, cost, av_amount, av_currency, av_billing, paid_amount, paid_currency, staff_hotel, flights, printing, status, notes, created_by)
+       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?) RETURNING *`,
+      [event_name, hotel||'', cost||'', av_amount||null, av_currency||'USD', av_billing||'separate', paid_amount||null, paid_currency||'USD', staff_hotel||null, flights||null, printing||null, status||'pending', notes||'', req.user?.id||null]
     );
     res.json(rows[0]);
   } catch (e) { res.status(500).json({ error: e.message }); }
@@ -1105,11 +1105,11 @@ app.post('/api/hotel-expenses', requireAuth, async (req, res) => {
 
 app.put('/api/hotel-expenses/:id', requireAuth, async (req, res) => {
   try {
-    const { event_name, hotel, cost, av_amount, av_currency, paid_amount, paid_currency, staff_hotel, flights, printing, status, notes } = req.body;
+    const { event_name, hotel, cost, av_amount, av_currency, av_billing, paid_amount, paid_currency, staff_hotel, flights, printing, status, notes } = req.body;
     const { rows } = await q(
-      `UPDATE hotel_expenses SET event_name=?, hotel=?, cost=?, av_amount=?, av_currency=?, paid_amount=?, paid_currency=?, staff_hotel=?, flights=?, printing=?, status=?, notes=?
+      `UPDATE hotel_expenses SET event_name=?, hotel=?, cost=?, av_amount=?, av_currency=?, av_billing=?, paid_amount=?, paid_currency=?, staff_hotel=?, flights=?, printing=?, status=?, notes=?
        WHERE id=? RETURNING *`,
-      [event_name, hotel||'', cost||'', av_amount||null, av_currency||'USD', paid_amount||null, paid_currency||'USD', staff_hotel||null, flights||null, printing||null, status||'pending', notes||'', req.params.id]
+      [event_name, hotel||'', cost||'', av_amount||null, av_currency||'USD', av_billing||'separate', paid_amount||null, paid_currency||'USD', staff_hotel||null, flights||null, printing||null, status||'pending', notes||'', req.params.id]
     );
     if (!rows.length) return res.status(404).json({ error: 'Not found' });
     res.json(rows[0]);

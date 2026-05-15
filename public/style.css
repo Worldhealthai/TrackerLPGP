@@ -1298,17 +1298,15 @@ tbody tr:hover td strong { color: var(--primary); }
 .form-row.hm-3col { grid-template-columns: 1fr 1fr 1fr; }
 .form-row.hm-3col .form-group { min-width: 0; }
 
-/* AV & Payments two-column panel */
-.hm-payments { display: flex; align-items: stretch; gap: 0; padding: 0; overflow: hidden; }
-.hm-payment-col { flex: 1; padding: 16px; }
-.hm-divider { width: 1px; background: var(--border); flex-shrink: 0; }
+/* AV & Payments stacked rows */
 .hm-col-title {
   font-size: 0.68rem; font-weight: 800; text-transform: uppercase;
-  letter-spacing: 0.6px; color: var(--muted); margin-bottom: 12px;
+  letter-spacing: 0.6px; color: var(--muted); margin-bottom: 10px;
 }
-.hm-currency-row { display: flex; gap: 8px; }
-.hm-currency-sel { flex: 0 0 88px; }
-.hm-currency-amt { flex: 1; }
+.hm-pay-fields { display: flex; gap: 10px; align-items: flex-end; }
+.hm-currency-sel { flex: 0 0 88px; min-width: 0; }
+.hm-currency-amt { flex: 1; min-width: 0; }
+.hm-billing-sel  { flex: 0 0 170px; min-width: 0; }
 
 /* Footer */
 .hm-footer {
@@ -1319,6 +1317,12 @@ tbody tr:hover td strong { color: var(--primary); }
 /* ══════════════════════════════════════════
    HOTEL EXPENSES TABLE ROW COLOURS
 ══════════════════════════════════════════ */
+.hotel-incl-badge {
+  display: inline-block; font-size: 0.6rem; font-weight: 700; text-transform: uppercase;
+  letter-spacing: 0.4px; color: var(--primary); background: var(--primary-light);
+  border: 1px solid rgba(79,70,229,0.2); border-radius: 4px; padding: 1px 4px;
+  vertical-align: middle; margin-left: 4px;
+}
 tr.hotel-row-paid td {
   background: rgba(5,150,105,0.06) !important;
 }
