@@ -254,6 +254,27 @@ async function runMigrations() {
   }
 
   await sql('ALTER TABLE employees ADD COLUMN IF NOT EXISTS portal_pin TEXT DEFAULT NULL');
+
+  await sql(`CREATE TABLE IF NOT EXISTS day_off_requests (
+  id SERIAL PRIMARY KEY,
+  employee_id INTEGER NOT NULL,
+  request_date DATE NOT NULL,
+  is_day_off NUMERIC(3,1) NOT NULL DEFAULT 1,
+  status TEXT NOT NULL DEFAULT 'pending',
+  decline_reason TEXT,
+  created_at TIMESTAMP DEFAULT NOW(),
+  reviewed_at TIMESTAMP,
+  reviewed_by TEXT
+)`);
+
+  await sql(`CREATE TABLE IF NOT EXISTS emp_notifications (
+  id SERIAL PRIMARY KEY,
+  employee_id INTEGER NOT NULL,
+  message TEXT NOT NULL,
+  type TEXT NOT NULL DEFAULT 'info',
+  is_read INTEGER NOT NULL DEFAULT 0,
+  created_at TIMESTAMP DEFAULT NOW()
+)`);
 }
 
 module.exports = { sql, initDb };
