@@ -799,8 +799,8 @@ async function loadEmployeeRecords() {
     });
   }
 
-  // Payments section
-  loadPaymentsSection(empId, emp);
+  // Payments are managed in the Salary page — keep this section hidden
+  document.getElementById('paymentsSection')?.classList.add('hidden');
 }
 
 // ─── RECORD MODAL ────────────────────────────────────────────────────────────
