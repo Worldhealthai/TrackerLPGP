@@ -901,36 +901,44 @@
     <!-- AV & Payments -->
     <div class="hm-section">
       <div class="modal-section-label">AV &amp; Payments</div>
-      <div class="hm-body hm-payments">
-        <div class="hm-payment-col">
-          <div class="hm-col-title">AV Cost</div>
-          <div class="hm-currency-row">
-            <div class="form-group hm-currency-sel">
-              <label>Currency</label>
-              <select id="hotelAvCurrency">
-                <option>USD</option><option>GBP</option><option>EUR</option><option>CHF</option><option>AED</option>
-              </select>
-            </div>
-            <div class="form-group hm-currency-amt">
-              <label>Amount</label>
-              <input type="number" id="hotelAvAmount" placeholder="0.00" step="0.01" min="0" />
-            </div>
+
+      <!-- AV Cost row -->
+      <div class="hm-body" style="margin-bottom:10px">
+        <div class="hm-col-title">AV Cost</div>
+        <div class="hm-pay-fields">
+          <div class="form-group hm-currency-sel">
+            <label>Currency</label>
+            <select id="hotelAvCurrency">
+              <option>USD</option><option>GBP</option><option>EUR</option><option>CHF</option><option>AED</option>
+            </select>
+          </div>
+          <div class="form-group hm-currency-amt">
+            <label>Amount</label>
+            <input type="number" id="hotelAvAmount" placeholder="0.00" step="0.01" min="0" />
+          </div>
+          <div class="form-group hm-billing-sel">
+            <label>Billing</label>
+            <select id="hotelAvBilling">
+              <option value="separate">Separate charge</option>
+              <option value="included">Included in venue fees</option>
+            </select>
           </div>
         </div>
-        <div class="hm-divider"></div>
-        <div class="hm-payment-col">
-          <div class="hm-col-title">Paid So Far</div>
-          <div class="hm-currency-row">
-            <div class="form-group hm-currency-sel">
-              <label>Currency</label>
-              <select id="hotelPaidCurrency">
-                <option>USD</option><option>GBP</option><option>EUR</option><option>CHF</option><option>AED</option>
-              </select>
-            </div>
-            <div class="form-group hm-currency-amt">
-              <label>Amount</label>
-              <input type="number" id="hotelPaidAmount" placeholder="0.00" step="0.01" min="0" />
-            </div>
+      </div>
+
+      <!-- Paid So Far row -->
+      <div class="hm-body">
+        <div class="hm-col-title">Paid So Far</div>
+        <div class="hm-pay-fields">
+          <div class="form-group hm-currency-sel">
+            <label>Currency</label>
+            <select id="hotelPaidCurrency">
+              <option>USD</option><option>GBP</option><option>EUR</option><option>CHF</option><option>AED</option>
+            </select>
+          </div>
+          <div class="form-group hm-currency-amt">
+            <label>Amount</label>
+            <input type="number" id="hotelPaidAmount" placeholder="0.00" step="0.01" min="0" />
           </div>
         </div>
       </div>

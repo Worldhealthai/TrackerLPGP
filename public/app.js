@@ -287,32 +287,38 @@ async function loadDashboard() {
     </div>
   `;
 
-  const [summaryRes, salaryRes, upcomingRes, expiringRes, allEmpRes] = await Promise.all([
+  const [summaryRes, salaryRes, upcomingRes, expiringRes, allEmpRes, hotelRes] = await Promise.all([
     fetch(`/api/summary?from=${year}-01-01&to=${year}-12-31`),
     fetch(`/api/salary-overview?year=${year}`),
     fetch(`/api/calendar-reminders/upcoming?days=7`),
     fetch(`/api/contracts/expiring?days=60`),
-    fetch(`/api/employees/all`)
+    fetch(`/api/employees/all`),
+    fetch(`/api/hotel-expenses`)
   ]);
 
-  const summary       = summaryRes.ok  ? await summaryRes.json()  : [];
-  const salaryData    = salaryRes.ok   ? await salaryRes.json()   : [];
-  const upcoming      = upcomingRes.ok ? await upcomingRes.json() : [];
-  const expiring      = expiringRes.ok ? await expiringRes.json() : [];
-  const allEmps       = allEmpRes.ok   ? await allEmpRes.json()   : [];
+  const summary       = summaryRes.ok   ? await summaryRes.json()   : [];
+  const salaryData    = salaryRes.ok    ? await salaryRes.json()    : [];
+  const upcoming      = upcomingRes.ok  ? await upcomingRes.json()  : [];
+  const expiring      = expiringRes.ok  ? await expiringRes.json()  : [];
+  const allEmps       = allEmpRes.ok    ? await allEmpRes.json()    : [];
+  const hotelData     = hotelRes.ok     ? await hotelRes.json()     : [];
 
   const activeEmps    = allEmps.filter(e => e.active);
-  const totalDeduction = summary.reduce((a, b) => a + b.total_deduction, 0);
   const unpaidCount   = getUnpaidThisMonth(salaryData, year, month).length;
   updateSalaryBadge(unpaidCount);
 
-  // Total annual payroll cost (active payroll employees in GBP)
-  const totalPayrollGBP = activeEmps
-    .filter(e => e.employment_type === 'payroll' && (e.currency || 'GBP') === 'GBP')
-    .reduce((a, e) => a + (parseFloat(e.annual_salary) || 0), 0);
-  const totalHeadcount = activeEmps.length;
-  const payrollCount   = activeEmps.filter(e => e.employment_type === 'payroll').length;
-  const seCount        = activeEmps.filter(e => e.employment_type === 'self_employed').length;
+  const totalHeadcount  = activeEmps.length;
+  const payrollCount    = activeEmps.filter(e => e.employment_type === 'payroll').length;
+  const seCount         = activeEmps.filter(e => e.employment_type === 'self_employed').length;
+
+  // Total GBP salary remaining to pay this year
+  const totalGBPRemaining = salaryData
+    .filter(e => (e.currency || 'GBP') === 'GBP')
+    .reduce((a, e) => a + Math.max(0, parseFloat(e.net_remaining) || 0), 0);
+
+  // Hotel fees remaining (unpaid + partial rows: paid_amount vs cost where parseable)
+  const hotelUnpaidCount = hotelData.filter(h => h.status !== 'paid').length;
+  const hotelPaidTotal   = hotelData.reduce((a, h) => a + (parseFloat(h.paid_amount) || 0), 0);
 
   document.getElementById('dashStats').innerHTML = `
     <div class="dash-bento">
@@ -327,20 +333,20 @@ async function loadDashboard() {
         <div class="dash-hero-footer">Total workforce · ${year}</div>
       </div>
       <div class="dash-mini-grid">
-        <div class="dash-mini-card dash-mini--indigo">
+        <div class="dash-mini-card dash-mini--indigo" style="cursor:pointer" onclick="navigate('salary')" title="Go to salary page">
           <div class="dash-mini-icon">💷</div>
           <div class="dash-mini-body">
-            <div class="dash-mini-label">Annual Payroll</div>
-            <div class="dash-mini-value">£${fmtK(totalPayrollGBP)}</div>
-            <div class="dash-mini-sub">GBP employees · ${year}</div>
+            <div class="dash-mini-label">Salaries Remaining</div>
+            <div class="dash-mini-value">£${fmtK(totalGBPRemaining)}</div>
+            <div class="dash-mini-sub">GBP outstanding · ${year}</div>
           </div>
         </div>
-        <div class="dash-mini-card dash-mini--red">
-          <div class="dash-mini-icon">📉</div>
+        <div class="dash-mini-card ${hotelUnpaidCount > 0 ? 'dash-mini--alert' : 'dash-mini--green'}" style="cursor:pointer" onclick="navigate('hotels')" title="View hotel expenses">
+          <div class="dash-mini-icon">🏨</div>
           <div class="dash-mini-body">
-            <div class="dash-mini-label">Total Deductions</div>
-            <div class="dash-mini-value">£${totalDeduction.toFixed(0)}</div>
-            <div class="dash-mini-sub">Year to date · ${year}</div>
+            <div class="dash-mini-label">Hotel Fees Remaining</div>
+            <div class="dash-mini-value">${hotelUnpaidCount} event${hotelUnpaidCount !== 1 ? 's' : ''}</div>
+            <div class="dash-mini-sub">${hotelUnpaidCount > 0 ? `${hotelUnpaidCount} unpaid / partial →` : 'All settled'}</div>
           </div>
         </div>
         <div class="dash-mini-card ${unpaidCount > 0 ? 'dash-mini--alert' : 'dash-mini--green'}" style="cursor:pointer" onclick="navigate('salary')" title="Go to salary page">
@@ -1325,6 +1331,7 @@ async function loadSalaryPage() {
             <div class="sc-fig-lbl">Days off</div>
             <div class="sc-fig-val">${totalDaysOff} <span style="font-size:0.75rem;font-weight:600;color:#9ca3af">/ ${allowanceDays}</span></div>
             <div class="sc-fig-sub">${allowanceLabel}</div>
+            ${excessDays > 0 ? `<div class="sc-fig-deduct">−${sym}${excessDeduction.toLocaleString('en-GB',{minimumFractionDigits:2,maximumFractionDigits:2})} deducted</div>` : ''}
           </div>`}
           <div class="sc-fig ${figOutClass}">
             <div class="sc-fig-lbl">Outstanding</div>
@@ -2344,7 +2351,8 @@ function renderHotelTable() {
     const rowClass = r.status === 'paid' ? 'hotel-row-paid' : r.status === 'partial' ? 'hotel-row-partial' : '';
     const avSym   = hotelCurrencySymbol(r.av_currency || 'USD');
     const paidSym = hotelCurrencySymbol(r.paid_currency || 'USD');
-    const avStr   = r.av_amount != null ? `${avSym}${fmtHotelNum(r.av_amount)}` : '—';
+    const avBillingBadge = r.av_billing === 'included' ? ' <span class="hotel-incl-badge">incl.</span>' : '';
+    const avStr   = r.av_amount != null ? `${avSym}${fmtHotelNum(r.av_amount)}${avBillingBadge}` : '—';
     const paidStr = r.paid_amount != null ? `${paidSym}${fmtHotelNum(r.paid_amount)}` : '—';
     const shStr   = r.staff_hotel != null ? `${fmtHotelNum(r.staff_hotel)}` : '—';
     const flStr   = r.flights    != null ? `${fmtHotelNum(r.flights)}` : '—';
@@ -2379,6 +2387,7 @@ function openHotelModal(id) {
   document.getElementById('hotelStatus').value      = r ? r.status : 'pending';
   document.getElementById('hotelAvCurrency').value  = r ? (r.av_currency || 'USD') : 'USD';
   document.getElementById('hotelAvAmount').value    = r && r.av_amount != null ? r.av_amount : '';
+  document.getElementById('hotelAvBilling').value   = r ? (r.av_billing || 'separate') : 'separate';
   document.getElementById('hotelPaidCurrency').value= r ? (r.paid_currency || 'USD') : 'USD';
   document.getElementById('hotelPaidAmount').value  = r && r.paid_amount != null ? r.paid_amount : '';
   document.getElementById('hotelStaffHotel').value  = r && r.staff_hotel != null ? r.staff_hotel : '';
@@ -2401,6 +2410,7 @@ async function saveHotelExpense() {
     status:        document.getElementById('hotelStatus').value,
     av_currency:   document.getElementById('hotelAvCurrency').value,
     av_amount:     document.getElementById('hotelAvAmount').value || null,
+    av_billing:    document.getElementById('hotelAvBilling').value,
     paid_currency: document.getElementById('hotelPaidCurrency').value,
     paid_amount:   document.getElementById('hotelPaidAmount').value || null,
     staff_hotel:   document.getElementById('hotelStaffHotel').value || null,
