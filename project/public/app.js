@@ -315,13 +315,15 @@ async function loadDashboard() {
     </div>
   `;
 
-  const [summaryRes, salaryRes, upcomingRes, expiringRes, allEmpRes, hotelRes] = await Promise.all([
+  const [summaryRes, salaryRes, upcomingRes, expiringRes, allEmpRes, hotelRes, calCurRes, calNextRes] = await Promise.all([
     fetch(`/api/summary?from=${year}-01-01&to=${year}-12-31`),
     fetch(`/api/salary-overview?year=${year}`),
     fetch(`/api/calendar-reminders/upcoming?days=30`),
     fetch(`/api/contracts/expiring?days=60`),
     fetch(`/api/employees/all`),
-    fetch(`/api/hotel-expenses`)
+    fetch(`/api/hotel-expenses`),
+    fetch(`/api/calendar?year=${year}&month=${month}`),
+    fetch(`/api/calendar?year=${month === 12 ? year + 1 : year}&month=${month === 12 ? 1 : month + 1}`)
   ]);
 
   const summary       = summaryRes.ok   ? await summaryRes.json()   : [];
@@ -330,6 +332,12 @@ async function loadDashboard() {
   const expiring      = expiringRes.ok  ? await expiringRes.json()  : [];
   const allEmps       = allEmpRes.ok    ? await allEmpRes.json()    : [];
   const hotelData     = hotelRes.ok     ? await hotelRes.json()     : [];
+  const calCur        = calCurRes.ok    ? await calCurRes.json()    : [];
+  const calNext       = calNextRes.ok   ? await calNextRes.json()   : [];
+  const todayStr      = now.toISOString().slice(0,10);
+  const upcomingDayOffs = [...(Array.isArray(calCur) ? calCur : []), ...(Array.isArray(calNext) ? calNext : [])]
+    .filter(r => r.record_date >= todayStr && parseFloat(r.is_day_off) > 0)
+    .sort((a,b) => a.record_date.localeCompare(b.record_date));
 
   const activeEmps    = allEmps.filter(e => e.active);
   const unpaidCount   = getUnpaidThisMonth(salaryData, year, month).length;
@@ -364,41 +372,29 @@ async function loadDashboard() {
   const salaryFmt    = fmtK(totalGBPRemaining);
 
   document.getElementById('dashStats').innerHTML =
-    '<div class="dash-bento">' +
-      '<div class="dash-hero-card">' +
-        '<div class="dash-hero-glow"></div>' +
-        '<div class="dash-hero-label">Active Headcount</div>' +
-        '<div class="dash-hero-value">' + totalHeadcount + '</div>' +
-        '<div class="dash-hero-pills">' +
-          '<span class="dash-hero-pill dash-hero-pill--blue">' + payrollCount + ' Payroll</span>' +
-          '<span class="dash-hero-pill dash-hero-pill--amber">' + seCount + ' Self-Emp</span>' +
+    '<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:16px">' +
+      '<div class="dash-mini-card dash-mini--indigo" style="cursor:pointer" onclick="navigate(\'salary\')">' +
+        '<div class="dash-mini-icon">&pound;</div>' +
+        '<div class="dash-mini-body">' +
+          '<div class="dash-mini-label">Salaries Remaining</div>' +
+          '<div class="dash-mini-value">&pound;' + salaryFmt + '</div>' +
+          '<div class="dash-mini-sub">GBP outstanding &middot; ' + year + '</div>' +
         '</div>' +
-        '<div class="dash-hero-footer">Total workforce &middot; ' + year + '</div>' +
       '</div>' +
-      '<div class="dash-mini-grid">' +
-        '<div class="dash-mini-card dash-mini--indigo" style="cursor:pointer" onclick="navigate(\'salary\')">' +
-          '<div class="dash-mini-icon">&pound;</div>' +
-          '<div class="dash-mini-body">' +
-            '<div class="dash-mini-label">Salaries Remaining</div>' +
-            '<div class="dash-mini-value">&pound;' + salaryFmt + '</div>' +
-            '<div class="dash-mini-sub">GBP outstanding &middot; ' + year + '</div>' +
-          '</div>' +
+      '<div class="dash-mini-card ' + hotelClass + '" style="cursor:pointer" onclick="navigate(\'hotels\')">' +
+        '<div class="dash-mini-icon">&#127968;</div>' +
+        '<div class="dash-mini-body">' +
+          '<div class="dash-mini-label">Hotel Fees Remaining</div>' +
+          '<div class="dash-mini-value">' + hotelEvents + '</div>' +
+          '<div class="dash-mini-sub">' + hotelSub + '</div>' +
         '</div>' +
-        '<div class="dash-mini-card ' + hotelClass + '" style="cursor:pointer" onclick="navigate(\'hotels\')">' +
-          '<div class="dash-mini-icon">&#127968;</div>' +
-          '<div class="dash-mini-body">' +
-            '<div class="dash-mini-label">Hotel Fees Remaining</div>' +
-            '<div class="dash-mini-value">' + hotelEvents + '</div>' +
-            '<div class="dash-mini-sub">' + hotelSub + '</div>' +
-          '</div>' +
-        '</div>' +
-        '<div class="dash-mini-card ' + unpaidClass + '" style="cursor:pointer" onclick="navigate(\'salary\')">' +
-          '<div class="dash-mini-icon">' + unpaidIcon + '</div>' +
-          '<div class="dash-mini-body">' +
-            '<div class="dash-mini-label">Unpaid This Month</div>' +
-            '<div class="dash-mini-value">' + unpaidCount + '</div>' +
-            '<div class="dash-mini-sub">' + unpaidSub + '</div>' +
-          '</div>' +
+      '</div>' +
+      '<div class="dash-mini-card ' + unpaidClass + '" style="cursor:pointer" onclick="navigate(\'salary\')">' +
+        '<div class="dash-mini-icon">' + unpaidIcon + '</div>' +
+        '<div class="dash-mini-body">' +
+          '<div class="dash-mini-label">Unpaid This Month</div>' +
+          '<div class="dash-mini-value">' + unpaidCount + '</div>' +
+          '<div class="dash-mini-sub">' + unpaidSub + '</div>' +
         '</div>' +
       '</div>' +
     '</div>';
@@ -406,11 +402,11 @@ async function loadDashboard() {
   // Contract expiry panel
   renderContractExpiryPanel(expiring);
 
-  // Headcount by department
-  renderHeadcountPanel(activeEmps);
+  // Headcount by department (combined with hero stats)
+  renderHeadcountPanel(activeEmps, payrollCount, seCount, totalHeadcount, year);
 
-  // Upcoming reminders panel
-  renderDashUpcoming(upcoming);
+  // Upcoming reminders panel (calendar reminders + day offs)
+  renderDashUpcoming(upcoming, upcomingDayOffs);
 
   // Activity feed
   renderDashActivity(summary, expiring, hotelData, salaryData);
@@ -475,25 +471,24 @@ function renderContractExpiryPanel(expiring) {
     </div>`;
 }
 
-function renderHeadcountPanel(activeEmps) {
-  const el = document.getElementById('headcountPanel');
+function renderHeadcountPanel(activeEmps, payrollCount, seCount, totalHeadcount, year) {
+  var el = document.getElementById('headcountPanel');
   if (!el) return;
-  const depts = {};
+  var depts = {};
   activeEmps.forEach(function(e) {
     var d = e.department || 'Unassigned';
     depts[d] = (depts[d] || 0) + 1;
   });
-  var total = activeEmps.length;
+  var total = totalHeadcount || activeEmps.length;
   var sorted = Object.entries(depts).sort(function(a,b){ return b[1]-a[1]; });
-  if (!sorted.length) { el.innerHTML = ''; return; }
 
-  var rows = sorted.map(function(entry) {
+  var deptRows = sorted.map(function(entry) {
     var dept = entry[0], count = entry[1];
     var pct = Math.round((count / total) * 100);
-    return '<div style="margin-bottom:16px">' +
-      '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:7px">' +
+    return '<div style="margin-bottom:14px">' +
+      '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">' +
         '<div style="font:600 13px/1 var(--font-sans);color:var(--text)">' + esc(dept) + '</div>' +
-        '<div style="font:600 12px/1 var(--font-mono);color:var(--muted)">' +
+        '<div style="font:600 11px/1 var(--font-mono);color:var(--muted)">' +
           String(count).padStart(2,'0') + ' &middot; ' + pct + '%' +
         '</div>' +
       '</div>' +
@@ -505,62 +500,89 @@ function renderHeadcountPanel(activeEmps) {
 
   el.innerHTML =
     '<div class="card" style="height:100%">' +
-      '<div class="card-header">' +
-        '<span class="card-title" style="display:flex;align-items:center;gap:7px">' +
-          '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>' +
-          'Headcount by dept' +
-        '</span>' +
-        '<span style="font:700 11px/1 var(--font-mono);color:var(--muted);letter-spacing:0.5px">' + total + ' TOTAL</span>' +
+      // Hero stats section
+      '<div style="padding:22px 22px 18px;border-bottom:1px solid var(--border)">' +
+        '<div style="font:600 10px/1 var(--font-mono);text-transform:uppercase;letter-spacing:1.2px;color:var(--muted);margin-bottom:10px">Active Headcount</div>' +
+        '<div style="font:800 42px/1 var(--font-mono);color:var(--text);letter-spacing:-2px;margin-bottom:12px">' + total + '</div>' +
+        '<div style="display:flex;gap:8px">' +
+          '<span style="background:rgba(59,130,246,0.12);color:#60a5fa;border:1px solid rgba(59,130,246,0.2);border-radius:6px;padding:4px 10px;font:600 11px/1 var(--font-mono)">' + (payrollCount||0) + ' PAYROLL</span>' +
+          '<span style="background:rgba(245,158,11,0.12);color:#fbbf24;border:1px solid rgba(245,158,11,0.2);border-radius:6px;padding:4px 10px;font:600 11px/1 var(--font-mono)">' + (seCount||0) + ' SELF-EMP</span>' +
+        '</div>' +
+        '<div style="font:500 11px/1 var(--font-mono);color:var(--muted);margin-top:12px">Total workforce &middot; ' + (year||new Date().getFullYear()) + '</div>' +
       '</div>' +
-      '<div style="padding:20px 20px 8px">' + rows + '</div>' +
+      // Dept breakdown section
+      '<div class="card-header" style="padding:14px 20px 10px">' +
+        '<span class="card-title" style="display:flex;align-items:center;gap:7px">' +
+          '<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>' +
+          'By department' +
+        '</span>' +
+        '<span style="font:700 11px/1 var(--font-mono);color:var(--muted)">' + total + ' TOTAL</span>' +
+      '</div>' +
+      '<div style="padding:4px 20px 16px">' + (deptRows || '<div style="color:var(--muted);font-size:0.8rem">No department data</div>') + '</div>' +
     '</div>';
 }
 
-function renderDashUpcoming(upcoming) {
+function renderDashUpcoming(upcoming, dayOffs) {
   var el = document.getElementById('upcomingPanel');
   if (!el) return;
   var MONS = ['JAN','FEB','MAR','APR','MAY','JUN','JUL','AUG','SEP','OCT','NOV','DEC'];
-  if (!upcoming || !upcoming.length) {
-    el.innerHTML = '<div class="card" style="height:100%"><div class="card-header">' +
-      '<span class="card-title" style="display:flex;align-items:center;gap:7px">' +
-        '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>' +
-        'Upcoming reminders' +
-      '</span><span style="font:700 11px/1 var(--font-mono);color:var(--muted)">NEXT 30D</span>' +
-    '</div><div class="empty-state" style="padding:32px 0"><div class="icon">🔔</div><div>No upcoming reminders</div></div></div>';
+  var BELL = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>';
+
+  // Build unified entries
+  var entries = [];
+  (upcoming || []).forEach(function(r) {
+    var sym = r.currency === 'GBP' ? '£' : r.currency === 'USD' ? '$' : (r.currency ? r.currency + ' ' : '');
+    entries.push({
+      date:  (r.virtual_date || '').slice(0,10),
+      title: esc(r.title || ''),
+      cat:   (r.category || '').toUpperCase(),
+      amt:   r.amount ? sym + parseFloat(r.amount).toLocaleString('en-GB',{maximumFractionDigits:0}) : '',
+      isDayOff: false
+    });
+  });
+  (dayOffs || []).forEach(function(r) {
+    var half = parseFloat(r.is_day_off) === 0.5;
+    entries.push({
+      date:  r.record_date || '',
+      title: esc(r.employee_name || 'Employee'),
+      cat:   half ? 'HALF DAY OFF' : 'FULL DAY OFF',
+      amt:   '',
+      isDayOff: true
+    });
+  });
+  entries.sort(function(a,b){ return a.date.localeCompare(b.date); });
+
+  var header =
+    '<div class="card-header">' +
+      '<span class="card-title" style="display:flex;align-items:center;gap:7px">' + BELL + ' Upcoming</span>' +
+      '<span style="font:700 11px/1 var(--font-mono);color:var(--muted);letter-spacing:0.5px">NEXT 30D</span>' +
+    '</div>';
+
+  if (!entries.length) {
+    el.innerHTML = '<div class="card" style="height:100%">' + header +
+      '<div class="empty-state" style="padding:32px 0"><div class="icon">🔔</div><div>Nothing upcoming</div></div></div>';
     return;
   }
 
-  var rows = upcoming.slice(0, 6).map(function(r) {
-    var d   = new Date(r.virtual_date);
+  var rows = entries.slice(0, 7).map(function(e) {
+    var d   = new Date(e.date + 'T00:00:00Z');
     var day = d.getUTCDate();
     var mon = MONS[d.getUTCMonth()];
-    var sym = r.currency === 'GBP' ? '£' : r.currency === 'USD' ? '$' : (r.currency ? r.currency + ' ' : '');
-    var amt = r.amount ? sym + parseFloat(r.amount).toLocaleString('en-GB', {maximumFractionDigits:0}) : '';
-    var cat = (r.category || '').toUpperCase();
-    return '<div style="display:flex;gap:14px;padding:14px 18px;border-bottom:1px solid var(--border);align-items:center">' +
+    var catCol = e.isDayOff ? '#f59e0b' : 'var(--muted)';
+    return '<div style="display:flex;gap:14px;padding:13px 18px;border-bottom:1px solid var(--border);align-items:center">' +
       '<div style="width:42px;min-width:42px;text-align:center;background:#1a1f2e;border:1px solid var(--border);border-radius:8px;padding:7px 0">' +
         '<div style="font:800 17px/1 var(--font-mono);color:var(--text)">' + day + '</div>' +
         '<div style="font:600 9px/1 var(--font-mono);color:var(--muted);margin-top:4px;letter-spacing:0.8px">' + mon + '</div>' +
       '</div>' +
       '<div style="flex:1;min-width:0">' +
-        '<div style="font:600 13px/1.2 var(--font-sans);color:var(--text)">' + esc(r.title) + '</div>' +
-        (cat ? '<div style="font:600 10px/1 var(--font-mono);color:var(--muted);margin-top:5px;letter-spacing:0.8px">' + cat + '</div>' : '') +
+        '<div style="font:600 13px/1.2 var(--font-sans);color:var(--text)">' + e.title + '</div>' +
+        (e.cat ? '<div style="font:600 10px/1 var(--font-mono);color:' + catCol + ';margin-top:5px;letter-spacing:0.8px">' + e.cat + '</div>' : '') +
       '</div>' +
-      (amt ? '<div style="font:700 13px/1 var(--font-mono);color:var(--text);white-space:nowrap">' + amt + '</div>' : '') +
+      (e.amt ? '<div style="font:700 13px/1 var(--font-mono);color:var(--text);white-space:nowrap">' + e.amt + '</div>' : '') +
     '</div>';
   }).join('');
 
-  el.innerHTML =
-    '<div class="card" style="height:100%">' +
-      '<div class="card-header">' +
-        '<span class="card-title" style="display:flex;align-items:center;gap:7px">' +
-          '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>' +
-          'Upcoming reminders' +
-        '</span>' +
-        '<span style="font:700 11px/1 var(--font-mono);color:var(--muted);letter-spacing:0.5px">NEXT 30D</span>' +
-      '</div>' +
-      '<div style="padding:0">' + rows + '</div>' +
-    '</div>';
+  el.innerHTML = '<div class="card" style="height:100%">' + header + '<div style="padding:0">' + rows + '</div></div>';
 }
 
 function renderDashActivity(summary, expiring, hotelData, salaryData) {
