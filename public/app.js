@@ -1451,29 +1451,31 @@ async function loadSalaryPage() {
     const unpaidCount = activeRows.filter(r => (parseFloat(r.net_remaining) || 0) > 0).length;
     const fmtGBP = v => v >= 1000 ? `£${(v/1000).toFixed(1)}k` : `£${v.toFixed(0)}`;
 
-    document.getElementById('salaryTotals').innerHTML = `
-      <div style="display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:1px;background:var(--border);border:1px solid var(--border);border-radius:var(--radius);overflow:hidden">
-        <div style="background:var(--surface);padding:18px 20px;display:flex;flex-direction:column;gap:10px">
-          <div style="font:600 10px/1 var(--font-mono);text-transform:uppercase;letter-spacing:1px;color:var(--muted)">Paid YTD</div>
-          <div style="font:600 28px/1 var(--font-mono);color:var(--text);letter-spacing:-1px">${fmtGBP(totalPaidGBP)}</div>
-          <div style="font:500 11px/1 var(--font-mono);color:var(--positive)">${paidPct.toFixed(0)}% of target</div>
-        </div>
-        <div style="background:var(--surface);padding:18px 20px;display:flex;flex-direction:column;gap:10px">
-          <div style="font:600 10px/1 var(--font-mono);text-transform:uppercase;letter-spacing:1px;color:var(--muted)">Due YTD</div>
-          <div style="font:600 28px/1 var(--font-mono);color:var(--text);letter-spacing:-1px">${fmtGBP(totalDueGBP)}</div>
-          <div style="font:500 11px/1 var(--font-mono);color:var(--muted)">salary target ${year}</div>
-        </div>
-        <div style="background:var(--surface);padding:18px 20px;display:flex;flex-direction:column;gap:10px">
-          <div style="font:600 10px/1 var(--font-mono);text-transform:uppercase;letter-spacing:1px;color:var(--muted)">Outstanding</div>
-          <div style="font:600 28px/1 var(--font-mono);color:${totalOutstandingGBP > 0 ? 'var(--negative)' : 'var(--positive)'};letter-spacing:-1px">${fmtGBP(Math.abs(totalOutstandingGBP))}</div>
-          <div style="font:500 11px/1 var(--font-mono);color:var(--muted)">${unpaidCount > 0 ? `${unpaidCount} employee${unpaidCount !== 1 ? 's' : ''} unpaid` : 'all paid up'}</div>
-        </div>
-        <div style="background:var(--surface);padding:18px 20px;display:flex;flex-direction:column;gap:10px">
-          <div style="font:600 10px/1 var(--font-mono);text-transform:uppercase;letter-spacing:1px;color:var(--muted)">Bonuses YTD</div>
-          <div style="font:600 28px/1 var(--font-mono);color:var(--text);letter-spacing:-1px">${fmtGBP(totalBonusGBP)}</div>
-          <div style="font:500 11px/1 var(--font-mono);color:var(--muted)">across all staff</div>
-        </div>
-      </div>`;
+    const salaryTotalsEl = document.getElementById('salaryTotals');
+    salaryTotalsEl.style.cssText = 'display:grid;grid-template-columns:repeat(4,1fr);gap:1px;background:var(--border);border:1px solid var(--border);border-radius:var(--radius);overflow:hidden;margin-bottom:24px';
+    const outstandingColor = totalOutstandingGBP > 0 ? 'var(--negative)' : 'var(--positive)';
+    const unpaidLabel = unpaidCount > 0 ? (unpaidCount + ' employee' + (unpaidCount !== 1 ? 's' : '') + ' unpaid') : 'all paid up';
+    salaryTotalsEl.innerHTML =
+      '<div style="background:var(--surface);padding:20px 24px;display:flex;flex-direction:column;gap:12px">' +
+        '<div style="font:600 10px/1 var(--font-mono);text-transform:uppercase;letter-spacing:1.2px;color:var(--muted)">Paid YTD</div>' +
+        '<div style="font:700 32px/1 var(--font-mono);color:var(--text);letter-spacing:-1.5px">' + fmtGBP(totalPaidGBP) + '</div>' +
+        '<div style="font:500 11px/1 var(--font-mono);color:var(--positive)">' + paidPct.toFixed(0) + '% of target</div>' +
+      '</div>' +
+      '<div style="background:var(--surface);padding:20px 24px;display:flex;flex-direction:column;gap:12px">' +
+        '<div style="font:600 10px/1 var(--font-mono);text-transform:uppercase;letter-spacing:1.2px;color:var(--muted)">Due YTD</div>' +
+        '<div style="font:700 32px/1 var(--font-mono);color:var(--text);letter-spacing:-1.5px">' + fmtGBP(totalDueGBP) + '</div>' +
+        '<div style="font:500 11px/1 var(--font-mono);color:var(--muted)">salary target ' + year + '</div>' +
+      '</div>' +
+      '<div style="background:var(--surface);padding:20px 24px;display:flex;flex-direction:column;gap:12px">' +
+        '<div style="font:600 10px/1 var(--font-mono);text-transform:uppercase;letter-spacing:1.2px;color:var(--muted)">Outstanding</div>' +
+        '<div style="font:700 32px/1 var(--font-mono);color:' + outstandingColor + ';letter-spacing:-1.5px">' + fmtGBP(Math.abs(totalOutstandingGBP)) + '</div>' +
+        '<div style="font:500 11px/1 var(--font-mono);color:var(--muted)">' + unpaidLabel + '</div>' +
+      '</div>' +
+      '<div style="background:var(--surface);padding:20px 24px;display:flex;flex-direction:column;gap:12px">' +
+        '<div style="font:600 10px/1 var(--font-mono);text-transform:uppercase;letter-spacing:1.2px;color:var(--muted)">Bonuses YTD</div>' +
+        '<div style="font:700 32px/1 var(--font-mono);color:var(--text);letter-spacing:-1.5px">' + fmtGBP(totalBonusGBP) + '</div>' +
+        '<div style="font:500 11px/1 var(--font-mono);color:var(--muted)">across all staff</div>' +
+      '</div>';
 
     // ── Per-employee cards ──
     if (!rows.length) {
