@@ -860,80 +860,112 @@
 
 <!-- Hotel Expense Modal -->
 <div class="modal-overlay" id="hotelModal">
-  <div class="modal" style="width:620px;max-width:95vw">
+  <div class="modal hotel-modal">
     <div class="modal-header">
       <h2 id="hotelModalTitle">Add Hotel Expense</h2>
       <button class="modal-close" onclick="closeHotelModal()">✕</button>
     </div>
     <input type="hidden" id="hotelEditId" />
-    <div class="modal-section-label">Event Details</div>
-    <div class="form-row" style="grid-template-columns:1fr 1fr">
-      <div class="form-group">
-        <label>Event Name *</label>
-        <input type="text" id="hotelEventName" placeholder="e.g. CFO Miami" />
-      </div>
-      <div class="form-group">
-        <label>Hotel</label>
-        <input type="text" id="hotelHotelName" placeholder="Hotel name" />
-      </div>
-    </div>
-    <div class="form-row" style="grid-template-columns:1fr 1fr">
-      <div class="form-group">
-        <label>Cost (display)</label>
-        <input type="text" id="hotelCost" placeholder="e.g. $18k ++ or £23,076" />
-      </div>
-      <div class="form-group">
-        <label>Status</label>
-        <select id="hotelStatus">
-          <option value="pending">Pending</option>
-          <option value="partial">Partial</option>
-          <option value="paid">Paid</option>
-        </select>
-      </div>
-    </div>
-    <div class="modal-section-label">AV & Payments</div>
-    <div class="form-row" style="grid-template-columns:90px 1fr 90px 1fr">
-      <div class="form-group">
-        <label>AV Currency</label>
-        <select id="hotelAvCurrency">
-          <option>USD</option><option>GBP</option><option>EUR</option><option>CHF</option><option>AED</option>
-        </select>
-      </div>
-      <div class="form-group">
-        <label>AV Amount</label>
-        <input type="number" id="hotelAvAmount" placeholder="0.00" step="0.01" min="0" />
-      </div>
-      <div class="form-group">
-        <label>Paid Currency</label>
-        <select id="hotelPaidCurrency">
-          <option>USD</option><option>GBP</option><option>EUR</option><option>CHF</option><option>AED</option>
-        </select>
-      </div>
-      <div class="form-group">
-        <label>Paid So Far</label>
-        <input type="number" id="hotelPaidAmount" placeholder="0.00" step="0.01" min="0" />
+
+    <!-- Event Details -->
+    <div class="hm-section">
+      <div class="modal-section-label">Event Details</div>
+      <div class="hm-body">
+        <div class="form-row hm-2col">
+          <div class="form-group">
+            <label>Event Name *</label>
+            <input type="text" id="hotelEventName" placeholder="e.g. CFO Miami" />
+          </div>
+          <div class="form-group">
+            <label>Hotel</label>
+            <input type="text" id="hotelHotelName" placeholder="Hotel name" />
+          </div>
+        </div>
+        <div class="form-row hm-2col" style="margin-bottom:0">
+          <div class="form-group">
+            <label>Cost (display)</label>
+            <input type="text" id="hotelCost" placeholder="e.g. $18k ++ or £23,076" />
+          </div>
+          <div class="form-group">
+            <label>Status</label>
+            <select id="hotelStatus">
+              <option value="pending">Pending</option>
+              <option value="partial">Partial</option>
+              <option value="paid">Paid</option>
+            </select>
+          </div>
+        </div>
       </div>
     </div>
-    <div class="modal-section-label">Additional Costs</div>
-    <div class="form-row" style="grid-template-columns:1fr 1fr 1fr">
-      <div class="form-group">
-        <label>Staff Hotel</label>
-        <input type="number" id="hotelStaffHotel" placeholder="0" step="0.01" min="0" />
-      </div>
-      <div class="form-group">
-        <label>Flights</label>
-        <input type="number" id="hotelFlights" placeholder="0" step="0.01" min="0" />
-      </div>
-      <div class="form-group">
-        <label>Printing</label>
-        <input type="number" id="hotelPrinting" placeholder="0" step="0.01" min="0" />
+
+    <!-- AV & Payments -->
+    <div class="hm-section">
+      <div class="modal-section-label">AV &amp; Payments</div>
+      <div class="hm-body hm-payments">
+        <div class="hm-payment-col">
+          <div class="hm-col-title">AV Cost</div>
+          <div class="hm-currency-row">
+            <div class="form-group hm-currency-sel">
+              <label>Currency</label>
+              <select id="hotelAvCurrency">
+                <option>USD</option><option>GBP</option><option>EUR</option><option>CHF</option><option>AED</option>
+              </select>
+            </div>
+            <div class="form-group hm-currency-amt">
+              <label>Amount</label>
+              <input type="number" id="hotelAvAmount" placeholder="0.00" step="0.01" min="0" />
+            </div>
+          </div>
+        </div>
+        <div class="hm-divider"></div>
+        <div class="hm-payment-col">
+          <div class="hm-col-title">Paid So Far</div>
+          <div class="hm-currency-row">
+            <div class="form-group hm-currency-sel">
+              <label>Currency</label>
+              <select id="hotelPaidCurrency">
+                <option>USD</option><option>GBP</option><option>EUR</option><option>CHF</option><option>AED</option>
+              </select>
+            </div>
+            <div class="form-group hm-currency-amt">
+              <label>Amount</label>
+              <input type="number" id="hotelPaidAmount" placeholder="0.00" step="0.01" min="0" />
+            </div>
+          </div>
+        </div>
       </div>
     </div>
-    <div class="form-group" style="margin-top:8px">
-      <label>Notes</label>
-      <textarea id="hotelNotes" rows="2" placeholder="Any additional notes…"></textarea>
+
+    <!-- Additional Costs -->
+    <div class="hm-section">
+      <div class="modal-section-label">Additional Costs</div>
+      <div class="hm-body">
+        <div class="form-row hm-3col" style="margin-bottom:0">
+          <div class="form-group">
+            <label>Staff Hotel</label>
+            <input type="number" id="hotelStaffHotel" placeholder="0" step="0.01" min="0" />
+          </div>
+          <div class="form-group">
+            <label>Flights</label>
+            <input type="number" id="hotelFlights" placeholder="0" step="0.01" min="0" />
+          </div>
+          <div class="form-group">
+            <label>Printing</label>
+            <input type="number" id="hotelPrinting" placeholder="0" step="0.01" min="0" />
+          </div>
+        </div>
+      </div>
     </div>
-    <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:20px">
+
+    <!-- Notes -->
+    <div class="hm-section" style="margin-bottom:0">
+      <div class="modal-section-label">Notes</div>
+      <div class="form-group">
+        <textarea id="hotelNotes" rows="2" placeholder="Any additional notes…"></textarea>
+      </div>
+    </div>
+
+    <div class="hm-footer">
       <button class="btn btn-ghost" onclick="closeHotelModal()">Cancel</button>
       <button class="btn btn-primary" onclick="saveHotelExpense()">Save</button>
     </div>

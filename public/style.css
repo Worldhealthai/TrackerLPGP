@@ -1286,6 +1286,36 @@ tbody tr:hover td strong { color: var(--primary); }
 }
 
 /* ══════════════════════════════════════════
+   HOTEL MODAL
+══════════════════════════════════════════ */
+.hotel-modal { width: 620px; }
+.hm-section { margin-bottom: 16px; }
+.hm-body {
+  background: var(--bg); border-radius: 12px; padding: 16px;
+  border: 1px solid var(--border);
+}
+.form-row.hm-2col { grid-template-columns: 1fr 1fr; }
+.form-row.hm-3col { grid-template-columns: 1fr 1fr 1fr; }
+
+/* AV & Payments two-column panel */
+.hm-payments { display: flex; align-items: stretch; gap: 0; padding: 0; overflow: hidden; }
+.hm-payment-col { flex: 1; padding: 16px; }
+.hm-divider { width: 1px; background: var(--border); flex-shrink: 0; }
+.hm-col-title {
+  font-size: 0.68rem; font-weight: 800; text-transform: uppercase;
+  letter-spacing: 0.6px; color: var(--muted); margin-bottom: 12px;
+}
+.hm-currency-row { display: flex; gap: 8px; }
+.hm-currency-sel { flex: 0 0 88px; }
+.hm-currency-amt { flex: 1; }
+
+/* Footer */
+.hm-footer {
+  display: flex; gap: 10px; justify-content: flex-end;
+  margin-top: 20px; padding-top: 16px; border-top: 1px solid var(--border-light);
+}
+
+/* ══════════════════════════════════════════
    HOTEL EXPENSES TABLE ROW COLOURS
 ══════════════════════════════════════════ */
 tr.hotel-row-paid td {
