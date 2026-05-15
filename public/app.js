@@ -80,12 +80,13 @@ function navigate(page) {
   document.getElementById('page-' + page).classList.add('active');
   document.querySelector(`.nav-item[data-page="${page}"]`)?.classList.add('active');
   document.querySelector(`.bottom-nav-item[data-page="${page}"]`)?.classList.add('active');
-  const titles = { dashboard:'Dashboard', tracking:'Daily Tracking', salary:'Salary Tracker', employees:'Employees', reports:'Reports', calendar:'Calendar', admins:'Admin Users' };
+  const titles = { dashboard:'Dashboard', tracking:'Daily Tracking', salary:'Salary Tracker', employees:'Employees', reports:'Reports', calendar:'Calendar', admins:'Admin Users', hotels:'Hotel Expenses' };
   document.getElementById('pageTitle').textContent = titles[page] || page;
   if (page === 'employees') loadEmpTable();
   if (page === 'admins') loadAdmins();
   if (page === 'calendar') loadCalendar();
   if (page === 'salary') { loadSalaryPage(); renderSalaryReminderPanel(); }
+  if (page === 'hotels') loadHotelExpenses();
 }
 
 // ─── EMPLOYEES ───────────────────────────────────────────────────────────────
@@ -135,10 +136,22 @@ function renderEmpTable() {
     const statusLabel = emp.active ? 'Active' : (terminated ? `Terminated ${emp.termination_date.slice(0,10)}` : 'Inactive');
     const tr = document.createElement('tr');
     tr.innerHTML = `
-      <td><strong>${esc(emp.name)}</strong></td>
+      <td>
+        <div style="font-weight:700;color:var(--text)">${esc(emp.name)}</div>
+        ${emp.email ? `<div style="font-size:0.74rem;color:var(--muted);margin-top:2px">${esc(emp.email)}</div>` : ''}
+      </td>
+      <td>
+        ${emp.department ? `<div style="font-weight:600;font-size:0.83rem">${esc(emp.department)}</div>` : ''}
+        ${emp.job_title  ? `<div style="font-size:0.76rem;color:var(--muted)">${esc(emp.job_title)}</div>` : (!emp.department ? '<span style="color:var(--muted)">—</span>' : '')}
+      </td>
       <td><span class="badge ${typeBadge}">${typeLabel}</span></td>
       <td>${emp.annual_salary > 0 ? fmtMoney(emp.annual_salary, emp.currency) + '/yr' : '—'}</td>
       <td>${emp.start_date ? emp.start_date.slice(0,10) : '<span style="color:var(--muted)">—</span>'}</td>
+      <td>${emp.contract_end_date ? (() => {
+        const today = new Date().toISOString().slice(0,10);
+        const cls = emp.contract_end_date < today ? 'badge-red' : (emp.contract_end_date <= new Date(Date.now()+30*864e5).toISOString().slice(0,10) ? 'badge-yellow' : 'badge-grey');
+        return `<span class="badge ${cls}">${emp.contract_end_date.slice(0,10)}</span>`;
+      })() : '<span style="color:var(--muted)">Permanent</span>'}</td>
       <td><span class="badge ${statusBadge}" style="white-space:normal">${esc(statusLabel)}</span></td>
       <td style="text-align:right">
         <button class="btn btn-ghost btn-sm" onclick='openEmpModal(${JSON.stringify(emp)})'>Edit</button>
@@ -158,6 +171,11 @@ function openEmpModal(emp = null) {
   document.getElementById('empCurrency').value = emp ? (emp.currency || 'GBP') : 'GBP';
   document.getElementById('empAnnualSalary').value = emp ? emp.annual_salary : 0;
   document.getElementById('empPensionRate').value = emp && emp.pension_rate != null ? emp.pension_rate : '';
+  document.getElementById('empJobTitle').value = emp ? (emp.job_title || '') : '';
+  document.getElementById('empDepartment').value = emp ? (emp.department || '') : '';
+  document.getElementById('empPhone').value = emp ? (emp.phone || '') : '';
+  document.getElementById('empEmail').value = emp ? (emp.email || '') : '';
+  document.getElementById('empContractEnd').value = emp ? (emp.contract_end_date || '') : '';
   document.getElementById('empSalaryEffective').value = today();
   document.getElementById('empSalaryReason').value = '';
   document.getElementById('salaryChangeFields').classList.add('hidden');
@@ -191,19 +209,26 @@ async function saveEmployee() {
   const salary_effective = document.getElementById('empSalaryEffective').value;
   const pensionRateVal = document.getElementById('empPensionRate').value;
   const pension_rate = employment_type === 'payroll' && pensionRateVal !== '' ? parseFloat(pensionRateVal) : 0;
+  const job_title = document.getElementById('empJobTitle').value.trim();
+  const department = document.getElementById('empDepartment').value.trim();
+  const phone = document.getElementById('empPhone').value.trim();
+  const email = document.getElementById('empEmail').value.trim();
+  const contract_end_date = document.getElementById('empContractEnd').value || null;
   if (!name) return showToast('Name is required', 'error');
 
+  const payload = { name, employment_type, annual_salary, currency, start_date, pension_rate,
+                    job_title, department, phone, email, contract_end_date };
   if (id) {
     await fetch(`/api/employees/${id}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name, employment_type, annual_salary, currency, active: 1, salary_reason, salary_effective, start_date, pension_rate })
+      body: JSON.stringify({ ...payload, active: 1, salary_reason, salary_effective })
     });
   } else {
     await fetch('/api/employees', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name, employment_type, annual_salary, currency, start_date, pension_rate })
+      body: JSON.stringify(payload)
     });
   }
   closeModal('empModal');
@@ -251,36 +276,90 @@ async function loadDashboard() {
   const now = new Date();
   const month = now.getMonth() + 1;
 
-  // Skeleton while loading
   document.getElementById('dashStats').innerHTML = `
-    <div class="skeleton skeleton-stat"></div>
-    <div class="skeleton skeleton-stat"></div>
-    <div class="skeleton skeleton-stat"></div>
-  `;
-
-  const [summaryRes, salaryRes, upcomingRes] = await Promise.all([
-    fetch(`/api/summary?from=${year}-01-01&to=${year}-12-31`),
-    fetch(`/api/salary-overview?year=${year}`),
-    fetch(`/api/calendar-reminders/upcoming?days=7`)
-  ]);
-
-  const summary       = summaryRes.ok ? await summaryRes.json() : [];
-  const salaryData    = salaryRes.ok  ? await salaryRes.json()  : [];
-  const upcoming      = upcomingRes.ok ? await upcomingRes.json() : [];
-
-  const totalDeduction = summary.reduce((a, b) => a + b.total_deduction, 0);
-  const unpaidCount    = getUnpaidThisMonth(salaryData, year, month).length;
-  updateSalaryBadge(unpaidCount);
-
-  document.getElementById('dashStats').innerHTML = `
-    <div class="stat-card blue"><div class="stat-label">Active Employees</div><div class="stat-value">${summary.length}</div></div>
-    <div class="stat-card red"><div class="stat-label">Total Deductions (${year})</div><div class="stat-value">£${totalDeduction.toFixed(2)}</div></div>
-    <div class="stat-card ${unpaidCount > 0 ? 'red' : 'green'}" style="cursor:pointer" onclick="navigate('salary')" title="Go to salary page">
-      <div class="stat-label">Unpaid This Month</div>
-      <div class="stat-value">${unpaidCount}</div>
-      <div style="font-size:0.72rem;color:var(--muted);margin-top:4px">Click to view →</div>
+    <div class="dash-bento">
+      <div class="skeleton" style="height:200px;border-radius:18px"></div>
+      <div class="dash-mini-grid">
+        <div class="skeleton" style="height:72px;border-radius:14px"></div>
+        <div class="skeleton" style="height:72px;border-radius:14px"></div>
+        <div class="skeleton" style="height:72px;border-radius:14px"></div>
+      </div>
     </div>
   `;
+
+  const [summaryRes, salaryRes, upcomingRes, expiringRes, allEmpRes] = await Promise.all([
+    fetch(`/api/summary?from=${year}-01-01&to=${year}-12-31`),
+    fetch(`/api/salary-overview?year=${year}`),
+    fetch(`/api/calendar-reminders/upcoming?days=7`),
+    fetch(`/api/contracts/expiring?days=60`),
+    fetch(`/api/employees/all`)
+  ]);
+
+  const summary       = summaryRes.ok  ? await summaryRes.json()  : [];
+  const salaryData    = salaryRes.ok   ? await salaryRes.json()   : [];
+  const upcoming      = upcomingRes.ok ? await upcomingRes.json() : [];
+  const expiring      = expiringRes.ok ? await expiringRes.json() : [];
+  const allEmps       = allEmpRes.ok   ? await allEmpRes.json()   : [];
+
+  const activeEmps    = allEmps.filter(e => e.active);
+  const totalDeduction = summary.reduce((a, b) => a + b.total_deduction, 0);
+  const unpaidCount   = getUnpaidThisMonth(salaryData, year, month).length;
+  updateSalaryBadge(unpaidCount);
+
+  // Total annual payroll cost (active payroll employees in GBP)
+  const totalPayrollGBP = activeEmps
+    .filter(e => e.employment_type === 'payroll' && (e.currency || 'GBP') === 'GBP')
+    .reduce((a, e) => a + (parseFloat(e.annual_salary) || 0), 0);
+  const totalHeadcount = activeEmps.length;
+  const payrollCount   = activeEmps.filter(e => e.employment_type === 'payroll').length;
+  const seCount        = activeEmps.filter(e => e.employment_type === 'self_employed').length;
+
+  document.getElementById('dashStats').innerHTML = `
+    <div class="dash-bento">
+      <div class="dash-hero-card">
+        <div class="dash-hero-glow"></div>
+        <div class="dash-hero-label">Active Headcount</div>
+        <div class="dash-hero-value">${totalHeadcount}</div>
+        <div class="dash-hero-pills">
+          <span class="dash-hero-pill dash-hero-pill--blue">${payrollCount} Payroll</span>
+          <span class="dash-hero-pill dash-hero-pill--amber">${seCount} Self-Emp</span>
+        </div>
+        <div class="dash-hero-footer">Total workforce · ${year}</div>
+      </div>
+      <div class="dash-mini-grid">
+        <div class="dash-mini-card dash-mini--indigo">
+          <div class="dash-mini-icon">💷</div>
+          <div class="dash-mini-body">
+            <div class="dash-mini-label">Annual Payroll</div>
+            <div class="dash-mini-value">£${fmtK(totalPayrollGBP)}</div>
+            <div class="dash-mini-sub">GBP employees · ${year}</div>
+          </div>
+        </div>
+        <div class="dash-mini-card dash-mini--red">
+          <div class="dash-mini-icon">📉</div>
+          <div class="dash-mini-body">
+            <div class="dash-mini-label">Total Deductions</div>
+            <div class="dash-mini-value">£${totalDeduction.toFixed(0)}</div>
+            <div class="dash-mini-sub">Year to date · ${year}</div>
+          </div>
+        </div>
+        <div class="dash-mini-card ${unpaidCount > 0 ? 'dash-mini--alert' : 'dash-mini--green'}" style="cursor:pointer" onclick="navigate('salary')" title="Go to salary page">
+          <div class="dash-mini-icon">${unpaidCount > 0 ? '🔔' : '✅'}</div>
+          <div class="dash-mini-body">
+            <div class="dash-mini-label">Unpaid This Month</div>
+            <div class="dash-mini-value">${unpaidCount}</div>
+            <div class="dash-mini-sub">${unpaidCount > 0 ? 'Action required →' : 'All paid up'}</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  `;
+
+  // Contract expiry panel
+  renderContractExpiryPanel(expiring);
+
+  // Headcount by department
+  renderHeadcountPanel(activeEmps);
 
   // Upcoming reminders widget
   renderUpcomingWidget(upcoming);
@@ -288,12 +367,17 @@ async function loadDashboard() {
   const tbody = document.getElementById('dashTable');
   tbody.innerHTML = '';
   summary.forEach(row => {
+    const emp = allEmps.find(e => e.id === row.employee_id);
     const typeBadge = row.employment_type === 'self_employed' ? 'badge-yellow' : 'badge-blue';
     const typeLabel = row.employment_type === 'self_employed' ? 'Self-Emp' : 'Payroll';
     const daysColor = row.excess_days > 0 ? 'text-danger fw-bold' : '';
     const tr = document.createElement('tr');
     tr.innerHTML = `
-      <td><strong>${esc(row.name)}</strong></td>
+      <td>
+        <div style="font-weight:700">${esc(row.name)}</div>
+        ${emp?.job_title ? `<div style="font-size:0.73rem;color:var(--muted)">${esc(emp.job_title)}</div>` : ''}
+      </td>
+      <td>${emp?.department ? `<span style="font-size:0.82rem;font-weight:600">${esc(emp.department)}</span>` : '<span style="color:var(--muted)">—</span>'}</td>
       <td><span class="badge ${typeBadge}">${typeLabel}</span></td>
       <td class="${daysColor}">${row.year_days_off} / ${row.allowance_days}</td>
       <td>${row.excess_days > 0 ? `<span class="badge badge-red">${row.excess_days} excess</span>` : '<span class="badge badge-green">OK</span>'}</td>
@@ -304,6 +388,68 @@ async function loadDashboard() {
     `;
     tbody.appendChild(tr);
   });
+}
+
+function renderContractExpiryPanel(expiring) {
+  const el = document.getElementById('contractExpiryPanel');
+  if (!el) return;
+  if (!expiring.length) { el.innerHTML = ''; return; }
+  const today = new Date().toISOString().slice(0,10);
+  el.innerHTML = `
+    <div class="dash-panel dash-panel--alert">
+      <div class="dash-panel-header">
+        <span class="dash-panel-icon">⚠️</span>
+        <span class="dash-panel-title">Contracts Expiring (Next 60 Days)</span>
+        <span class="dash-panel-count">${expiring.length}</span>
+      </div>
+      <div class="dash-panel-body">
+        ${expiring.map(e => {
+          const expired = e.contract_end_date < today;
+          const badge = expired ? 'badge-red' : 'badge-yellow';
+          const label = expired ? 'Expired' : `Ends ${e.contract_end_date}`;
+          return `<div class="dash-panel-row">
+            <div>
+              <div style="font-weight:700;font-size:0.88rem">${esc(e.name)}</div>
+              ${e.job_title || e.department ? `<div style="font-size:0.74rem;color:var(--muted)">${esc([e.job_title,e.department].filter(Boolean).join(' · '))}</div>` : ''}
+            </div>
+            <span class="badge ${badge}">${label}</span>
+          </div>`;
+        }).join('')}
+      </div>
+    </div>`;
+}
+
+function renderHeadcountPanel(activeEmps) {
+  const el = document.getElementById('headcountPanel');
+  if (!el) return;
+  const depts = {};
+  activeEmps.forEach(e => {
+    const d = e.department || 'Unassigned';
+    if (!depts[d]) depts[d] = { count: 0, payroll: 0, se: 0 };
+    depts[d].count++;
+    if (e.employment_type === 'self_employed') depts[d].se++;
+    else depts[d].payroll++;
+  });
+  const sorted = Object.entries(depts).sort((a,b) => b[1].count - a[1].count);
+  if (!sorted.length) { el.innerHTML = ''; return; }
+  el.innerHTML = `
+    <div class="dash-panel">
+      <div class="dash-panel-header">
+        <span class="dash-panel-icon">🏢</span>
+        <span class="dash-panel-title">Headcount by Department</span>
+        <span class="dash-panel-count">${activeEmps.length} total</span>
+      </div>
+      <div class="dash-panel-body">
+        ${sorted.map(([dept, info]) => `
+          <div class="dash-panel-row">
+            <div style="font-weight:600;font-size:0.88rem">${esc(dept)}</div>
+            <div style="display:flex;gap:6px;align-items:center">
+              ${info.payroll ? `<span class="badge badge-blue">${info.payroll} payroll</span>` : ''}
+              ${info.se ? `<span class="badge badge-yellow">${info.se} self-emp</span>` : ''}
+            </div>
+          </div>`).join('')}
+      </div>
+    </div>`;
 }
 
 function goToTracking(empId) {
@@ -398,7 +544,7 @@ async function loadEmployeeRecords() {
       <div class="stat-card yellow"><div class="stat-label">Late Arrivals</div><div class="stat-value">${records.reduce((a,b)=>a+b.late_minutes,0)}m</div></div>
       <div class="stat-card red"><div class="stat-label">Full Days Off</div><div class="stat-value">${fullDays}</div></div>
       <div class="stat-card red"><div class="stat-label">Half Days Off</div><div class="stat-value">${halfDays}</div></div>
-      <div class="stat-card" style="border-color:#e0e7ff"><div class="stat-label" style="color:var(--primary)">Ref. Potential (not deducted)</div><div class="stat-value" style="color:var(--primary);font-size:1.3rem">£${refTotal.toFixed(2)}</div></div>
+      <div class="stat-card blue"><div class="stat-label">Ref. Potential (not deducted)</div><div class="stat-value" style="font-size:1.3rem">£${refTotal.toFixed(2)}</div></div>
     `;
     statsBar.classList.remove('hidden');
   } else {
@@ -654,11 +800,11 @@ async function loadPaymentsSection(empId, emp) {
         const pr = empData.pro_rated;
         if (pr) {
           proRatedHtml = `
-          <div style="margin-top:14px;background:#f0fdf4;border:1px solid #86efac;border-radius:10px;padding:14px 16px">
-            <div style="font-size:0.72rem;font-weight:700;text-transform:uppercase;letter-spacing:0.5px;color:#16a34a;margin-bottom:8px">Pro-Rated Reference · Started ${pr.start_date}</div>
+          <div style="margin-top:14px;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:10px;padding:14px 16px">
+            <div style="font-size:0.72rem;font-weight:700;text-transform:uppercase;letter-spacing:0.5px;color:#059669;margin-bottom:8px">Pro-Rated Reference · Started ${pr.start_date}</div>
             <div style="font-size:0.85rem;display:flex;justify-content:space-between;font-weight:600">
               <span style="color:var(--muted)">Expected to date</span>
-              <span style="color:#16a34a;font-weight:800">${sym}${pr.total_expected.toLocaleString('en-GB',{minimumFractionDigits:2})}</span>
+              <span style="color:#059669;font-weight:800">${sym}${pr.total_expected.toLocaleString('en-GB',{minimumFractionDigits:2})}</span>
             </div>
           </div>`;
         }
@@ -984,17 +1130,22 @@ async function loadSalaryPage() {
     });
     const TYPE_LABEL = { payroll: 'Payroll', self_employed: 'Self-Employed' };
     const TYPE_CLASS  = { payroll: 'payroll', self_employed: 'self-employed' };
-    const totalHtml = groups.map(g => {
+    // AED → GBP approximate rate (shown clearly to user)
+    const AED_TO_GBP = 1 / 4.67;
+
+    const groupCards = groups.map(g => {
       const s        = currencySymbol(g.currency);
       const tTarget  = g.rows.reduce((a, b) => a + (parseFloat(b.salary_target ?? b.annual_salary) || 0), 0);
       const tPaid    = g.rows.reduce((a, b) => a + (parseFloat(b.total_paid)    || 0), 0);
       const tDeduct  = g.rows.reduce((a, b) => a + (parseFloat(b.excess_deduction) || 0) + (parseFloat(b.total_office_deductions) || 0), 0);
       const tRemain  = g.rows.reduce((a, b) => a + (parseFloat(b.net_remaining) || 0), 0);
       const typeLabel = groups.length > 1 ? `${TYPE_LABEL[g.type]} · ${g.currency}` : TYPE_LABEL[g.type];
-      // Show employee name when the card represents a single person
       const empName   = g.rows.length === 1 ? g.rows[0].name : null;
       const header    = empName ? `${empName} &nbsp;·&nbsp; ${typeLabel}` : typeLabel;
       const remainClass = tRemain < 0 ? 'overpaid' : tRemain === 0 ? 'clear' : '';
+      const aedConversion = g.currency === 'AED' && tRemain > 0
+        ? `<div class="soc-conversion">≈ £${(tRemain * AED_TO_GBP).toLocaleString('en-GB',{maximumFractionDigits:0})} at 4.67 AED/GBP</div>`
+        : '';
       return `
         <div class="salary-overview-card ${TYPE_CLASS[g.type]}">
           <div class="soc-header">${header}</div>
@@ -1015,9 +1166,34 @@ async function loadSalaryPage() {
             <span class="soc-label">Outstanding</span>
             <span class="soc-value outstanding ${remainClass}">${tRemain < 0 ? '−' : ''}${s}${fmtK(Math.abs(tRemain))}</span>
           </div>
+          ${aedConversion}
         </div>`;
-    }).join('');
-    document.getElementById('salaryTotals').innerHTML = totalHtml || '';
+    });
+
+    // Grand total GBP card — converts all currencies to GBP
+    const gbpTotal = groups.reduce((sum, g) => {
+      const tRemain = g.rows.reduce((a, b) => a + (parseFloat(b.net_remaining) || 0), 0);
+      if (g.currency === 'GBP') return sum + tRemain;
+      if (g.currency === 'AED') return sum + tRemain * AED_TO_GBP;
+      return sum; // other currencies not converted
+    }, 0);
+    const hasMultiCurrency = groups.some(g => g.currency !== 'GBP');
+    const gbpCard = hasMultiCurrency ? `
+      <div class="salary-overview-card soc-gbp-total">
+        <div class="soc-header">Total Outstanding · GBP</div>
+        <div class="soc-row" style="padding-top:10px">
+          <span class="soc-label">All salaries (converted)</span>
+        </div>
+        <div class="soc-row soc-row--outstanding">
+          <span class="soc-label">Remaining to pay</span>
+          <span class="soc-value outstanding ${gbpTotal <= 0 ? 'overpaid' : ''}" style="font-size:1.35rem">
+            £${Math.abs(gbpTotal).toLocaleString('en-GB',{minimumFractionDigits:2,maximumFractionDigits:2})}
+          </span>
+        </div>
+        <div class="soc-conversion">GBP + AED at 4.67 · end of ${year}</div>
+      </div>` : '';
+
+    document.getElementById('salaryTotals').innerHTML = (groupCards.join('') + gbpCard) || '';
 
     // ── Per-employee cards ──
     if (!rows.length) {
@@ -1047,12 +1223,14 @@ async function loadSalaryPage() {
       const paye            = emp.paye_breakdown || null;
       const netMonthly      = emp.net_monthly ? parseFloat(emp.net_monthly) : null;
 
-      // First-month suggestion: only when employee started mid-month
+      // First-month suggestion: use end-of-month calculation (not earned-to-today)
       const pr = emp.pro_rated;
-      const isPartialFirstMonth = pr && pr.first_month_days < pr.first_month_total_days;
+      const fm = emp.first_month_full;
+      // Partial = employee started mid-month (not day 1)
+      const isPartialFirstMonth = fm && fm.first_month_days < fm.first_month_total_days;
       const payeNetFactor = paye && annualSalary > 0 ? paye.net_annual / annualSalary : 1;
       const suggestedFirstMonthNet = isPartialFirstMonth
-        ? parseFloat((pr.first_month_pay * payeNetFactor).toFixed(2))
+        ? parseFloat((fm.first_month_pay * payeNetFactor).toFixed(2))
         : null;
 
       const initials = (emp.name || '?').split(' ').map(w => w[0]).join('').slice(0,2).toUpperCase();
@@ -1086,6 +1264,7 @@ async function loadSalaryPage() {
           <div class="sc-avatar">${initials}</div>
           <div class="sc-info">
             <div class="sc-emp-name">${esc(emp.name || '')}</div>
+            ${emp.job_title || emp.department ? `<div class="sc-emp-role">${[emp.job_title, emp.department].filter(Boolean).map(s => esc(s)).join(' · ')}</div>` : ''}
             <div class="sc-emp-badges">
               <span class="badge ${typeBadge}" style="font-size:0.67rem">${typeLabel}</span>
               <span class="badge badge-grey" style="font-size:0.67rem">${cur}</span>
@@ -1111,16 +1290,16 @@ async function loadSalaryPage() {
         </div>
 
         ${suggestedFirstMonthNet !== null ? (() => {
-          const firstMonthName = MONTHS[parseInt(pr.first_month.split('-')[1])] || pr.first_month;
+          const firstMonthName = MONTHS[parseInt(fm.first_month.split('-')[1])] || fm.first_month;
           const afterLabel = paye
             ? `after PAYE/NI${paye.pension > 0 ? '/pension' : ''}`
-            : 'self-employed';
+            : 'gross';
           return `<div class="sc-firstmonth-tip">
             <span class="sc-fm-icon">💡</span>
             <div>
-              Started partway through ${firstMonthName} — suggested first month pay:
+              Suggested payment for ${firstMonthName} (started ${fm.start_date}):
               <strong>${sym}${suggestedFirstMonthNet.toLocaleString('en-GB',{minimumFractionDigits:2})}</strong>
-              <span class="sc-fm-sub">${pr.first_month_days} of ${pr.first_month_total_days} working days · ${afterLabel}</span>
+              <span class="sc-fm-sub">${fm.first_month_days} of ${fm.first_month_total_days} working days · ${afterLabel}</span>
             </div>
           </div>`;
         })() : ''}
@@ -1241,7 +1420,7 @@ async function loadSalaryPage() {
             </button>
             <div class="sc-sec-body">
               <div class="sc-sec-actions">
-                <button class="btn btn-ghost btn-sm" style="border-color:#f59e0b;color:#b45309" onclick="openBonusModal(${emp.employee_id})">+ Add Bonus</button>
+                <button class="btn btn-ghost btn-sm" style="border-color:#fde68a;color:#b45309" onclick="openBonusModal(${emp.employee_id})">+ Add Bonus</button>
               </div>
               ${bonuses.length ? bonuses.map(b => `
                 <div class="sc-item" style="background:#fffbeb;border-color:#fde68a">
@@ -1271,22 +1450,35 @@ async function loadSalaryPage() {
           </div>` : ''}
 
           <!-- Pro-rated breakdown -->
-          ${emp.pro_rated ? (() => {
+          ${(emp.pro_rated || emp.first_month_full) ? (() => {
             const pr = emp.pro_rated;
+            const fmr = emp.first_month_full;
+            const showFmFull = fmr && fmr.first_month_days < fmr.first_month_total_days;
+            const fmrName = fmr ? (MONTHS[parseInt(fmr.first_month.split('-')[1])] || fmr.first_month) : null;
+            const fmrGross = fmr ? fmr.first_month_pay : 0;
+            const fmrNet = fmr ? parseFloat((fmrGross * payeNetFactor).toFixed(2)) : 0;
+            const startLabel = (fmr || pr).start_date;
             return `
           <div class="sc-section">
             <button class="sc-sec-toggle" onclick="toggleSection(this)">
-              <span class="sc-sec-title">Pro-Rated Pay — started ${pr.start_date}</span>
+              <span class="sc-sec-title">Pro-Rated Pay — started ${startLabel}</span>
               <span class="sc-chevron">›</span>
             </button>
             <div class="sc-sec-body">
+              ${showFmFull ? `
               <div class="sc-breakdown">
-                <div class="sc-breakdown-title">Earned pay to date</div>
+                <div class="sc-breakdown-title">Payment due — end of ${fmrName}</div>
+                <div class="sc-breakdown-row"><span>Working days (${fmr.first_month_days}/${fmr.first_month_total_days} in ${fmrName})</span><span>${sym}${fmrGross.toLocaleString('en-GB',{minimumFractionDigits:2})} gross</span></div>
+                ${paye ? `<div class="sc-breakdown-row total"><span>Net after PAYE/NI${paye.pension > 0 ? '/pension' : ''}</span><span>${sym}${fmrNet.toLocaleString('en-GB',{minimumFractionDigits:2})}</span></div>`
+                       : `<div class="sc-breakdown-row total"><span>Gross amount due</span><span>${sym}${fmrGross.toLocaleString('en-GB',{minimumFractionDigits:2})}</span></div>`}
+              </div>` : ''}
+              ${pr ? `
+              <div class="sc-breakdown${showFmFull ? ' sc-breakdown-secondary' : ''}">
+                <div class="sc-breakdown-title">${showFmFull ? 'Earned to today' : 'Earned pay to date'}</div>
                 <div class="sc-breakdown-row"><span>First month (${pr.first_month_days}/${pr.first_month_total_days} working days)</span><span>${sym}${pr.first_month_pay.toLocaleString('en-GB',{minimumFractionDigits:2})}</span></div>
                 ${pr.full_months_count > 0 ? `<div class="sc-breakdown-row"><span>${pr.full_months_count} full month${pr.full_months_count > 1 ? 's' : ''}</span><span>${sym}${pr.full_months_pay.toLocaleString('en-GB',{minimumFractionDigits:2})}</span></div>` : ''}
-                ${pr.current_month_pay > 0 ? `<div class="sc-breakdown-row"><span>Current month (to date)</span><span>${sym}${pr.current_month_pay.toLocaleString('en-GB',{minimumFractionDigits:2})}</span></div>` : ''}
                 <div class="sc-breakdown-row total"><span>Total expected to date</span><span>${sym}${pr.total_expected.toLocaleString('en-GB',{minimumFractionDigits:2})}</span></div>
-              </div>
+              </div>` : ''}
             </div>
           </div>`; })() : ''}
 
@@ -1301,7 +1493,7 @@ async function loadSalaryPage() {
               ${salaryHistory.map(h => `
                 <div class="sc-hist-item">
                   <span class="sc-item-date">${h.effective_from||''}</span>
-                  <span style="font-weight:800;color:#16a34a;min-width:100px">${currencySymbol(h.currency||cur)}${parseFloat(h.annual_salary||0).toLocaleString('en-GB',{minimumFractionDigits:2})}/yr</span>
+                  <span style="font-weight:800;color:#059669;min-width:100px">${currencySymbol(h.currency||cur)}${parseFloat(h.annual_salary||0).toLocaleString('en-GB',{minimumFractionDigits:2})}/yr</span>
                   <span class="sc-item-note">${esc(h.reason||'')}</span>
                   <button class="btn btn-danger btn-sm" onclick="deleteSalaryHistory(${h.id})">×</button>
                 </div>`).join('')}
@@ -1326,6 +1518,27 @@ async function loadSalaryPage() {
             </div>
           </div>` : ''}
 
+          <!-- HR Notes -->
+          <div class="sc-section" id="notes-section-${emp.employee_id}">
+            <button class="sc-sec-toggle" onclick="toggleNotesSection(this, ${emp.employee_id})">
+              <span class="sc-sec-title">HR Notes</span>
+              <span class="sc-chevron">›</span>
+            </button>
+            <div class="sc-sec-body">
+              <div class="sc-sec-actions">
+                <button class="btn btn-ghost btn-sm" onclick="openNoteModal(${emp.employee_id})">+ Add Note</button>
+              </div>
+              <div id="notes-list-${emp.employee_id}" class="sc-notes-list">
+                <div class="sc-empty">Click to load notes…</div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Print / Export row -->
+          <div class="sc-card-footer">
+            <button class="btn btn-ghost btn-sm" onclick="printPayslip(${emp.employee_id}, '${esc(emp.name)}')" title="Print formatted payslip">🖨 Print Payslip</button>
+          </div>
+
         </div>
       </div>`;
     }).join('');
@@ -1337,6 +1550,159 @@ async function loadSalaryPage() {
 
 function toggleSection(btn) {
   btn.closest('.sc-section').classList.toggle('open');
+}
+
+// ─── HR NOTES ─────────────────────────────────────────────────────────────────
+async function toggleNotesSection(btn, empId) {
+  const section = btn.closest('.sc-section');
+  const wasOpen = section.classList.contains('open');
+  section.classList.toggle('open');
+  if (!wasOpen) await loadNotesList(empId);
+}
+
+async function loadNotesList(empId) {
+  const container = document.getElementById(`notes-list-${empId}`);
+  if (!container) return;
+  const res = await fetch(`/api/employee-notes/${empId}`);
+  if (!res.ok) { container.innerHTML = '<div class="sc-empty">Failed to load notes.</div>'; return; }
+  const notes = await res.json();
+  if (!notes.length) { container.innerHTML = '<div class="sc-empty">No notes yet.</div>'; return; }
+  const NOTE_COLORS = { general: 'badge-grey', performance: 'badge-blue', hr: 'badge-purple', warning: 'badge-red' };
+  container.innerHTML = notes.map(n => `
+    <div class="sc-note-item">
+      <div class="sc-note-meta">
+        <span class="badge ${NOTE_COLORS[n.note_type] || 'badge-grey'}" style="font-size:0.62rem">${n.note_type}</span>
+        <span class="sc-note-date">${new Date(n.created_at).toLocaleDateString('en-GB',{day:'2-digit',month:'short',year:'numeric'})}</span>
+        ${n.created_by_name ? `<span class="sc-note-author">by ${esc(n.created_by_name)}</span>` : ''}
+        <button class="btn btn-danger btn-sm" style="margin-left:auto;padding:2px 8px" onclick="deleteNote(${n.id},${empId})">×</button>
+      </div>
+      <div class="sc-note-text">${esc(n.note)}</div>
+    </div>`).join('');
+}
+
+function openNoteModal(empId) {
+  document.getElementById('noteEmpId').value = empId;
+  document.getElementById('noteType').value = 'general';
+  document.getElementById('noteText').value = '';
+  openModal('noteModal');
+}
+
+async function saveNote() {
+  const employee_id = document.getElementById('noteEmpId').value;
+  const note_type   = document.getElementById('noteType').value;
+  const note        = document.getElementById('noteText').value.trim();
+  if (!note) return showToast('Note text is required', 'error');
+  const res = await fetch('/api/employee-notes', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ employee_id, note, note_type })
+  });
+  if (!res.ok) { const e = await res.json(); return showToast(e.error, 'error'); }
+  closeModal('noteModal');
+  showToast('Note saved', 'success');
+  await loadNotesList(employee_id);
+}
+
+async function deleteNote(id, empId) {
+  if (!await showConfirm('Delete this note?')) return;
+  await fetch(`/api/employee-notes/${id}`, { method: 'DELETE' });
+  await loadNotesList(empId);
+}
+
+// ─── PAYROLL CSV EXPORT ───────────────────────────────────────────────────────
+async function exportPayrollCSV() {
+  const year = document.getElementById('salaryYear')?.value || new Date().getFullYear();
+  showToast('Generating CSV…', 'info');
+  const a = document.createElement('a');
+  a.href = `/api/export/payroll-csv?year=${year}`;
+  a.download = `payroll-${year}.csv`;
+  a.click();
+}
+
+// ─── PRINT PAYSLIP ────────────────────────────────────────────────────────────
+async function printPayslip(empId, empName) {
+  const year  = document.getElementById('salaryYear')?.value || new Date().getFullYear();
+  const month = new Date().getMonth() + 1;
+  showToast('Preparing payslip…', 'info');
+  const res = await fetch(`/api/salary-overview?year=${year}`);
+  if (!res.ok) return showToast('Failed to load salary data', 'error');
+  const data = await res.json();
+  const emp  = data.find(e => e.employee_id === empId);
+  if (!emp)  return showToast('Employee data not found', 'error');
+
+  const sym   = currencySymbol(emp.currency || 'GBP');
+  const paye  = emp.paye_breakdown;
+  const annSal = parseFloat(emp.annual_salary) || 0;
+  const grossM = paye ? paye.gross_monthly : annSal / 12;
+  const netM   = paye ? paye.net_monthly   : annSal / 12;
+  const monthName = MONTHS[month];
+
+  const html = `<!DOCTYPE html><html><head><meta charset="UTF-8">
+  <title>Payslip – ${empName} – ${monthName} ${year}</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: 'Segoe UI', Arial, sans-serif; font-size: 13px; color: #0d1326; padding: 40px; max-width: 700px; margin: 0 auto; }
+    .ps-header { display: flex; justify-content: space-between; align-items: flex-start; border-bottom: 3px solid #4f46e5; padding-bottom: 16px; margin-bottom: 24px; }
+    .ps-company { font-size: 1.4rem; font-weight: 800; color: #4f46e5; letter-spacing: -0.5px; }
+    .ps-title { font-size: 0.75rem; text-transform: uppercase; letter-spacing: 1px; color: #566880; margin-top: 2px; }
+    .ps-period { text-align: right; }
+    .ps-period-val { font-size: 1.1rem; font-weight: 700; }
+    .ps-period-sub { font-size: 0.75rem; color: #566880; }
+    .ps-employee { background: #f0eeff; border-radius: 10px; padding: 16px 20px; margin-bottom: 20px; display: flex; gap: 40px; flex-wrap: wrap; }
+    .ps-emp-field label { font-size: 0.68rem; text-transform: uppercase; letter-spacing: 0.5px; color: #7c6fcd; font-weight: 700; display: block; margin-bottom: 3px; }
+    .ps-emp-field span { font-weight: 600; }
+    .ps-table { width: 100%; border-collapse: collapse; margin-bottom: 16px; }
+    .ps-table th { background: #e9eef6; padding: 9px 14px; text-align: left; font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.5px; color: #566880; }
+    .ps-table td { padding: 9px 14px; border-bottom: 1px solid #e4eaf3; }
+    .ps-table tr:last-child td { border-bottom: none; }
+    .ps-table .pos { color: #059669; font-weight: 700; }
+    .ps-table .neg { color: #e11d48; font-weight: 700; }
+    .ps-net { display: flex; justify-content: space-between; align-items: center; background: linear-gradient(135deg, #3730a3, #4f46e5); color: #fff; border-radius: 10px; padding: 16px 20px; margin-top: 16px; }
+    .ps-net-label { font-size: 0.8rem; opacity: 0.8; text-transform: uppercase; letter-spacing: 0.5px; }
+    .ps-net-val { font-size: 1.5rem; font-weight: 800; }
+    .ps-footer { margin-top: 32px; padding-top: 16px; border-top: 1px solid #e4eaf3; font-size: 0.72rem; color: #8698b2; text-align: center; }
+    @media print { body { padding: 20px; } }
+  </style></head><body>
+  <div class="ps-header">
+    <div>
+      <div class="ps-company">EmpTracker</div>
+      <div class="ps-title">Payslip</div>
+    </div>
+    <div class="ps-period">
+      <div class="ps-period-val">${monthName} ${year}</div>
+      <div class="ps-period-sub">Pay Period</div>
+    </div>
+  </div>
+  <div class="ps-employee">
+    <div class="ps-emp-field"><label>Employee</label><span>${esc(emp.name)}</span></div>
+    ${emp.job_title ? `<div class="ps-emp-field"><label>Job Title</label><span>${esc(emp.job_title)}</span></div>` : ''}
+    ${emp.department ? `<div class="ps-emp-field"><label>Department</label><span>${esc(emp.department)}</span></div>` : ''}
+    <div class="ps-emp-field"><label>Employment Type</label><span>${emp.employment_type === 'self_employed' ? 'Self-Employed' : 'Payroll'}</span></div>
+    <div class="ps-emp-field"><label>Currency</label><span>${emp.currency || 'GBP'}</span></div>
+    ${emp.start_date ? `<div class="ps-emp-field"><label>Start Date</label><span>${emp.start_date}</span></div>` : ''}
+  </div>
+  <table class="ps-table">
+    <thead><tr><th>Description</th><th style="text-align:right">Amount</th></tr></thead>
+    <tbody>
+      <tr><td>Gross Monthly Salary</td><td class="pos" style="text-align:right">${sym}${grossM.toLocaleString('en-GB',{minimumFractionDigits:2})}</td></tr>
+      ${paye ? `
+      <tr><td>Income Tax (PAYE)</td><td class="neg" style="text-align:right">−${sym}${(paye.income_tax/12).toLocaleString('en-GB',{minimumFractionDigits:2})}</td></tr>
+      <tr><td>National Insurance</td><td class="neg" style="text-align:right">−${sym}${(paye.national_insurance/12).toLocaleString('en-GB',{minimumFractionDigits:2})}</td></tr>
+      ${paye.pension > 0 ? `<tr><td>Pension (${emp.pension_rate}%)</td><td class="neg" style="text-align:right">−${sym}${(paye.pension/12).toLocaleString('en-GB',{minimumFractionDigits:2})}</td></tr>` : ''}
+      ` : ''}
+    </tbody>
+  </table>
+  <div class="ps-net">
+    <div><div class="ps-net-label">Net Monthly Pay</div></div>
+    <div class="ps-net-val">${sym}${netM.toLocaleString('en-GB',{minimumFractionDigits:2})}</div>
+  </div>
+  <div class="ps-footer">Generated ${new Date().toLocaleDateString('en-GB',{day:'2-digit',month:'long',year:'numeric'})} · EmpTracker · Confidential</div>
+  </body></html>`;
+
+  const w = window.open('', '_blank', 'width=800,height=700');
+  w.document.write(html);
+  w.document.close();
+  setTimeout(() => w.print(), 400);
 }
 
 function togglePaymentsList(btn) {
@@ -1908,4 +2274,154 @@ function renderUpcomingWidget(upcoming) {
         </div>`).join('')}
     </div>`;
   stats.insertAdjacentElement('afterend', widget);
+}
+
+// ─── HOTEL EXPENSES ──────────────────────────────────────────────────────────
+
+let hotelData = [];
+
+async function loadHotelExpenses() {
+  const res = await fetch('/api/hotel-expenses');
+  if (!res.ok) { showToast('Failed to load hotel expenses', 'error'); return; }
+  hotelData = await res.json();
+  renderHotelSummary();
+  renderHotelTable();
+}
+
+function hotelCurrencySymbol(c) {
+  if (c === 'GBP') return '£';
+  if (c === 'EUR') return '€';
+  if (c === 'CHF') return 'CHF ';
+  if (c === 'AED') return 'AED ';
+  return '$';
+}
+
+function fmtHotelNum(v) {
+  if (v == null || v === '') return '—';
+  return parseFloat(v).toLocaleString('en-GB', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
+function renderHotelSummary() {
+  const total   = hotelData.length;
+  const paid    = hotelData.filter(r => r.status === 'paid').length;
+  const partial = hotelData.filter(r => r.status === 'partial').length;
+  const pending = hotelData.filter(r => r.status === 'pending').length;
+  document.getElementById('hotelSummary').innerHTML = `
+    <div class="stat-card blue"><div class="stat-label">Total Events</div><div class="stat-value">${total}</div></div>
+    <div class="stat-card green"><div class="stat-label">Paid</div><div class="stat-value">${paid}</div></div>
+    <div class="stat-card yellow"><div class="stat-label">Partial</div><div class="stat-value">${partial}</div></div>
+    <div class="stat-card red"><div class="stat-label">Pending</div><div class="stat-value">${pending}</div></div>
+  `;
+}
+
+function renderHotelTable() {
+  const search = (document.getElementById('hotelSearch')?.value || '').toLowerCase();
+  const statusF = document.getElementById('hotelStatusFilter')?.value || '';
+  const filtered = hotelData.filter(r => {
+    const matchSearch = !search || r.event_name.toLowerCase().includes(search) || (r.hotel||'').toLowerCase().includes(search);
+    const matchStatus = !statusF || r.status === statusF;
+    return matchSearch && matchStatus;
+  });
+
+  const tbody = document.getElementById('hotelTableBody');
+  const empty = document.getElementById('hotelEmpty');
+  document.getElementById('hotelRowCount').textContent = `${filtered.length} event${filtered.length !== 1 ? 's' : ''}`;
+
+  if (!filtered.length) {
+    tbody.innerHTML = '';
+    empty.classList.remove('hidden');
+    return;
+  }
+  empty.classList.add('hidden');
+
+  const STATUS_BADGE = {
+    paid:    '<span class="badge badge-green">Paid</span>',
+    partial: '<span class="badge badge-yellow">Partial</span>',
+    pending: '<span class="badge badge-grey">Pending</span>'
+  };
+
+  tbody.innerHTML = filtered.map(r => {
+    const rowClass = r.status === 'paid' ? 'hotel-row-paid' : r.status === 'partial' ? 'hotel-row-partial' : '';
+    const avSym   = hotelCurrencySymbol(r.av_currency || 'USD');
+    const paidSym = hotelCurrencySymbol(r.paid_currency || 'USD');
+    const avStr   = r.av_amount != null ? `${avSym}${fmtHotelNum(r.av_amount)}` : '—';
+    const paidStr = r.paid_amount != null ? `${paidSym}${fmtHotelNum(r.paid_amount)}` : '—';
+    const shStr   = r.staff_hotel != null ? `${fmtHotelNum(r.staff_hotel)}` : '—';
+    const flStr   = r.flights    != null ? `${fmtHotelNum(r.flights)}` : '—';
+    const prStr   = r.printing   != null ? `${fmtHotelNum(r.printing)}` : '—';
+    return `<tr class="${rowClass}" title="${esc(r.notes||'')}">
+      <td><strong>${esc(r.event_name)}</strong></td>
+      <td style="font-size:0.82rem">${esc(r.hotel||'—')}</td>
+      <td style="font-size:0.82rem;color:var(--text-2)">${esc(r.cost||'—')}</td>
+      <td style="font-size:0.82rem">${avStr}</td>
+      <td style="font-size:0.82rem;font-weight:600">${paidStr}</td>
+      <td style="font-size:0.82rem;color:var(--muted)">${shStr}</td>
+      <td style="font-size:0.82rem;color:var(--muted)">${flStr}</td>
+      <td style="font-size:0.82rem;color:var(--muted)">${prStr}</td>
+      <td>${STATUS_BADGE[r.status] || ''}</td>
+      <td>
+        <div style="display:flex;gap:4px">
+          <button class="btn btn-ghost btn-sm" onclick="openHotelModal(${r.id})">Edit</button>
+          <button class="btn btn-danger btn-sm" onclick="deleteHotelExpense(${r.id})">×</button>
+        </div>
+      </td>
+    </tr>`;
+  }).join('');
+}
+
+function openHotelModal(id) {
+  const r = id ? hotelData.find(x => x.id === id) : null;
+  document.getElementById('hotelModalTitle').textContent = r ? 'Edit Hotel Expense' : 'Add Hotel Expense';
+  document.getElementById('hotelEditId').value = r ? r.id : '';
+  document.getElementById('hotelEventName').value  = r ? r.event_name : '';
+  document.getElementById('hotelHotelName').value  = r ? (r.hotel || '') : '';
+  document.getElementById('hotelCost').value        = r ? (r.cost || '') : '';
+  document.getElementById('hotelStatus').value      = r ? r.status : 'pending';
+  document.getElementById('hotelAvCurrency').value  = r ? (r.av_currency || 'USD') : 'USD';
+  document.getElementById('hotelAvAmount').value    = r && r.av_amount != null ? r.av_amount : '';
+  document.getElementById('hotelPaidCurrency').value= r ? (r.paid_currency || 'USD') : 'USD';
+  document.getElementById('hotelPaidAmount').value  = r && r.paid_amount != null ? r.paid_amount : '';
+  document.getElementById('hotelStaffHotel').value  = r && r.staff_hotel != null ? r.staff_hotel : '';
+  document.getElementById('hotelFlights').value     = r && r.flights    != null ? r.flights    : '';
+  document.getElementById('hotelPrinting').value    = r && r.printing   != null ? r.printing   : '';
+  document.getElementById('hotelNotes').value       = r ? (r.notes || '') : '';
+  document.getElementById('hotelModal').classList.add('open');
+}
+
+function closeHotelModal() {
+  document.getElementById('hotelModal').classList.remove('open');
+}
+
+async function saveHotelExpense() {
+  const id = document.getElementById('hotelEditId').value;
+  const payload = {
+    event_name:    document.getElementById('hotelEventName').value.trim(),
+    hotel:         document.getElementById('hotelHotelName').value.trim(),
+    cost:          document.getElementById('hotelCost').value.trim(),
+    status:        document.getElementById('hotelStatus').value,
+    av_currency:   document.getElementById('hotelAvCurrency').value,
+    av_amount:     document.getElementById('hotelAvAmount').value || null,
+    paid_currency: document.getElementById('hotelPaidCurrency').value,
+    paid_amount:   document.getElementById('hotelPaidAmount').value || null,
+    staff_hotel:   document.getElementById('hotelStaffHotel').value || null,
+    flights:       document.getElementById('hotelFlights').value || null,
+    printing:      document.getElementById('hotelPrinting').value || null,
+    notes:         document.getElementById('hotelNotes').value.trim()
+  };
+  if (!payload.event_name) { showToast('Event name is required', 'error'); return; }
+  const method = id ? 'PUT' : 'POST';
+  const url    = id ? `/api/hotel-expenses/${id}` : '/api/hotel-expenses';
+  const res = await fetch(url, { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+  if (!res.ok) { const e = await res.json(); showToast(e.error || 'Save failed', 'error'); return; }
+  showToast(id ? 'Updated' : 'Added', 'success');
+  closeHotelModal();
+  loadHotelExpenses();
+}
+
+async function deleteHotelExpense(id) {
+  if (!confirm('Delete this hotel expense record?')) return;
+  const res = await fetch(`/api/hotel-expenses/${id}`, { method: 'DELETE' });
+  if (!res.ok) { showToast('Delete failed', 'error'); return; }
+  showToast('Deleted', 'success');
+  loadHotelExpenses();
 }

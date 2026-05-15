@@ -14,8 +14,8 @@
       <div class="login-logo">
         <div class="login-logo-icon">⏱</div>
         <div>
-          <div style="font-size:1.25rem;font-weight:800;letter-spacing:-0.5px;color:#0f172a">Emp<span style="color:#6366f1">Tracker</span></div>
-          <div style="font-size:0.75rem;color:#64748b;margin-top:1px">Employee Time Management</div>
+          <div style="font-size:1.25rem;font-weight:700;letter-spacing:-0.5px;color:var(--text);font-family:'Space Grotesk','Inter',sans-serif">Emp<span style="color:var(--primary)">Tracker</span></div>
+          <div style="font-size:0.75rem;color:var(--muted);margin-top:1px">Employee Management System</div>
         </div>
       </div>
 
@@ -35,11 +35,42 @@
         <button type="submit" class="login-submit">Sign In →</button>
       </form>
 
-      <p style="text-align:center;margin-top:20px;font-size:0.75rem;color:#94a3b8">
+      <p style="text-align:center;margin-top:20px;font-size:0.75rem;color:var(--muted)">
         Secured with JWT · Session expires after 8 hours
       </p>
     </div>
   </div>
+
+  <script>
+    document.getElementById('loginForm').addEventListener('submit', async e => {
+      e.preventDefault();
+      const btn = e.target.querySelector('button');
+      const err = document.getElementById('loginError');
+      err.classList.add('hidden');
+      btn.textContent = 'Signing in…';
+      btn.disabled = true;
+
+      const res = await fetch('/api/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          username: document.getElementById('username').value,
+          password: document.getElementById('password').value
+        })
+      });
+      const data = await res.json();
+      if (res.ok) {
+        window.location.href = '/';
+      } else {
+        err.textContent = data.error;
+        err.classList.remove('hidden');
+        btn.textContent = 'Sign In →';
+        btn.disabled = false;
+      }
+    });
+  </script>
+</body>
+</html>
 
   <script>
     document.getElementById('loginForm').addEventListener('submit', async e => {
