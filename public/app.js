@@ -135,10 +135,22 @@ function renderEmpTable() {
     const statusLabel = emp.active ? 'Active' : (terminated ? `Terminated ${emp.termination_date.slice(0,10)}` : 'Inactive');
     const tr = document.createElement('tr');
     tr.innerHTML = `
-      <td><strong>${esc(emp.name)}</strong></td>
+      <td>
+        <div style="font-weight:700;color:var(--text)">${esc(emp.name)}</div>
+        ${emp.email ? `<div style="font-size:0.74rem;color:var(--muted);margin-top:2px">${esc(emp.email)}</div>` : ''}
+      </td>
+      <td>
+        ${emp.department ? `<div style="font-weight:600;font-size:0.83rem">${esc(emp.department)}</div>` : ''}
+        ${emp.job_title  ? `<div style="font-size:0.76rem;color:var(--muted)">${esc(emp.job_title)}</div>` : (!emp.department ? '<span style="color:var(--muted)">—</span>' : '')}
+      </td>
       <td><span class="badge ${typeBadge}">${typeLabel}</span></td>
       <td>${emp.annual_salary > 0 ? fmtMoney(emp.annual_salary, emp.currency) + '/yr' : '—'}</td>
       <td>${emp.start_date ? emp.start_date.slice(0,10) : '<span style="color:var(--muted)">—</span>'}</td>
+      <td>${emp.contract_end_date ? (() => {
+        const today = new Date().toISOString().slice(0,10);
+        const cls = emp.contract_end_date < today ? 'badge-red' : (emp.contract_end_date <= new Date(Date.now()+30*864e5).toISOString().slice(0,10) ? 'badge-yellow' : 'badge-grey');
+        return `<span class="badge ${cls}">${emp.contract_end_date.slice(0,10)}</span>`;
+      })() : '<span style="color:var(--muted)">Permanent</span>'}</td>
       <td><span class="badge ${statusBadge}" style="white-space:normal">${esc(statusLabel)}</span></td>
       <td style="text-align:right">
         <button class="btn btn-ghost btn-sm" onclick='openEmpModal(${JSON.stringify(emp)})'>Edit</button>
@@ -158,6 +170,11 @@ function openEmpModal(emp = null) {
   document.getElementById('empCurrency').value = emp ? (emp.currency || 'GBP') : 'GBP';
   document.getElementById('empAnnualSalary').value = emp ? emp.annual_salary : 0;
   document.getElementById('empPensionRate').value = emp && emp.pension_rate != null ? emp.pension_rate : '';
+  document.getElementById('empJobTitle').value = emp ? (emp.job_title || '') : '';
+  document.getElementById('empDepartment').value = emp ? (emp.department || '') : '';
+  document.getElementById('empPhone').value = emp ? (emp.phone || '') : '';
+  document.getElementById('empEmail').value = emp ? (emp.email || '') : '';
+  document.getElementById('empContractEnd').value = emp ? (emp.contract_end_date || '') : '';
   document.getElementById('empSalaryEffective').value = today();
   document.getElementById('empSalaryReason').value = '';
   document.getElementById('salaryChangeFields').classList.add('hidden');
@@ -191,19 +208,26 @@ async function saveEmployee() {
   const salary_effective = document.getElementById('empSalaryEffective').value;
   const pensionRateVal = document.getElementById('empPensionRate').value;
   const pension_rate = employment_type === 'payroll' && pensionRateVal !== '' ? parseFloat(pensionRateVal) : 0;
+  const job_title = document.getElementById('empJobTitle').value.trim();
+  const department = document.getElementById('empDepartment').value.trim();
+  const phone = document.getElementById('empPhone').value.trim();
+  const email = document.getElementById('empEmail').value.trim();
+  const contract_end_date = document.getElementById('empContractEnd').value || null;
   if (!name) return showToast('Name is required', 'error');
 
+  const payload = { name, employment_type, annual_salary, currency, start_date, pension_rate,
+                    job_title, department, phone, email, contract_end_date };
   if (id) {
     await fetch(`/api/employees/${id}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name, employment_type, annual_salary, currency, active: 1, salary_reason, salary_effective, start_date, pension_rate })
+      body: JSON.stringify({ ...payload, active: 1, salary_reason, salary_effective })
     });
   } else {
     await fetch('/api/employees', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name, employment_type, annual_salary, currency, start_date, pension_rate })
+      body: JSON.stringify(payload)
     });
   }
   closeModal('empModal');
@@ -251,30 +275,55 @@ async function loadDashboard() {
   const now = new Date();
   const month = now.getMonth() + 1;
 
-  // Skeleton while loading
   document.getElementById('dashStats').innerHTML = `
+    <div class="skeleton skeleton-stat"></div>
     <div class="skeleton skeleton-stat"></div>
     <div class="skeleton skeleton-stat"></div>
     <div class="skeleton skeleton-stat"></div>
   `;
 
-  const [summaryRes, salaryRes, upcomingRes] = await Promise.all([
+  const [summaryRes, salaryRes, upcomingRes, expiringRes, allEmpRes] = await Promise.all([
     fetch(`/api/summary?from=${year}-01-01&to=${year}-12-31`),
     fetch(`/api/salary-overview?year=${year}`),
-    fetch(`/api/calendar-reminders/upcoming?days=7`)
+    fetch(`/api/calendar-reminders/upcoming?days=7`),
+    fetch(`/api/contracts/expiring?days=60`),
+    fetch(`/api/employees/all`)
   ]);
 
-  const summary       = summaryRes.ok ? await summaryRes.json() : [];
-  const salaryData    = salaryRes.ok  ? await salaryRes.json()  : [];
+  const summary       = summaryRes.ok  ? await summaryRes.json()  : [];
+  const salaryData    = salaryRes.ok   ? await salaryRes.json()   : [];
   const upcoming      = upcomingRes.ok ? await upcomingRes.json() : [];
+  const expiring      = expiringRes.ok ? await expiringRes.json() : [];
+  const allEmps       = allEmpRes.ok   ? await allEmpRes.json()   : [];
 
+  const activeEmps    = allEmps.filter(e => e.active);
   const totalDeduction = summary.reduce((a, b) => a + b.total_deduction, 0);
-  const unpaidCount    = getUnpaidThisMonth(salaryData, year, month).length;
+  const unpaidCount   = getUnpaidThisMonth(salaryData, year, month).length;
   updateSalaryBadge(unpaidCount);
 
+  // Total annual payroll cost (active payroll employees in GBP)
+  const totalPayrollGBP = activeEmps
+    .filter(e => e.employment_type === 'payroll' && (e.currency || 'GBP') === 'GBP')
+    .reduce((a, e) => a + (parseFloat(e.annual_salary) || 0), 0);
+  const totalHeadcount = activeEmps.length;
+  const payrollCount   = activeEmps.filter(e => e.employment_type === 'payroll').length;
+  const seCount        = activeEmps.filter(e => e.employment_type === 'self_employed').length;
+
   document.getElementById('dashStats').innerHTML = `
-    <div class="stat-card blue"><div class="stat-label">Active Employees</div><div class="stat-value">${summary.length}</div></div>
-    <div class="stat-card red"><div class="stat-label">Total Deductions (${year})</div><div class="stat-value">£${totalDeduction.toFixed(2)}</div></div>
+    <div class="stat-card blue">
+      <div class="stat-label">Active Headcount</div>
+      <div class="stat-value">${totalHeadcount}</div>
+      <div style="font-size:0.72rem;color:var(--muted);margin-top:4px">${payrollCount} payroll · ${seCount} self-emp</div>
+    </div>
+    <div class="stat-card blue">
+      <div class="stat-label">Annual Payroll Cost</div>
+      <div class="stat-value" style="font-size:1.45rem">£${fmtK(totalPayrollGBP)}</div>
+      <div style="font-size:0.72rem;color:var(--muted);margin-top:4px">GBP payroll · ${year}</div>
+    </div>
+    <div class="stat-card red">
+      <div class="stat-label">Total Deductions (${year})</div>
+      <div class="stat-value">£${totalDeduction.toFixed(0)}</div>
+    </div>
     <div class="stat-card ${unpaidCount > 0 ? 'red' : 'green'}" style="cursor:pointer" onclick="navigate('salary')" title="Go to salary page">
       <div class="stat-label">Unpaid This Month</div>
       <div class="stat-value">${unpaidCount}</div>
@@ -282,18 +331,29 @@ async function loadDashboard() {
     </div>
   `;
 
+  // Contract expiry panel
+  renderContractExpiryPanel(expiring);
+
+  // Headcount by department
+  renderHeadcountPanel(activeEmps);
+
   // Upcoming reminders widget
   renderUpcomingWidget(upcoming);
 
   const tbody = document.getElementById('dashTable');
   tbody.innerHTML = '';
   summary.forEach(row => {
+    const emp = allEmps.find(e => e.id === row.employee_id);
     const typeBadge = row.employment_type === 'self_employed' ? 'badge-yellow' : 'badge-blue';
     const typeLabel = row.employment_type === 'self_employed' ? 'Self-Emp' : 'Payroll';
     const daysColor = row.excess_days > 0 ? 'text-danger fw-bold' : '';
     const tr = document.createElement('tr');
     tr.innerHTML = `
-      <td><strong>${esc(row.name)}</strong></td>
+      <td>
+        <div style="font-weight:700">${esc(row.name)}</div>
+        ${emp?.job_title ? `<div style="font-size:0.73rem;color:var(--muted)">${esc(emp.job_title)}</div>` : ''}
+      </td>
+      <td>${emp?.department ? `<span style="font-size:0.82rem;font-weight:600">${esc(emp.department)}</span>` : '<span style="color:var(--muted)">—</span>'}</td>
       <td><span class="badge ${typeBadge}">${typeLabel}</span></td>
       <td class="${daysColor}">${row.year_days_off} / ${row.allowance_days}</td>
       <td>${row.excess_days > 0 ? `<span class="badge badge-red">${row.excess_days} excess</span>` : '<span class="badge badge-green">OK</span>'}</td>
@@ -304,6 +364,68 @@ async function loadDashboard() {
     `;
     tbody.appendChild(tr);
   });
+}
+
+function renderContractExpiryPanel(expiring) {
+  const el = document.getElementById('contractExpiryPanel');
+  if (!el) return;
+  if (!expiring.length) { el.innerHTML = ''; return; }
+  const today = new Date().toISOString().slice(0,10);
+  el.innerHTML = `
+    <div class="dash-panel dash-panel--alert">
+      <div class="dash-panel-header">
+        <span class="dash-panel-icon">⚠️</span>
+        <span class="dash-panel-title">Contracts Expiring (Next 60 Days)</span>
+        <span class="dash-panel-count">${expiring.length}</span>
+      </div>
+      <div class="dash-panel-body">
+        ${expiring.map(e => {
+          const expired = e.contract_end_date < today;
+          const badge = expired ? 'badge-red' : 'badge-yellow';
+          const label = expired ? 'Expired' : `Ends ${e.contract_end_date}`;
+          return `<div class="dash-panel-row">
+            <div>
+              <div style="font-weight:700;font-size:0.88rem">${esc(e.name)}</div>
+              ${e.job_title || e.department ? `<div style="font-size:0.74rem;color:var(--muted)">${esc([e.job_title,e.department].filter(Boolean).join(' · '))}</div>` : ''}
+            </div>
+            <span class="badge ${badge}">${label}</span>
+          </div>`;
+        }).join('')}
+      </div>
+    </div>`;
+}
+
+function renderHeadcountPanel(activeEmps) {
+  const el = document.getElementById('headcountPanel');
+  if (!el) return;
+  const depts = {};
+  activeEmps.forEach(e => {
+    const d = e.department || 'Unassigned';
+    if (!depts[d]) depts[d] = { count: 0, payroll: 0, se: 0 };
+    depts[d].count++;
+    if (e.employment_type === 'self_employed') depts[d].se++;
+    else depts[d].payroll++;
+  });
+  const sorted = Object.entries(depts).sort((a,b) => b[1].count - a[1].count);
+  if (!sorted.length) { el.innerHTML = ''; return; }
+  el.innerHTML = `
+    <div class="dash-panel">
+      <div class="dash-panel-header">
+        <span class="dash-panel-icon">🏢</span>
+        <span class="dash-panel-title">Headcount by Department</span>
+        <span class="dash-panel-count">${activeEmps.length} total</span>
+      </div>
+      <div class="dash-panel-body">
+        ${sorted.map(([dept, info]) => `
+          <div class="dash-panel-row">
+            <div style="font-weight:600;font-size:0.88rem">${esc(dept)}</div>
+            <div style="display:flex;gap:6px;align-items:center">
+              ${info.payroll ? `<span class="badge badge-blue">${info.payroll} payroll</span>` : ''}
+              ${info.se ? `<span class="badge badge-yellow">${info.se} self-emp</span>` : ''}
+            </div>
+          </div>`).join('')}
+      </div>
+    </div>`;
 }
 
 function goToTracking(empId) {
@@ -1086,6 +1208,7 @@ async function loadSalaryPage() {
           <div class="sc-avatar">${initials}</div>
           <div class="sc-info">
             <div class="sc-emp-name">${esc(emp.name || '')}</div>
+            ${emp.job_title || emp.department ? `<div class="sc-emp-role">${[emp.job_title, emp.department].filter(Boolean).map(s => esc(s)).join(' · ')}</div>` : ''}
             <div class="sc-emp-badges">
               <span class="badge ${typeBadge}" style="font-size:0.67rem">${typeLabel}</span>
               <span class="badge badge-grey" style="font-size:0.67rem">${cur}</span>
@@ -1326,6 +1449,27 @@ async function loadSalaryPage() {
             </div>
           </div>` : ''}
 
+          <!-- HR Notes -->
+          <div class="sc-section" id="notes-section-${emp.employee_id}">
+            <button class="sc-sec-toggle" onclick="toggleNotesSection(this, ${emp.employee_id})">
+              <span class="sc-sec-title">HR Notes</span>
+              <span class="sc-chevron">›</span>
+            </button>
+            <div class="sc-sec-body">
+              <div class="sc-sec-actions">
+                <button class="btn btn-ghost btn-sm" onclick="openNoteModal(${emp.employee_id})">+ Add Note</button>
+              </div>
+              <div id="notes-list-${emp.employee_id}" class="sc-notes-list">
+                <div class="sc-empty">Click to load notes…</div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Print / Export row -->
+          <div class="sc-card-footer">
+            <button class="btn btn-ghost btn-sm" onclick="printPayslip(${emp.employee_id}, '${esc(emp.name)}')" title="Print formatted payslip">🖨 Print Payslip</button>
+          </div>
+
         </div>
       </div>`;
     }).join('');
@@ -1337,6 +1481,159 @@ async function loadSalaryPage() {
 
 function toggleSection(btn) {
   btn.closest('.sc-section').classList.toggle('open');
+}
+
+// ─── HR NOTES ─────────────────────────────────────────────────────────────────
+async function toggleNotesSection(btn, empId) {
+  const section = btn.closest('.sc-section');
+  const wasOpen = section.classList.contains('open');
+  section.classList.toggle('open');
+  if (!wasOpen) await loadNotesList(empId);
+}
+
+async function loadNotesList(empId) {
+  const container = document.getElementById(`notes-list-${empId}`);
+  if (!container) return;
+  const res = await fetch(`/api/employee-notes/${empId}`);
+  if (!res.ok) { container.innerHTML = '<div class="sc-empty">Failed to load notes.</div>'; return; }
+  const notes = await res.json();
+  if (!notes.length) { container.innerHTML = '<div class="sc-empty">No notes yet.</div>'; return; }
+  const NOTE_COLORS = { general: 'badge-grey', performance: 'badge-blue', hr: 'badge-purple', warning: 'badge-red' };
+  container.innerHTML = notes.map(n => `
+    <div class="sc-note-item">
+      <div class="sc-note-meta">
+        <span class="badge ${NOTE_COLORS[n.note_type] || 'badge-grey'}" style="font-size:0.62rem">${n.note_type}</span>
+        <span class="sc-note-date">${new Date(n.created_at).toLocaleDateString('en-GB',{day:'2-digit',month:'short',year:'numeric'})}</span>
+        ${n.created_by_name ? `<span class="sc-note-author">by ${esc(n.created_by_name)}</span>` : ''}
+        <button class="btn btn-danger btn-sm" style="margin-left:auto;padding:2px 8px" onclick="deleteNote(${n.id},${empId})">×</button>
+      </div>
+      <div class="sc-note-text">${esc(n.note)}</div>
+    </div>`).join('');
+}
+
+function openNoteModal(empId) {
+  document.getElementById('noteEmpId').value = empId;
+  document.getElementById('noteType').value = 'general';
+  document.getElementById('noteText').value = '';
+  openModal('noteModal');
+}
+
+async function saveNote() {
+  const employee_id = document.getElementById('noteEmpId').value;
+  const note_type   = document.getElementById('noteType').value;
+  const note        = document.getElementById('noteText').value.trim();
+  if (!note) return showToast('Note text is required', 'error');
+  const res = await fetch('/api/employee-notes', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ employee_id, note, note_type })
+  });
+  if (!res.ok) { const e = await res.json(); return showToast(e.error, 'error'); }
+  closeModal('noteModal');
+  showToast('Note saved', 'success');
+  await loadNotesList(employee_id);
+}
+
+async function deleteNote(id, empId) {
+  if (!await showConfirm('Delete this note?')) return;
+  await fetch(`/api/employee-notes/${id}`, { method: 'DELETE' });
+  await loadNotesList(empId);
+}
+
+// ─── PAYROLL CSV EXPORT ───────────────────────────────────────────────────────
+async function exportPayrollCSV() {
+  const year = document.getElementById('salaryYear')?.value || new Date().getFullYear();
+  showToast('Generating CSV…', 'info');
+  const a = document.createElement('a');
+  a.href = `/api/export/payroll-csv?year=${year}`;
+  a.download = `payroll-${year}.csv`;
+  a.click();
+}
+
+// ─── PRINT PAYSLIP ────────────────────────────────────────────────────────────
+async function printPayslip(empId, empName) {
+  const year  = document.getElementById('salaryYear')?.value || new Date().getFullYear();
+  const month = new Date().getMonth() + 1;
+  showToast('Preparing payslip…', 'info');
+  const res = await fetch(`/api/salary-overview?year=${year}`);
+  if (!res.ok) return showToast('Failed to load salary data', 'error');
+  const data = await res.json();
+  const emp  = data.find(e => e.employee_id === empId);
+  if (!emp)  return showToast('Employee data not found', 'error');
+
+  const sym   = currencySymbol(emp.currency || 'GBP');
+  const paye  = emp.paye_breakdown;
+  const annSal = parseFloat(emp.annual_salary) || 0;
+  const grossM = paye ? paye.gross_monthly : annSal / 12;
+  const netM   = paye ? paye.net_monthly   : annSal / 12;
+  const monthName = MONTHS[month];
+
+  const html = `<!DOCTYPE html><html><head><meta charset="UTF-8">
+  <title>Payslip – ${empName} – ${monthName} ${year}</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: 'Segoe UI', Arial, sans-serif; font-size: 13px; color: #0d1326; padding: 40px; max-width: 700px; margin: 0 auto; }
+    .ps-header { display: flex; justify-content: space-between; align-items: flex-start; border-bottom: 3px solid #4f46e5; padding-bottom: 16px; margin-bottom: 24px; }
+    .ps-company { font-size: 1.4rem; font-weight: 800; color: #4f46e5; letter-spacing: -0.5px; }
+    .ps-title { font-size: 0.75rem; text-transform: uppercase; letter-spacing: 1px; color: #566880; margin-top: 2px; }
+    .ps-period { text-align: right; }
+    .ps-period-val { font-size: 1.1rem; font-weight: 700; }
+    .ps-period-sub { font-size: 0.75rem; color: #566880; }
+    .ps-employee { background: #f0eeff; border-radius: 10px; padding: 16px 20px; margin-bottom: 20px; display: flex; gap: 40px; flex-wrap: wrap; }
+    .ps-emp-field label { font-size: 0.68rem; text-transform: uppercase; letter-spacing: 0.5px; color: #7c6fcd; font-weight: 700; display: block; margin-bottom: 3px; }
+    .ps-emp-field span { font-weight: 600; }
+    .ps-table { width: 100%; border-collapse: collapse; margin-bottom: 16px; }
+    .ps-table th { background: #e9eef6; padding: 9px 14px; text-align: left; font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.5px; color: #566880; }
+    .ps-table td { padding: 9px 14px; border-bottom: 1px solid #e4eaf3; }
+    .ps-table tr:last-child td { border-bottom: none; }
+    .ps-table .pos { color: #059669; font-weight: 700; }
+    .ps-table .neg { color: #e11d48; font-weight: 700; }
+    .ps-net { display: flex; justify-content: space-between; align-items: center; background: linear-gradient(135deg, #3730a3, #4f46e5); color: #fff; border-radius: 10px; padding: 16px 20px; margin-top: 16px; }
+    .ps-net-label { font-size: 0.8rem; opacity: 0.8; text-transform: uppercase; letter-spacing: 0.5px; }
+    .ps-net-val { font-size: 1.5rem; font-weight: 800; }
+    .ps-footer { margin-top: 32px; padding-top: 16px; border-top: 1px solid #e4eaf3; font-size: 0.72rem; color: #8698b2; text-align: center; }
+    @media print { body { padding: 20px; } }
+  </style></head><body>
+  <div class="ps-header">
+    <div>
+      <div class="ps-company">EmpTracker</div>
+      <div class="ps-title">Payslip</div>
+    </div>
+    <div class="ps-period">
+      <div class="ps-period-val">${monthName} ${year}</div>
+      <div class="ps-period-sub">Pay Period</div>
+    </div>
+  </div>
+  <div class="ps-employee">
+    <div class="ps-emp-field"><label>Employee</label><span>${esc(emp.name)}</span></div>
+    ${emp.job_title ? `<div class="ps-emp-field"><label>Job Title</label><span>${esc(emp.job_title)}</span></div>` : ''}
+    ${emp.department ? `<div class="ps-emp-field"><label>Department</label><span>${esc(emp.department)}</span></div>` : ''}
+    <div class="ps-emp-field"><label>Employment Type</label><span>${emp.employment_type === 'self_employed' ? 'Self-Employed' : 'Payroll'}</span></div>
+    <div class="ps-emp-field"><label>Currency</label><span>${emp.currency || 'GBP'}</span></div>
+    ${emp.start_date ? `<div class="ps-emp-field"><label>Start Date</label><span>${emp.start_date}</span></div>` : ''}
+  </div>
+  <table class="ps-table">
+    <thead><tr><th>Description</th><th style="text-align:right">Amount</th></tr></thead>
+    <tbody>
+      <tr><td>Gross Monthly Salary</td><td class="pos" style="text-align:right">${sym}${grossM.toLocaleString('en-GB',{minimumFractionDigits:2})}</td></tr>
+      ${paye ? `
+      <tr><td>Income Tax (PAYE)</td><td class="neg" style="text-align:right">−${sym}${(paye.income_tax/12).toLocaleString('en-GB',{minimumFractionDigits:2})}</td></tr>
+      <tr><td>National Insurance</td><td class="neg" style="text-align:right">−${sym}${(paye.national_insurance/12).toLocaleString('en-GB',{minimumFractionDigits:2})}</td></tr>
+      ${paye.pension > 0 ? `<tr><td>Pension (${emp.pension_rate}%)</td><td class="neg" style="text-align:right">−${sym}${(paye.pension/12).toLocaleString('en-GB',{minimumFractionDigits:2})}</td></tr>` : ''}
+      ` : ''}
+    </tbody>
+  </table>
+  <div class="ps-net">
+    <div><div class="ps-net-label">Net Monthly Pay</div></div>
+    <div class="ps-net-val">${sym}${netM.toLocaleString('en-GB',{minimumFractionDigits:2})}</div>
+  </div>
+  <div class="ps-footer">Generated ${new Date().toLocaleDateString('en-GB',{day:'2-digit',month:'long',year:'numeric'})} · EmpTracker · Confidential</div>
+  </body></html>`;
+
+  const w = window.open('', '_blank', 'width=800,height=700');
+  w.document.write(html);
+  w.document.close();
+  setTimeout(() => w.print(), 400);
 }
 
 function togglePaymentsList(btn) {

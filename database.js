@@ -61,6 +61,15 @@ async function runMigrations() {
   `);
 
   await sql(`
+    ALTER TABLE employees
+      ADD COLUMN IF NOT EXISTS job_title TEXT DEFAULT '',
+      ADD COLUMN IF NOT EXISTS department TEXT DEFAULT '',
+      ADD COLUMN IF NOT EXISTS phone TEXT DEFAULT '',
+      ADD COLUMN IF NOT EXISTS email TEXT DEFAULT '',
+      ADD COLUMN IF NOT EXISTS contract_end_date DATE
+  `);
+
+  await sql(`
     CREATE TABLE IF NOT EXISTS daily_records (
       id SERIAL PRIMARY KEY,
       employee_id INT NOT NULL REFERENCES employees(id) ON DELETE CASCADE,
@@ -166,6 +175,18 @@ async function runMigrations() {
       notes         TEXT DEFAULT '',
       created_by    INT REFERENCES admins(id) ON DELETE SET NULL,
       created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `);
+
+  await sql(`
+    CREATE TABLE IF NOT EXISTS employee_notes (
+      id SERIAL PRIMARY KEY,
+      employee_id INT NOT NULL REFERENCES employees(id) ON DELETE CASCADE,
+      note TEXT NOT NULL,
+      note_type TEXT NOT NULL DEFAULT 'general'
+                 CHECK (note_type IN ('general','performance','hr','warning')),
+      created_by INT REFERENCES admins(id) ON DELETE SET NULL,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     )
   `);
 

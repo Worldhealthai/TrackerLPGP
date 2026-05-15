@@ -56,6 +56,13 @@
       <!-- ══ DASHBOARD ══ -->
       <div class="page active" id="page-dashboard">
         <div class="stats-grid" id="dashStats"></div>
+
+        <!-- Contract expiry + headcount row -->
+        <div class="dash-two-col">
+          <div id="contractExpiryPanel"></div>
+          <div id="headcountPanel"></div>
+        </div>
+
         <div class="card">
           <div class="card-header"><span class="card-title">Employee Summary</span></div>
           <div class="table-wrap">
@@ -63,6 +70,7 @@
               <thead>
                 <tr>
                   <th>Employee</th>
+                  <th>Department</th>
                   <th>Type</th>
                   <th>Days Off (Year)</th>
                   <th>Allowance</th>
@@ -171,7 +179,10 @@
             <input type="search" id="salarySearch" placeholder="Filter by name…"
               oninput="loadSalaryPage()" autocomplete="off" />
           </div>
-          <button class="btn btn-primary" style="margin-left:auto" onclick="openSalaryPaymentModal()">+ Log Payment</button>
+          <div style="display:flex;gap:8px;margin-left:auto">
+            <button class="btn btn-ghost btn-sm" onclick="exportPayrollCSV()" title="Export payroll data as CSV">⬇ Export CSV</button>
+            <button class="btn btn-primary" onclick="openSalaryPaymentModal()">+ Log Payment</button>
+          </div>
         </div>
 
         <!-- Totals strip -->
@@ -201,7 +212,7 @@
           <div class="table-wrap">
             <table>
               <thead>
-                <tr><th>Name</th><th>Type</th><th>Annual Salary</th><th>Start Date</th><th>Status</th><th></th></tr>
+                <tr><th>Name</th><th>Department / Title</th><th>Type</th><th>Annual Salary</th><th>Start Date</th><th>Contract End</th><th>Status</th><th></th></tr>
               </thead>
               <tbody id="empTable"></tbody>
             </table>
@@ -369,22 +380,46 @@
 
 <!-- ══ MODAL: Employee ══ -->
 <div class="modal-overlay" id="empModal">
-  <div class="modal">
+  <div class="modal" style="width:600px">
     <div class="modal-header">
       <h2 id="empModalTitle">Add Employee</h2>
       <button class="modal-close" onclick="closeModal('empModal')">✕</button>
     </div>
     <input type="hidden" id="empId">
+
+    <div class="modal-section-label">Identity</div>
     <div class="form-row">
       <div class="form-group">
         <label>Full Name</label>
-        <input type="text" id="empName">
+        <input type="text" id="empName" placeholder="e.g. Jane Smith">
       </div>
       <div class="form-group">
         <label>Start Date</label>
         <input type="date" id="empStartDate">
       </div>
     </div>
+    <div class="form-row">
+      <div class="form-group">
+        <label>Job Title</label>
+        <input type="text" id="empJobTitle" placeholder="e.g. Senior Developer">
+      </div>
+      <div class="form-group">
+        <label>Department</label>
+        <input type="text" id="empDepartment" placeholder="e.g. Engineering">
+      </div>
+    </div>
+    <div class="form-row">
+      <div class="form-group">
+        <label>Phone</label>
+        <input type="tel" id="empPhone" placeholder="+44 7700 000000">
+      </div>
+      <div class="form-group">
+        <label>Email</label>
+        <input type="email" id="empEmail" placeholder="jane@company.com">
+      </div>
+    </div>
+
+    <div class="modal-section-label" style="margin-top:8px">Contract</div>
     <div class="form-row">
       <div class="form-group">
         <label>Employment Type</label>
@@ -394,25 +429,33 @@
         </select>
       </div>
       <div class="form-group">
+        <label>Contract End Date <span style="font-weight:400;color:var(--muted)">(leave blank if permanent)</span></label>
+        <input type="date" id="empContractEnd">
+      </div>
+    </div>
+
+    <div class="modal-section-label" style="margin-top:8px">Compensation</div>
+    <div class="form-row">
+      <div class="form-group">
         <label>Currency</label>
         <select id="empCurrency">
           <option value="GBP">£ GBP – British Pound</option>
           <option value="AED">AED – UAE Dirham</option>
         </select>
       </div>
-    </div>
-    <div class="form-row">
       <div class="form-group">
         <label>Annual Salary</label>
         <input type="number" id="empAnnualSalary" min="0" step="0.01" value="0">
       </div>
+    </div>
+    <div class="form-row">
       <div class="form-group" id="pensionRateField">
-        <label>Pension Contribution % <span style="font-weight:400;color:var(--muted)">(employee, payroll only — 0 if not enrolled)</span></label>
-        <input type="number" id="empPensionRate" min="0" max="20" step="0.1" placeholder="e.g. 5 for auto-enrolment">
+        <label>Pension Contribution % <span style="font-weight:400;color:var(--muted)">(payroll only)</span></label>
+        <input type="number" id="empPensionRate" min="0" max="20" step="0.1" placeholder="e.g. 5">
       </div>
     </div>
     <div id="salaryChangeFields" class="hidden">
-      <div style="font-size:0.8rem;font-weight:600;color:var(--primary);margin-bottom:8px;padding:8px 12px;background:#eef2ff;border-radius:6px;">
+      <div style="font-size:0.8rem;font-weight:600;color:var(--primary);margin-bottom:8px;padding:8px 12px;background:var(--primary-light);border-radius:6px;">
         Salary change detected — log raise / promotion details:
       </div>
       <div class="form-row">
@@ -428,7 +471,37 @@
     </div>
     <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:20px">
       <button class="btn btn-ghost" onclick="closeModal('empModal')">Cancel</button>
-      <button class="btn btn-primary" onclick="saveEmployee()">Save</button>
+      <button class="btn btn-primary" onclick="saveEmployee()">Save Employee</button>
+    </div>
+  </div>
+</div>
+
+<!-- ══ MODAL: HR Note ══ -->
+<div class="modal-overlay" id="noteModal">
+  <div class="modal" style="width:480px">
+    <div class="modal-header">
+      <h2>Add HR Note</h2>
+      <button class="modal-close" onclick="closeModal('noteModal')">✕</button>
+    </div>
+    <input type="hidden" id="noteEmpId">
+    <div class="form-row">
+      <div class="form-group">
+        <label>Note Type</label>
+        <select id="noteType">
+          <option value="general">General</option>
+          <option value="performance">Performance</option>
+          <option value="hr">HR</option>
+          <option value="warning">Warning</option>
+        </select>
+      </div>
+    </div>
+    <div class="form-group" style="margin-bottom:16px">
+      <label>Note</label>
+      <textarea id="noteText" rows="4" placeholder="Enter note…" style="resize:vertical"></textarea>
+    </div>
+    <div style="display:flex;gap:10px;justify-content:flex-end">
+      <button class="btn btn-ghost" onclick="closeModal('noteModal')">Cancel</button>
+      <button class="btn btn-primary" onclick="saveNote()">Save Note</button>
     </div>
   </div>
 </div>

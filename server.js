@@ -332,21 +332,27 @@ app.get('/api/employees/all', requireAuth, async (req, res) => {
 });
 
 app.post('/api/employees', requireAuth, async (req, res) => {
-  const { name, employment_type, annual_salary, currency, start_date, pension_rate } = req.body;
+  const { name, employment_type, annual_salary, currency, start_date, pension_rate,
+          job_title, department, phone, email, contract_end_date } = req.body;
   if (!name) return res.status(400).json({ error: 'Name required' });
   const annualSal = parseFloat(annual_salary) || 0;
   const daily_rate = parseFloat((annualSal / 260).toFixed(4));
   const cur = ['GBP','AED'].includes(currency) ? currency : 'GBP';
   const pensionRate = (employment_type === 'payroll' && pension_rate != null && pension_rate !== '') ? parseFloat(pension_rate) : 0;
   const { rows } = await q(
-    'INSERT INTO employees (name, daily_rate, employment_type, annual_salary, currency, start_date, pension_rate) VALUES (?, ?, ?, ?, ?, ?, ?) RETURNING id',
-    [name, daily_rate, employment_type || 'payroll', annualSal, cur, start_date || null, pensionRate]
+    `INSERT INTO employees
+       (name, daily_rate, employment_type, annual_salary, currency, start_date, pension_rate,
+        job_title, department, phone, email, contract_end_date)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id`,
+    [name, daily_rate, employment_type || 'payroll', annualSal, cur, start_date || null, pensionRate,
+     job_title || '', department || '', phone || '', email || '', contract_end_date || null]
   );
   res.json({ id: rows[0].id, name, daily_rate });
 });
 
 app.put('/api/employees/:id', requireAuth, async (req, res) => {
-  const { name, active, employment_type, annual_salary, currency, salary_reason, salary_effective, start_date, pension_rate } = req.body;
+  const { name, active, employment_type, annual_salary, currency, salary_reason, salary_effective,
+          start_date, pension_rate, job_title, department, phone, email, contract_end_date } = req.body;
   const annualSal = parseFloat(annual_salary) || 0;
   const daily_rate = parseFloat((annualSal / 260).toFixed(4));
   const cur = ['GBP','AED'].includes(currency) ? currency : 'GBP';
@@ -365,8 +371,14 @@ app.put('/api/employees/:id', requireAuth, async (req, res) => {
   }
 
   await q(
-    'UPDATE employees SET name=?, daily_rate=?, active=?, employment_type=?, annual_salary=?, currency=?, start_date=?, pension_rate=? WHERE id=?',
-    [name, daily_rate, active !== undefined ? active : 1, employment_type || 'payroll', annualSal, cur, start_date || null, pensionRate, req.params.id]
+    `UPDATE employees SET name=?, daily_rate=?, active=?, employment_type=?, annual_salary=?,
+     currency=?, start_date=?, pension_rate=?,
+     job_title=?, department=?, phone=?, email=?, contract_end_date=?
+     WHERE id=?`,
+    [name, daily_rate, active !== undefined ? active : 1, employment_type || 'payroll',
+     annualSal, cur, start_date || null, pensionRate,
+     job_title || '', department || '', phone || '', email || '',
+     contract_end_date || null, req.params.id]
   );
   res.json({ success: true });
 });
@@ -629,6 +641,11 @@ app.get('/api/salary-overview', requireAuth, async (req, res) => {
       return {
         employee_id:         emp.id,
         name:                emp.name,
+        job_title:           emp.job_title || '',
+        department:          emp.department || '',
+        phone:               emp.phone || '',
+        email:               emp.email || '',
+        contract_end_date:   emp.contract_end_date ? emp.contract_end_date.toISOString().slice(0,10) : null,
         employment_type:     emp.employment_type,
         currency:            emp.currency || 'GBP',
         annual_salary:       annualSal,
@@ -933,6 +950,120 @@ app.delete('/api/calendar-reminders/:id', requireAuth, async (req, res) => {
   try {
     await q('DELETE FROM calendar_reminders WHERE id = ?', [req.params.id]);
     res.json({ success: true });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// ─── EMPLOYEE NOTES ──────────────────────────────────────────────────────────
+
+app.get('/api/employee-notes/:employeeId', requireAuth, async (req, res) => {
+  try {
+    const { rows } = await q(
+      `SELECT en.*, ad.username AS created_by_name
+       FROM employee_notes en
+       LEFT JOIN admins ad ON ad.id = en.created_by
+       WHERE en.employee_id = ?
+       ORDER BY en.created_at DESC`,
+      [req.params.employeeId]
+    );
+    res.json(rows);
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.post('/api/employee-notes', requireAuth, async (req, res) => {
+  try {
+    const { employee_id, note, note_type } = req.body;
+    if (!employee_id || !note) return res.status(400).json({ error: 'employee_id and note required' });
+    const validTypes = ['general','performance','hr','warning'];
+    const type = validTypes.includes(note_type) ? note_type : 'general';
+    const { rows } = await q(
+      'INSERT INTO employee_notes (employee_id, note, note_type, created_by) VALUES (?,?,?,?) RETURNING id',
+      [employee_id, note, type, req.admin.id]
+    );
+    res.json({ id: rows[0].id });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.delete('/api/employee-notes/:id', requireAuth, async (req, res) => {
+  try {
+    await q('DELETE FROM employee_notes WHERE id = ?', [req.params.id]);
+    res.json({ success: true });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// ─── CONTRACTS EXPIRING ───────────────────────────────────────────────────────
+
+app.get('/api/contracts/expiring', requireAuth, async (req, res) => {
+  try {
+    const days = parseInt(req.query.days) || 30;
+    const today = new Date().toISOString().slice(0, 10);
+    const future = new Date(); future.setDate(future.getDate() + days);
+    const futureStr = future.toISOString().slice(0, 10);
+    const { rows } = await q(
+      `SELECT id, name, job_title, department, contract_end_date::TEXT AS contract_end_date
+       FROM employees
+       WHERE active = 1 AND contract_end_date IS NOT NULL
+         AND contract_end_date <= ?
+       ORDER BY contract_end_date ASC`,
+      [futureStr]
+    );
+    res.json(rows.map(r => ({ ...r, expired: r.contract_end_date < today })));
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// ─── PAYROLL CSV EXPORT ───────────────────────────────────────────────────────
+
+app.get('/api/export/payroll-csv', requireAuth, async (req, res) => {
+  try {
+    const year = parseInt(req.query.year) || new Date().getFullYear();
+    const { rows: employees } = await q('SELECT * FROM employees WHERE active = 1 ORDER BY department, name');
+
+    const rows = await Promise.all(employees.map(async emp => {
+      const annualSal = parseFloat(emp.annual_salary) || 0;
+      const { rows: payments } = await q(
+        'SELECT SUM(amount) AS total FROM monthly_payments WHERE employee_id = ? AND payment_year = ?',
+        [emp.id, year]
+      );
+      const totalPaid = parseFloat(payments[0]?.total || 0);
+      const ukPay = emp.employment_type === 'payroll' && annualSal > 0
+        ? calcUKNetPay(annualSal, parseFloat(emp.pension_rate) || 0) : null;
+      const netMonthly = ukPay ? ukPay.net_monthly : annualSal / 12;
+      const grossMonthly = ukPay ? ukPay.gross_monthly : annualSal / 12;
+      const outstanding = parseFloat(emp.employment_type === 'payroll' && ukPay
+        ? (ukPay.net_annual - totalPaid).toFixed(2)
+        : (annualSal - totalPaid).toFixed(2));
+      return {
+        name: emp.name,
+        department: emp.department || '',
+        job_title: emp.job_title || '',
+        employment_type: emp.employment_type,
+        currency: emp.currency || 'GBP',
+        annual_salary: annualSal,
+        gross_monthly: parseFloat(grossMonthly.toFixed(2)),
+        net_monthly: parseFloat(netMonthly.toFixed(2)),
+        income_tax_yr: ukPay ? ukPay.income_tax : 0,
+        ni_yr: ukPay ? ukPay.national_insurance : 0,
+        pension_yr: ukPay ? ukPay.pension : 0,
+        total_paid: totalPaid,
+        outstanding
+      };
+    }));
+
+    const headers = ['Name','Department','Job Title','Type','Currency','Annual Salary',
+      'Gross/Month','Net/Month','Income Tax/Yr','NI/Yr','Pension/Yr','Total Paid','Outstanding'];
+    const escape = v => `"${String(v).replace(/"/g,'""')}"`;
+    const csv = [
+      headers.map(escape).join(','),
+      ...rows.map(r => [
+        r.name, r.department, r.job_title, r.employment_type, r.currency,
+        r.annual_salary, r.gross_monthly, r.net_monthly,
+        r.income_tax_yr, r.ni_yr, r.pension_yr,
+        r.total_paid, r.outstanding
+      ].map(escape).join(','))
+    ].join('\r\n');
+
+    res.setHeader('Content-Type', 'text/csv');
+    res.setHeader('Content-Disposition', `attachment; filename="payroll-${year}.csv"`);
+    res.send(csv);
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
