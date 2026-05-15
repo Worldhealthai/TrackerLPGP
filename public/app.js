@@ -58,6 +58,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   await loadEmployees().catch(err => console.error('loadEmployees failed:', err));
   loadDashboard();
+  refreshCalendarBadge();
 
   // Initial badge — silent, non-blocking
   fetch(`/api/salary-overview?year=${new Date().getFullYear()}`)
@@ -2219,6 +2220,7 @@ async function loadCalendar() {
   calReminders = remRes.ok ? await remRes.json() : [];
   const pendingRequests = pendingRes.ok ? await pendingRes.json() : [];
   renderDayOffRequestsBanner(pendingRequests);
+  updateCalendarBadge(pendingRequests.length);
 
   // Update calSub
   const calSub = document.getElementById('calSub');
@@ -2596,6 +2598,22 @@ function updateSalaryBadge(count) {
     if (count > 0) { el.textContent = count; el.classList.remove('hidden'); }
     else el.classList.add('hidden');
   });
+}
+
+function updateCalendarBadge(count) {
+  ['calNavBadge', 'calBellBadge'].forEach(id => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    if (count > 0) { el.textContent = count; el.classList.remove('hidden'); }
+    else el.classList.add('hidden');
+  });
+}
+
+async function refreshCalendarBadge() {
+  try {
+    const res = await fetch('/api/day-off-requests');
+    if (res.ok) updateCalendarBadge((await res.json()).length);
+  } catch {}
 }
 
 // ─── SALARY REMINDER PANEL ────────────────────────────────────────────────────
