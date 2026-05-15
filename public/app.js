@@ -2606,12 +2606,13 @@ function renderHotelSummary() {
       '<div style="font:500 11px/1 var(--font-mono);color:' + deltaColor + '">' + delta + '</div>' +
     '</div>';
 
-  document.getElementById('hotelSummary').innerHTML =
-    '<div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:1px;background:var(--border);border:1px solid var(--border);border-radius:var(--radius);overflow:hidden;margin-bottom:20px">' +
-      tile('Total events', '&#128197;', String(total).padStart(2,'0'), total + ' tracked · ' + outstandingCount + ' outstanding', outstandingCount > 0 ? 'var(--negative)' : 'var(--positive)') +
-      tile('Paid so far', '&#10003;', sym + fmtHotelAmount(totalPaid), paidPct + '% of events paid', paidPct >= 80 ? 'var(--positive)' : 'var(--warning)') +
-      tile('Pending', '&#9201;', String(outstandingCount).padStart(2,'0'), partialCount + ' partial · ' + pendingCount + ' pending', outstandingCount > 0 ? 'var(--negative)' : 'var(--muted)') +
-    '</div>';
+  // Set directly on the element so tiles stretch full width (overrides stats-grid class)
+  const el = document.getElementById('hotelSummary');
+  el.style.cssText = 'display:grid;grid-template-columns:repeat(3,1fr);gap:1px;background:var(--border);border:1px solid var(--border);border-radius:var(--radius);overflow:hidden;margin-bottom:20px';
+  el.innerHTML =
+    tile('Total events', '&#128197;', String(total).padStart(2,'0'), total + ' tracked · ' + outstandingCount + ' outstanding', outstandingCount > 0 ? 'var(--negative)' : 'var(--positive)') +
+    tile('Paid so far', '&#10003;', sym + fmtHotelAmount(totalPaid), paidPct + '% of events paid', paidPct >= 80 ? 'var(--positive)' : 'var(--warning)') +
+    tile('Pending', '&#9201;', String(outstandingCount).padStart(2,'0'), partialCount + ' partial · ' + pendingCount + ' pending', outstandingCount > 0 ? 'var(--negative)' : 'var(--muted)');
 }
 
 function renderHotelTable() {
