@@ -318,7 +318,7 @@ async function loadDashboard() {
   const [summaryRes, salaryRes, upcomingRes, expiringRes, allEmpRes, hotelRes] = await Promise.all([
     fetch(`/api/summary?from=${year}-01-01&to=${year}-12-31`),
     fetch(`/api/salary-overview?year=${year}`),
-    fetch(`/api/calendar-reminders/upcoming?days=7`),
+    fetch(`/api/calendar-reminders/upcoming?days=30`),
     fetch(`/api/contracts/expiring?days=60`),
     fetch(`/api/employees/all`),
     fetch(`/api/hotel-expenses`)
@@ -479,64 +479,88 @@ function renderHeadcountPanel(activeEmps) {
   const el = document.getElementById('headcountPanel');
   if (!el) return;
   const depts = {};
-  activeEmps.forEach(e => {
-    const d = e.department || 'Unassigned';
-    if (!depts[d]) depts[d] = { count: 0, payroll: 0, se: 0 };
-    depts[d].count++;
-    if (e.employment_type === 'self_employed') depts[d].se++;
-    else depts[d].payroll++;
+  activeEmps.forEach(function(e) {
+    var d = e.department || 'Unassigned';
+    depts[d] = (depts[d] || 0) + 1;
   });
-  const sorted = Object.entries(depts).sort((a,b) => b[1].count - a[1].count);
+  var total = activeEmps.length;
+  var sorted = Object.entries(depts).sort(function(a,b){ return b[1]-a[1]; });
   if (!sorted.length) { el.innerHTML = ''; return; }
-  el.innerHTML = `
-    <div class="dash-panel">
-      <div class="dash-panel-header">
-        <span class="dash-panel-icon">🏢</span>
-        <span class="dash-panel-title">Headcount by Department</span>
-        <span class="dash-panel-count">${activeEmps.length} total</span>
-      </div>
-      <div class="dash-panel-body">
-        ${sorted.map(([dept, info]) => `
-          <div class="dash-panel-row">
-            <div style="font-weight:600;font-size:0.88rem">${esc(dept)}</div>
-            <div style="display:flex;gap:6px;align-items:center">
-              ${info.payroll ? `<span class="badge badge-blue">${info.payroll} payroll</span>` : ''}
-              ${info.se ? `<span class="badge badge-yellow">${info.se} self-emp</span>` : ''}
-            </div>
-          </div>`).join('')}
-      </div>
-    </div>`;
+
+  var rows = sorted.map(function(entry) {
+    var dept = entry[0], count = entry[1];
+    var pct = Math.round((count / total) * 100);
+    return '<div style="margin-bottom:16px">' +
+      '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:7px">' +
+        '<div style="font:600 13px/1 var(--font-sans);color:var(--text)">' + esc(dept) + '</div>' +
+        '<div style="font:600 12px/1 var(--font-mono);color:var(--muted)">' +
+          String(count).padStart(2,'0') + ' &middot; ' + pct + '%' +
+        '</div>' +
+      '</div>' +
+      '<div style="height:3px;background:var(--border);border-radius:2px">' +
+        '<div style="height:100%;width:' + pct + '%;background:#8b5cf6;border-radius:2px"></div>' +
+      '</div>' +
+    '</div>';
+  }).join('');
+
+  el.innerHTML =
+    '<div class="card" style="height:100%">' +
+      '<div class="card-header">' +
+        '<span class="card-title" style="display:flex;align-items:center;gap:7px">' +
+          '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>' +
+          'Headcount by dept' +
+        '</span>' +
+        '<span style="font:700 11px/1 var(--font-mono);color:var(--muted);letter-spacing:0.5px">' + total + ' TOTAL</span>' +
+      '</div>' +
+      '<div style="padding:20px 20px 8px">' + rows + '</div>' +
+    '</div>';
 }
 
 function renderDashUpcoming(upcoming) {
-  const el = document.getElementById('upcomingPanel');
+  var el = document.getElementById('upcomingPanel');
   if (!el) return;
-  const MONTHS = ['JAN','FEB','MAR','APR','MAY','JUN','JUL','AUG','SEP','OCT','NOV','DEC'];
-  if (!upcoming || !upcoming.length) { el.innerHTML = ''; return; }
-  const rows = upcoming.slice(0,6).map(r => {
-    const d = new Date(r.virtual_date);
-    const day = d.getUTCDate();
-    const mon = MONTHS[d.getUTCMonth()];
-    const amtStr = r.amount ? ' &nbsp;&middot;&nbsp; ' + (r.currency === 'GBP' ? '&pound;' : r.currency === 'USD' ? '$' : r.currency + ' ') + parseFloat(r.amount).toLocaleString('en-GB', {minimumFractionDigits:0}) : '';
-    return '<div style="display:flex;gap:12px;padding:11px 16px;border-bottom:1px solid var(--line);align-items:center">' +
-      '<div style="width:38px;padding:5px 0;text-align:center;background:var(--surface-2);border:1px solid var(--border);border-radius:6px;flex-shrink:0">' +
-        '<div style="font:700 14px/1 var(--font-mono);color:var(--text)">' + day + '</div>' +
-        '<div style="font:500 9px/1 var(--font-mono);color:var(--muted);margin-top:3px;letter-spacing:0.5px">' + mon + '</div>' +
+  var MONS = ['JAN','FEB','MAR','APR','MAY','JUN','JUL','AUG','SEP','OCT','NOV','DEC'];
+  if (!upcoming || !upcoming.length) {
+    el.innerHTML = '<div class="card" style="height:100%"><div class="card-header">' +
+      '<span class="card-title" style="display:flex;align-items:center;gap:7px">' +
+        '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>' +
+        'Upcoming reminders' +
+      '</span><span style="font:700 11px/1 var(--font-mono);color:var(--muted)">NEXT 30D</span>' +
+    '</div><div class="empty-state" style="padding:32px 0"><div class="icon">🔔</div><div>No upcoming reminders</div></div></div>';
+    return;
+  }
+
+  var rows = upcoming.slice(0, 6).map(function(r) {
+    var d   = new Date(r.virtual_date);
+    var day = d.getUTCDate();
+    var mon = MONS[d.getUTCMonth()];
+    var sym = r.currency === 'GBP' ? '£' : r.currency === 'USD' ? '$' : (r.currency ? r.currency + ' ' : '');
+    var amt = r.amount ? sym + parseFloat(r.amount).toLocaleString('en-GB', {maximumFractionDigits:0}) : '';
+    var cat = (r.category || '').toUpperCase();
+    return '<div style="display:flex;gap:14px;padding:14px 18px;border-bottom:1px solid var(--border);align-items:center">' +
+      '<div style="width:42px;min-width:42px;text-align:center;background:#1a1f2e;border:1px solid var(--border);border-radius:8px;padding:7px 0">' +
+        '<div style="font:800 17px/1 var(--font-mono);color:var(--text)">' + day + '</div>' +
+        '<div style="font:600 9px/1 var(--font-mono);color:var(--muted);margin-top:4px;letter-spacing:0.8px">' + mon + '</div>' +
       '</div>' +
       '<div style="flex:1;min-width:0">' +
-        '<div style="font:600 12.5px/1 var(--font-sans);color:var(--text)">' + esc(r.title) + '</div>' +
-        '<div style="font:500 10.5px/1 var(--font-mono);color:var(--muted);text-transform:uppercase;letter-spacing:0.4px;margin-top:3px">' + esc(r.category||'') + '</div>' +
+        '<div style="font:600 13px/1.2 var(--font-sans);color:var(--text)">' + esc(r.title) + '</div>' +
+        (cat ? '<div style="font:600 10px/1 var(--font-mono);color:var(--muted);margin-top:5px;letter-spacing:0.8px">' + cat + '</div>' : '') +
       '</div>' +
-      '<div style="font:700 12.5px/1 var(--font-mono);color:var(--text);white-space:nowrap">' + amtStr + '</div>' +
+      (amt ? '<div style="font:700 13px/1 var(--font-mono);color:var(--text);white-space:nowrap">' + amt + '</div>' : '') +
     '</div>';
   }).join('');
-  el.innerHTML = '<div class="card" style="margin-bottom:0">' +
-    '<div class="card-header" style="padding:12px 16px">' +
-      '<span class="card-title" style="display:flex;align-items:center;gap:6px"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg> Upcoming reminders</span>' +
-      '<span style="font-size:0.72rem;color:var(--muted);font-family:var(--font-mono)">next 30d</span>' +
-    '</div>' +
-    '<div style="padding:0">' + rows + '</div>' +
-  '</div>';
+
+  el.innerHTML =
+    '<div class="card" style="height:100%">' +
+      '<div class="card-header">' +
+        '<span class="card-title" style="display:flex;align-items:center;gap:7px">' +
+          '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>' +
+          'Upcoming reminders' +
+        '</span>' +
+        '<span style="font:700 11px/1 var(--font-mono);color:var(--muted);letter-spacing:0.5px">NEXT 30D</span>' +
+      '</div>' +
+      '<div style="padding:0">' + rows + '</div>' +
+    '</div>';
 }
 
 function renderDashActivity(summary, expiring, hotelData, salaryData) {
