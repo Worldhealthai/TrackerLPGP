@@ -2573,50 +2573,44 @@ function fmtHotelNum(v) {
   return parseFloat(v).toLocaleString('en-GB', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
-function parseHotelCostStr(str) {
-  if (!str) return 0;
-  let s = String(str).replace(/[£$€,\s]/g, '').replace(/AED|USD|GBP|EUR|CHF/gi, '').trim();
-  const isK = /k$/i.test(s), isM = /m$/i.test(s);
-  s = s.replace(/[km]$/i, '');
-  let n = parseFloat(s);
-  if (isNaN(n)) return 0;
-  if (isM) n *= 1000000;
-  else if (isK) n *= 1000;
-  return n;
+function fmtHotelAmount(v) {
+  if (v >= 1000000) return (v / 1000000).toFixed(1) + 'M';
+  if (v >= 1000)    return (v / 1000).toFixed(1) + 'k';
+  return v.toFixed(0);
 }
 
 function renderHotelSummary() {
-  const total      = hotelData.length;
-  const paidCount  = hotelData.filter(r => r.status === 'paid').length;
-  const unpaidCount = total - paidCount;
+  const total       = hotelData.length;
+  const paidCount   = hotelData.filter(r => r.status === 'paid').length;
+  const partialCount = hotelData.filter(r => r.status === 'partial').length;
+  const pendingCount = hotelData.filter(r => r.status === 'pending').length;
+  const outstandingCount = partialCount + pendingCount;
 
-  const totalCommit = hotelData.reduce((s, r) => s + parseHotelCostStr(r.cost), 0);
-  const totalPaid   = hotelData.reduce((s, r) => s + (parseFloat(r.paid_amount) || 0), 0);
-  const totalPend   = Math.max(0, totalCommit - totalPaid);
-  const paidPct     = totalCommit > 0 ? Math.round(totalPaid / totalCommit * 100) : 0;
+  // Use paid_amount (numeric) as the reliable money field
+  const totalPaid = hotelData.reduce((s, r) => s + (parseFloat(r.paid_amount) || 0), 0);
+  const paidEventsPaid = hotelData.filter(r => r.status === 'paid').reduce((s, r) => s + (parseFloat(r.paid_amount) || 0), 0);
+  const paidPct = total > 0 ? Math.round(paidCount / total * 100) : 0;
 
-  const fmtM = v => v >= 1000000 ? '$' + (v/1000000).toFixed(1) + 'M' : v >= 1000 ? '$' + (v/1000).toFixed(0) + 'k' : '$' + v.toFixed(0);
+  // Detect dominant currency for display
+  const currencies = hotelData.map(r => r.paid_currency || 'USD');
+  const domCur = currencies.sort((a,b) => currencies.filter(c=>c===b).length - currencies.filter(c=>c===a).length)[0] || 'USD';
+  const sym = hotelCurrencySymbol(domCur);
 
   const hotelSub = document.getElementById('hotelSub');
-  if (hotelSub) hotelSub.textContent = '// ' + total + ' event' + (total !== 1 ? 's' : '') + ' · ' + paidCount + ' paid · ' + (unpaidCount > 0 ? unpaidCount + ' outstanding' : 'all settled');
+  if (hotelSub) hotelSub.textContent = '// ' + total + ' event' + (total !== 1 ? 's' : '') + ' · ' + paidCount + ' paid · ' + (outstandingCount > 0 ? outstandingCount + ' outstanding' : 'all settled');
+
+  const tile = (label, icon, value, delta, deltaColor) =>
+    '<div style="background:var(--surface);padding:18px 20px;display:flex;flex-direction:column;gap:8px">' +
+      '<div style="font:600 10px/1 var(--font-mono);text-transform:uppercase;letter-spacing:1px;color:var(--muted)">' + icon + ' ' + label + '</div>' +
+      '<div style="font:700 28px/1 var(--font-mono);color:var(--text);letter-spacing:-1px">' + value + '</div>' +
+      '<div style="font:500 11px/1 var(--font-mono);color:' + deltaColor + '">' + delta + '</div>' +
+    '</div>';
 
   document.getElementById('hotelSummary').innerHTML =
     '<div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:1px;background:var(--border);border:1px solid var(--border);border-radius:var(--radius);overflow:hidden;margin-bottom:20px">' +
-      '<div style="background:var(--surface);padding:18px 20px;display:flex;flex-direction:column;gap:8px">' +
-        '<div style="font:600 10px/1 var(--font-mono);text-transform:uppercase;letter-spacing:1px;color:var(--muted);display:flex;align-items:center;gap:5px"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg> Total commitments</div>' +
-        '<div style="font:700 28px/1 var(--font-mono);color:var(--text);letter-spacing:-1px">' + fmtM(totalCommit) + '</div>' +
-        '<div style="font:500 11px/1 var(--font-mono);color:var(--negative)">+' + total + ' events tracked</div>' +
-      '</div>' +
-      '<div style="background:var(--surface);padding:18px 20px;display:flex;flex-direction:column;gap:8px">' +
-        '<div style="font:600 10px/1 var(--font-mono);text-transform:uppercase;letter-spacing:1px;color:var(--muted);display:flex;align-items:center;gap:5px"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><polyline points="20 6 9 17 4 12"/></svg> Paid so far</div>' +
-        '<div style="font:700 28px/1 var(--font-mono);color:var(--text);letter-spacing:-1px">' + fmtM(totalPaid) + '</div>' +
-        '<div style="font:500 11px/1 var(--font-mono);color:var(--positive)">' + paidPct + '% paid</div>' +
-      '</div>' +
-      '<div style="background:var(--surface);padding:18px 20px;display:flex;flex-direction:column;gap:8px">' +
-        '<div style="font:600 10px/1 var(--font-mono);text-transform:uppercase;letter-spacing:1px;color:var(--muted);display:flex;align-items:center;gap:5px"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg> Pending</div>' +
-        '<div style="font:700 28px/1 var(--font-mono);color:var(--text);letter-spacing:-1px">' + fmtM(totalPend) + '</div>' +
-        '<div style="font:500 11px/1 var(--font-mono);color:var(--negative)">' + unpaidCount + ' event' + (unpaidCount !== 1 ? 's' : '') + '</div>' +
-      '</div>' +
+      tile('Total events', '&#128197;', String(total).padStart(2,'0'), total + ' tracked · ' + outstandingCount + ' outstanding', outstandingCount > 0 ? 'var(--negative)' : 'var(--positive)') +
+      tile('Paid so far', '&#10003;', sym + fmtHotelAmount(totalPaid), paidPct + '% of events paid', paidPct >= 80 ? 'var(--positive)' : 'var(--warning)') +
+      tile('Pending', '&#9201;', String(outstandingCount).padStart(2,'0'), partialCount + ' partial · ' + pendingCount + ' pending', outstandingCount > 0 ? 'var(--negative)' : 'var(--muted)') +
     '</div>';
 }
 
