@@ -1789,37 +1789,37 @@ tbody tr:last-child td { border-bottom: none; }
 .sc-annual-lbl { font: 600 9.5px/1 var(--font-mono); text-transform: uppercase; letter-spacing: 0.8px; color: var(--muted); margin-bottom: 4px; }
 .sc-annual-val { font: 700 18px/1 var(--font-mono); color: var(--text); letter-spacing: -0.5px; }
 
-.sc-prog { padding: 14px 20px; border-bottom: 1px solid var(--border); }
+.sc-prog { padding: 18px 20px; border-bottom: 1px solid var(--border); }
 
 .sc-prog-meta {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 8px;
-  font: 500 11px/1 var(--font-mono);
-  color: var(--muted);
+  margin-bottom: 12px;
+  font: 600 13px/1 var(--font-mono);
+  color: var(--text);
 }
 
 .sc-pct-pill {
   background: var(--accent-soft);
   color: var(--accent);
-  font: 700 10px/1 var(--font-mono);
-  padding: 2px 7px;
-  border-radius: 4px;
+  font: 700 12px/1 var(--font-mono);
+  padding: 4px 10px;
+  border-radius: 5px;
   letter-spacing: 0.4px;
 }
 
 .sc-prog-track {
-  height: 5px;
+  height: 8px;
   background: var(--surface-2);
-  border-radius: 3px;
+  border-radius: 4px;
   overflow: hidden;
 }
 
 .sc-prog-fill {
   height: 100%;
   background: var(--accent);
-  border-radius: 3px;
+  border-radius: 4px;
   transition: width .4s ease;
 }
 
