@@ -799,11 +799,11 @@ async function loadPaymentsSection(empId, emp) {
         const pr = empData.pro_rated;
         if (pr) {
           proRatedHtml = `
-          <div style="margin-top:14px;background:rgba(16,185,129,0.07);border:1px solid rgba(16,185,129,0.22);border-radius:10px;padding:14px 16px">
-            <div style="font-size:0.72rem;font-weight:700;text-transform:uppercase;letter-spacing:0.5px;color:var(--success);margin-bottom:8px">Pro-Rated Reference · Started ${pr.start_date}</div>
+          <div style="margin-top:14px;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:10px;padding:14px 16px">
+            <div style="font-size:0.72rem;font-weight:700;text-transform:uppercase;letter-spacing:0.5px;color:#059669;margin-bottom:8px">Pro-Rated Reference · Started ${pr.start_date}</div>
             <div style="font-size:0.85rem;display:flex;justify-content:space-between;font-weight:600">
               <span style="color:var(--muted)">Expected to date</span>
-              <span style="color:var(--success);font-weight:800">${sym}${pr.total_expected.toLocaleString('en-GB',{minimumFractionDigits:2})}</span>
+              <span style="color:#059669;font-weight:800">${sym}${pr.total_expected.toLocaleString('en-GB',{minimumFractionDigits:2})}</span>
             </div>
           </div>`;
         }
@@ -1389,10 +1389,10 @@ async function loadSalaryPage() {
             </button>
             <div class="sc-sec-body">
               <div class="sc-sec-actions">
-                <button class="btn btn-ghost btn-sm" style="border-color:rgba(245,158,11,0.35);color:var(--warning)" onclick="openBonusModal(${emp.employee_id})">+ Add Bonus</button>
+                <button class="btn btn-ghost btn-sm" style="border-color:#fde68a;color:#b45309" onclick="openBonusModal(${emp.employee_id})">+ Add Bonus</button>
               </div>
               ${bonuses.length ? bonuses.map(b => `
-                <div class="sc-item" style="background:rgba(245,158,11,0.07);border-color:rgba(245,158,11,0.2)">
+                <div class="sc-item" style="background:#fffbeb;border-color:#fde68a">
                   <span class="sc-item-date">${b.bonus_date||''}</span>
                   <span class="sc-item-amt amb">+${sym}${parseFloat(b.amount||0).toLocaleString('en-GB',{minimumFractionDigits:2})}</span>
                   <span class="sc-item-note">${esc(b.reason||'')}${b.notes?` · ${esc(b.notes)}`:''}</span>
@@ -1462,7 +1462,7 @@ async function loadSalaryPage() {
               ${salaryHistory.map(h => `
                 <div class="sc-hist-item">
                   <span class="sc-item-date">${h.effective_from||''}</span>
-                  <span style="font-weight:800;color:var(--success);min-width:100px">${currencySymbol(h.currency||cur)}${parseFloat(h.annual_salary||0).toLocaleString('en-GB',{minimumFractionDigits:2})}/yr</span>
+                  <span style="font-weight:800;color:#059669;min-width:100px">${currencySymbol(h.currency||cur)}${parseFloat(h.annual_salary||0).toLocaleString('en-GB',{minimumFractionDigits:2})}/yr</span>
                   <span class="sc-item-note">${esc(h.reason||'')}</span>
                   <button class="btn btn-danger btn-sm" onclick="deleteSalaryHistory(${h.id})">×</button>
                 </div>`).join('')}
