@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>LPGP Tracker – Sign In</title>
+  <link rel="stylesheet" href="style.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap">
+  <style>
+    .login-tabs { display:flex; gap:0; margin-bottom:24px; border:1px solid var(--border); border-radius:10px; overflow:hidden; }
+    .login-tab { flex:1; padding:10px; text-align:center; font:600 13px/1 var(--font-mono); color:var(--muted); cursor:pointer; background:var(--surface); border:none; transition:all .2s; }
+    .login-tab.active { background:var(--primary); color:#000; }
+    .login-tab-panel { display:none; }
+    .login-tab-panel.active { display:block; }
+  </style>
+</head>
+<body class="login-body">
+  <div class="login-wrap">
+    <div class="login-card">
+      <div class="login-logo">
+        <div class="login-logo-icon">L</div>
+        <div class="login-logo-text">
+          <div class="login-logo-name">LPGP<span> Tracker</span></div>
+          <div class="login-logo-sub">Employee Management</div>
+        </div>
+      </div>
+
+      <div class="login-tabs">
+        <button class="login-tab active" onclick="switchTab('admin')">Admin</button>
+        <button class="login-tab" onclick="switchTab('staff')">Staff Portal</button>
+      </div>
+
+      <div id="loginError" class="alert alert-error hidden"></div>
+
+      <!-- Admin login -->
+      <div id="tab-admin" class="login-tab-panel active">
+        <form id="adminForm">
+          <div class="form-group" style="margin-bottom:14px">
+            <label>Username</label>
+            <input type="text" id="username" autocomplete="username" placeholder="Enter username" required>
+          </div>
+          <div class="form-group" style="margin-bottom:20px">
+            <label>Password</label>
+            <input type="password" id="password" autocomplete="current-password" placeholder="Enter password" required>
+          </div>
+          <button type="submit" class="login-submit">Sign In →</button>
+        </form>
+      </div>
+
+      <!-- Staff / Employee login -->
+      <div id="tab-staff" class="login-tab-panel">
+        <form id="staffForm">
+          <div class="form-group" style="margin-bottom:14px">
+            <label>Work Email</label>
+            <input type="email" id="empEmail" autocomplete="email" placeholder="your@email.com" required>
+          </div>
+          <div class="form-group" style="margin-bottom:20px">
+            <label>PIN</label>
+            <input type="password" id="empPin" autocomplete="current-password" placeholder="Your portal PIN" required>
+          </div>
+          <button type="submit" class="login-submit">Sign In →</button>
+        </form>
+        <p style="margin-top:12px;font-size:0.78rem;color:var(--muted);text-align:center">PIN is set by your manager in the system.</p>
+      </div>
+
+      <p class="login-security-note" style="margin-top:20px">
+        Secured with JWT · Session expires after 8–12 hours
+      </p>
+    </div>
+  </div>
+
+  <script>
+    function switchTab(tab) {
+      document.querySelectorAll('.login-tab').forEach((t,i) => t.classList.toggle('active', (i===0&&tab==='admin')||(i===1&&tab==='staff')));
+      document.getElementById('tab-admin').classList.toggle('active', tab==='admin');
+      document.getElementById('tab-staff').classList.toggle('active', tab==='staff');
+      document.getElementById('loginError').classList.add('hidden');
+    }
+
+    async function doLogin(url, body, btn) {
+      const err = document.getElementById('loginError');
+      err.classList.add('hidden');
+      btn.textContent = 'Signing in…'; btn.disabled = true;
+      const res = await fetch(url, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body) });
+      const data = await res.json();
+      if (res.ok) { window.location.href = '/'; }
+      else { err.textContent = data.error; err.classList.remove('hidden'); btn.textContent = 'Sign In →'; btn.disabled = false; }
+    }
+
+    document.getElementById('adminForm').addEventListener('submit', e => {
+      e.preventDefault();
+      doLogin('/api/login', { username: document.getElementById('username').value, password: document.getElementById('password').value }, e.target.querySelector('button'));
+    });
+
+    document.getElementById('staffForm').addEventListener('submit', e => {
+      e.preventDefault();
+      doLogin('/api/employee-login', { email: document.getElementById('empEmail').value, pin: document.getElementById('empPin').value }, e.target.querySelector('button'));
+    });
+  </script>
+</body>
+</html>
