@@ -1552,15 +1552,38 @@ async function loadSalaryPage() {
       const paye            = emp.paye_breakdown || null;
       const netMonthly      = emp.net_monthly ? parseFloat(emp.net_monthly) : null;
 
-      // First-month suggestion: use end-of-month calculation (not earned-to-today)
+      // First-month suggestion: server-provided or client-side fallback
       const pr = emp.pro_rated;
       const fm = emp.first_month_full;
-      // Partial = employee started mid-month (not day 1)
       const isPartialFirstMonth = fm && fm.first_month_days < fm.first_month_total_days;
       const payeNetFactor = paye && annualSalary > 0 ? paye.net_annual / annualSalary : 1;
-      const suggestedFirstMonthNet = isPartialFirstMonth
+      let suggestedFirstMonthNet = isPartialFirstMonth
         ? parseFloat((fm.first_month_pay * payeNetFactor).toFixed(2))
         : null;
+      let fmMeta = isPartialFirstMonth ? {
+        monthName: MONTHS[parseInt(fm.first_month.split('-')[1]) - 1] || fm.first_month,
+        startDate: fm.start_date || emp.start_date,
+        daysWorked: fm.first_month_days,
+        daysTotal: fm.first_month_total_days
+      } : null;
+
+      // Client-side fallback: derive from emp.start_date when server didn't provide fm data
+      if (suggestedFirstMonthNet === null && emp.start_date && !emp.is_terminated) {
+        const sd = new Date(emp.start_date + 'T00:00:00');
+        const startDay = sd.getDate();
+        if (startDay > 1) {
+          const daysInMonth = new Date(sd.getFullYear(), sd.getMonth() + 1, 0).getDate();
+          const daysWorked = daysInMonth - startDay + 1;
+          const netM = (paye ? paye.net_monthly : null) || netMonthly || (annualSalary / 12);
+          suggestedFirstMonthNet = parseFloat((netM * (daysWorked / daysInMonth)).toFixed(2));
+          fmMeta = {
+            monthName: MONTHS[sd.getMonth()],
+            startDate: emp.start_date,
+            daysWorked,
+            daysTotal: daysInMonth
+          };
+        }
+      }
 
       const initials = (emp.name || '?').split(' ').map(w => w[0]).join('').slice(0,2).toUpperCase();
       const typeLabel = emp.employment_type === 'self_employed' ? 'Self-Employed' : 'Payroll';
@@ -1618,20 +1641,14 @@ async function loadSalaryPage() {
           </div>
         </div>
 
-        ${suggestedFirstMonthNet !== null ? (() => {
-          const firstMonthName = MONTHS[parseInt(fm.first_month.split('-')[1])] || fm.first_month;
-          const afterLabel = paye
-            ? `after PAYE/NI${paye.pension > 0 ? '/pension' : ''}`
-            : 'gross';
-          return `<div class="sc-firstmonth-tip">
+        ${suggestedFirstMonthNet !== null && fmMeta ? `<div class="sc-firstmonth-tip">
             <span class="sc-fm-icon">💡</span>
             <div>
-              Suggested payment for ${firstMonthName} (started ${fm.start_date}):
+              Suggested payment for ${fmMeta.monthName} (started ${fmMeta.startDate}):
               <strong>${sym}${suggestedFirstMonthNet.toLocaleString('en-GB',{minimumFractionDigits:2})}</strong>
-              <span class="sc-fm-sub">${fm.first_month_days} of ${fm.first_month_total_days} working days · ${afterLabel}</span>
+              <span class="sc-fm-sub">${fmMeta.daysWorked} of ${fmMeta.daysTotal} days · ${paye ? 'after PAYE/NI' + (paye.pension > 0 ? '/pension' : '') : 'pro-rata'}</span>
             </div>
-          </div>`;
-        })() : ''}
+          </div>` : ''}
 
         <div class="sc-figures">
           ${paye ? `
