@@ -431,8 +431,11 @@ async function loadDashboard() {
   // Headcount by department
   renderHeadcountPanel(activeEmps);
 
-  // Upcoming reminders widget
-  renderUpcomingWidget(upcoming);
+  // Upcoming reminders panel
+  renderDashUpcoming(upcoming);
+
+  // Activity feed
+  renderDashActivity(summary, expiring, hotelData, salaryData);
 
   const tbody = document.getElementById('dashTable');
   tbody.innerHTML = '';
@@ -525,6 +528,97 @@ function renderHeadcountPanel(activeEmps) {
           </div>`).join('')}
       </div>
     </div>`;
+}
+
+function renderDashUpcoming(upcoming) {
+  const el = document.getElementById('upcomingPanel');
+  if (!el) return;
+  const MONTHS = ['JAN','FEB','MAR','APR','MAY','JUN','JUL','AUG','SEP','OCT','NOV','DEC'];
+  if (!upcoming || !upcoming.length) { el.innerHTML = ''; return; }
+  const rows = upcoming.slice(0,6).map(r => {
+    const d = new Date(r.virtual_date);
+    const day = d.getUTCDate();
+    const mon = MONTHS[d.getUTCMonth()];
+    const amtStr = r.amount ? ' &nbsp;&middot;&nbsp; ' + (r.currency === 'GBP' ? '&pound;' : r.currency === 'USD' ? '$' : r.currency + ' ') + parseFloat(r.amount).toLocaleString('en-GB', {minimumFractionDigits:0}) : '';
+    return '<div style="display:flex;gap:12px;padding:11px 16px;border-bottom:1px solid var(--line);align-items:center">' +
+      '<div style="width:38px;padding:5px 0;text-align:center;background:var(--surface-2);border:1px solid var(--border);border-radius:6px;flex-shrink:0">' +
+        '<div style="font:700 14px/1 var(--font-mono);color:var(--text)">' + day + '</div>' +
+        '<div style="font:500 9px/1 var(--font-mono);color:var(--muted);margin-top:3px;letter-spacing:0.5px">' + mon + '</div>' +
+      '</div>' +
+      '<div style="flex:1;min-width:0">' +
+        '<div style="font:600 12.5px/1 var(--font-sans);color:var(--text)">' + esc(r.title) + '</div>' +
+        '<div style="font:500 10.5px/1 var(--font-mono);color:var(--muted);text-transform:uppercase;letter-spacing:0.4px;margin-top:3px">' + esc(r.category||'') + '</div>' +
+      '</div>' +
+      '<div style="font:700 12.5px/1 var(--font-mono);color:var(--text);white-space:nowrap">' + amtStr + '</div>' +
+    '</div>';
+  }).join('');
+  el.innerHTML = '<div class="card" style="margin-bottom:0">' +
+    '<div class="card-header" style="padding:12px 16px">' +
+      '<span class="card-title" style="display:flex;align-items:center;gap:6px"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg> Upcoming reminders</span>' +
+      '<span style="font-size:0.72rem;color:var(--muted);font-family:var(--font-mono)">next 30d</span>' +
+    '</div>' +
+    '<div style="padding:0">' + rows + '</div>' +
+  '</div>';
+}
+
+function renderDashActivity(summary, expiring, hotelData, salaryData) {
+  const el = document.getElementById('activityPanel');
+  if (!el) return;
+
+  const items = [];
+  const ICONS = {
+    pay:     '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="5" width="20" height="14" rx="2"/><line x1="2" y1="10" x2="22" y2="10"/></svg>',
+    breach:  '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>',
+    hotel:   '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>',
+    expiry:  '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>',
+    deduct:  '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"/></svg>',
+  };
+
+  // Salary payments from salaryData
+  salaryData.filter(e => !e.is_terminated && (e.payments||[]).length).slice(0,2).forEach(e => {
+    const last = e.payments[e.payments.length - 1];
+    const sym = e.currency === 'AED' ? 'AED ' : '£';
+    items.push({ icon: ICONS.pay, tone: 'pos', title: 'Logged payment', detail: sym + parseFloat(last.amount||0).toLocaleString('en-GB') + ' &rarr; ' + esc(e.name) });
+  });
+
+  // Allowance breaches
+  summary.filter(r => (parseFloat(r.excess_days)||0) > 0).slice(0,2).forEach(r => {
+    items.push({ icon: ICONS.breach, tone: 'neg', title: 'Allowance breach', detail: esc(r.name) + ' &middot; ' + r.year_days_off + '/' + r.allowance_days + ' days &middot; &pound;' + parseFloat(r.excess_day_deduction||0).toFixed(2) + ' deduct' });
+  });
+
+  // Contract expiring
+  expiring.slice(0,2).forEach(e => {
+    const days = Math.floor((new Date(e.contract_end_date) - new Date()) / 86400000);
+    items.push({ icon: ICONS.expiry, tone: 'warn', title: 'Contract expiring', detail: esc(e.name) + ' &middot; ' + e.contract_end_date + ' &middot; ' + Math.abs(days) + 'd' });
+  });
+
+  // Hotel events
+  hotelData.filter(h => h.status !== 'paid').slice(0,2).forEach(h => {
+    const sym = hotelCurrencySymbol(h.paid_currency || 'USD');
+    const amtStr = h.paid_amount ? sym + parseFloat(h.paid_amount).toLocaleString('en-GB') + ' &middot; ' : '';
+    items.push({ icon: ICONS.hotel, tone: 'info', title: 'Hotel expense', detail: esc(h.event_name) + ' &middot; ' + amtStr + h.status });
+  });
+
+  if (!items.length) { el.innerHTML = ''; return; }
+
+  const TONE_COLOR = { pos:'var(--positive)', neg:'var(--negative)', warn:'var(--warning)', info:'var(--info)' };
+  const rows = items.slice(0,6).map(it =>
+    '<div style="display:flex;gap:10px;padding:11px 16px;border-bottom:1px solid var(--line);align-items:flex-start">' +
+      '<div style="width:28px;height:28px;border-radius:6px;background:var(--surface-2);border:1px solid var(--border);display:grid;place-items:center;flex-shrink:0;color:' + TONE_COLOR[it.tone] + '">' + it.icon + '</div>' +
+      '<div style="flex:1;min-width:0">' +
+        '<div style="font:600 12.5px/1.3 var(--font-sans);color:var(--text)">' + it.title + '</div>' +
+        '<div style="font:400 11px/1.4 var(--font-mono);color:var(--muted);margin-top:3px">' + it.detail + '</div>' +
+      '</div>' +
+    '</div>'
+  ).join('');
+
+  el.innerHTML = '<div class="card" style="margin-bottom:0">' +
+    '<div class="card-header" style="padding:12px 16px">' +
+      '<span class="card-title" style="display:flex;align-items:center;gap:6px"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg> Activity</span>' +
+      '<span style="font-size:0.72rem;color:var(--muted);font-family:var(--font-mono)">last 24h</span>' +
+    '</div>' +
+    '<div style="padding:0">' + rows + '</div>' +
+  '</div>';
 }
 
 function goToTracking(empId) {
@@ -2479,25 +2573,51 @@ function fmtHotelNum(v) {
   return parseFloat(v).toLocaleString('en-GB', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
+function parseHotelCostStr(str) {
+  if (!str) return 0;
+  let s = String(str).replace(/[£$€,\s]/g, '').replace(/AED|USD|GBP|EUR|CHF/gi, '').trim();
+  const isK = /k$/i.test(s), isM = /m$/i.test(s);
+  s = s.replace(/[km]$/i, '');
+  let n = parseFloat(s);
+  if (isNaN(n)) return 0;
+  if (isM) n *= 1000000;
+  else if (isK) n *= 1000;
+  return n;
+}
+
 function renderHotelSummary() {
-  const total   = hotelData.length;
-  const paid    = hotelData.filter(r => r.status === 'paid').length;
-  const partial = hotelData.filter(r => r.status === 'partial').length;
-  const pending = hotelData.filter(r => r.status === 'pending').length;
+  const total      = hotelData.length;
+  const paidCount  = hotelData.filter(r => r.status === 'paid').length;
+  const unpaidCount = total - paidCount;
 
-  // Update hotelSub
+  const totalCommit = hotelData.reduce((s, r) => s + parseHotelCostStr(r.cost), 0);
+  const totalPaid   = hotelData.reduce((s, r) => s + (parseFloat(r.paid_amount) || 0), 0);
+  const totalPend   = Math.max(0, totalCommit - totalPaid);
+  const paidPct     = totalCommit > 0 ? Math.round(totalPaid / totalCommit * 100) : 0;
+
+  const fmtM = v => v >= 1000000 ? '$' + (v/1000000).toFixed(1) + 'M' : v >= 1000 ? '$' + (v/1000).toFixed(0) + 'k' : '$' + v.toFixed(0);
+
   const hotelSub = document.getElementById('hotelSub');
-  if (hotelSub) {
-    const unpaid = pending + partial;
-    hotelSub.textContent = `// ${total} event${total !== 1 ? 's' : ''} · ${paid} paid · ${unpaid > 0 ? unpaid + ' outstanding' : 'all settled'}`;
-  }
+  if (hotelSub) hotelSub.textContent = '// ' + total + ' event' + (total !== 1 ? 's' : '') + ' · ' + paidCount + ' paid · ' + (unpaidCount > 0 ? unpaidCount + ' outstanding' : 'all settled');
 
-  document.getElementById('hotelSummary').innerHTML = `
-    <div class="stat-card blue"><div class="stat-label">Total Events</div><div class="stat-value">${total}</div></div>
-    <div class="stat-card green"><div class="stat-label">Paid</div><div class="stat-value">${paid}</div></div>
-    <div class="stat-card yellow"><div class="stat-label">Partial</div><div class="stat-value">${partial}</div></div>
-    <div class="stat-card red"><div class="stat-label">Pending</div><div class="stat-value">${pending}</div></div>
-  `;
+  document.getElementById('hotelSummary').innerHTML =
+    '<div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:1px;background:var(--border);border:1px solid var(--border);border-radius:var(--radius);overflow:hidden;margin-bottom:20px">' +
+      '<div style="background:var(--surface);padding:18px 20px;display:flex;flex-direction:column;gap:8px">' +
+        '<div style="font:600 10px/1 var(--font-mono);text-transform:uppercase;letter-spacing:1px;color:var(--muted);display:flex;align-items:center;gap:5px"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg> Total commitments</div>' +
+        '<div style="font:700 28px/1 var(--font-mono);color:var(--text);letter-spacing:-1px">' + fmtM(totalCommit) + '</div>' +
+        '<div style="font:500 11px/1 var(--font-mono);color:var(--negative)">+' + total + ' events tracked</div>' +
+      '</div>' +
+      '<div style="background:var(--surface);padding:18px 20px;display:flex;flex-direction:column;gap:8px">' +
+        '<div style="font:600 10px/1 var(--font-mono);text-transform:uppercase;letter-spacing:1px;color:var(--muted);display:flex;align-items:center;gap:5px"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><polyline points="20 6 9 17 4 12"/></svg> Paid so far</div>' +
+        '<div style="font:700 28px/1 var(--font-mono);color:var(--text);letter-spacing:-1px">' + fmtM(totalPaid) + '</div>' +
+        '<div style="font:500 11px/1 var(--font-mono);color:var(--positive)">' + paidPct + '% paid</div>' +
+      '</div>' +
+      '<div style="background:var(--surface);padding:18px 20px;display:flex;flex-direction:column;gap:8px">' +
+        '<div style="font:600 10px/1 var(--font-mono);text-transform:uppercase;letter-spacing:1px;color:var(--muted);display:flex;align-items:center;gap:5px"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg> Pending</div>' +
+        '<div style="font:700 28px/1 var(--font-mono);color:var(--text);letter-spacing:-1px">' + fmtM(totalPend) + '</div>' +
+        '<div style="font:500 11px/1 var(--font-mono);color:var(--negative)">' + unpaidCount + ' event' + (unpaidCount !== 1 ? 's' : '') + '</div>' +
+      '</div>' +
+    '</div>';
 }
 
 function renderHotelTable() {
