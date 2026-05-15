@@ -1668,35 +1668,32 @@ async function loadSalaryPage() {
             </div>
           </div>` : ''}
 
-        <div class="sc-figures">
-          ${paye ? `
-          <div class="sc-fig">
-            <div class="sc-fig-lbl">Gross / month</div>
-            <div class="sc-fig-val">${sym}${paye.gross_monthly.toLocaleString('en-GB',{maximumFractionDigits:0})}</div>
-            <div class="sc-fig-sub">before deductions</div>
-          </div>
-          <div class="sc-fig sc-fig-hi">
-            <div class="sc-fig-lbl">Take-home / month</div>
-            <div class="sc-fig-val">${sym}${paye.net_monthly.toLocaleString('en-GB',{maximumFractionDigits:0})}</div>
-            <div class="sc-fig-sub">after PAYE + NI${paye.pension > 0 ? ' + pension' : ''}</div>
-          </div>` : `
-          <div class="sc-fig">
-            <div class="sc-fig-lbl">Monthly pay</div>
-            <div class="sc-fig-val">${sym}${(annualSalary/12).toLocaleString('en-GB',{maximumFractionDigits:0})}</div>
-            <div class="sc-fig-sub">${sym}${annualSalary.toLocaleString('en-GB',{maximumFractionDigits:0})}/yr</div>
-          </div>
-          <div class="sc-fig ${excessDays > 0 ? 'sc-fig-bad' : 'sc-fig-ok'}">
-            <div class="sc-fig-lbl">Days off</div>
-            <div class="sc-fig-val">${totalDaysOff} <span style="font-size:0.75rem;font-weight:600;color:#9ca3af">/ ${allowanceDays}</span></div>
-            <div class="sc-fig-sub">${allowanceLabel}</div>
-            ${excessDays > 0 ? `<div class="sc-fig-deduct">−${sym}${excessDeduction.toLocaleString('en-GB',{minimumFractionDigits:2,maximumFractionDigits:2})} deducted</div>` : ''}
-          </div>`}
-          <div class="sc-fig ${figOutClass}">
-            <div class="sc-fig-lbl">Outstanding</div>
-            <div class="sc-fig-val">${isOverpaid ? '−' : ''}${sym}${Math.abs(netRemaining).toLocaleString('en-GB',{maximumFractionDigits:0})}</div>
-            <div class="sc-fig-sub">${isOverpaid ? 'overpaid' : isTerminated ? 'final balance' : `${year} balance`}</div>
-          </div>
-        </div>
+        ${(() => {
+          const monthlyVal = paye ? paye.net_monthly : annualSalary / 12;
+          const monthlyLbl = paye ? 'Take-home / mo' : 'Monthly pay';
+          const monthlySub = paye
+            ? ('after PAYE + NI' + (paye.pension > 0 ? ' + pension' : ''))
+            : (sym + annualSalary.toLocaleString('en-GB',{maximumFractionDigits:0}) + '/yr');
+          const outColor = isOverpaid ? 'var(--positive)' : netRemaining === 0 ? 'var(--muted)' : 'var(--negative)';
+          const outSub   = isOverpaid ? 'overpaid' : isTerminated ? 'final balance' : (year + ' balance');
+          return '<div style="display:flex;border-top:1px solid var(--border);border-bottom:1px solid var(--border)">' +
+            '<div style="flex:1;padding:16px 20px;border-right:1px solid var(--border)">' +
+              '<div style="font:600 9px/1 var(--font-mono);text-transform:uppercase;letter-spacing:1px;color:var(--muted);margin-bottom:8px">' + monthlyLbl + '</div>' +
+              '<div style="font:700 22px/1 var(--font-mono);color:var(--text)">' + sym + monthlyVal.toLocaleString('en-GB',{maximumFractionDigits:0}) + '</div>' +
+              '<div style="font:500 10px/1 var(--font-mono);color:var(--muted);margin-top:6px">' + monthlySub + '</div>' +
+            '</div>' +
+            '<div style="flex:1;padding:16px 20px">' +
+              '<div style="font:600 9px/1 var(--font-mono);text-transform:uppercase;letter-spacing:1px;color:var(--muted);margin-bottom:8px">Outstanding</div>' +
+              '<div style="font:700 22px/1 var(--font-mono);color:' + outColor + '">' + (isOverpaid ? '−' : '') + sym + Math.abs(netRemaining).toLocaleString('en-GB',{maximumFractionDigits:0}) + '</div>' +
+              '<div style="font:500 10px/1 var(--font-mono);color:var(--muted);margin-top:6px">' + outSub + '</div>' +
+            '</div>' +
+          '</div>' +
+          (!paye && excessDays > 0
+            ? '<div style="padding:8px 20px;font:500 11px/1 var(--font-mono);color:var(--negative);border-bottom:1px solid var(--border)">' +
+              '⚠ ' + excessDays + ' excess day' + (excessDays > 1 ? 's' : '') + ' — −' + sym + excessDeduction.toLocaleString('en-GB',{minimumFractionDigits:2}) + ' deducted' +
+              '</div>'
+            : '');
+        })()}
 
         <div class="sc-sections">
 
@@ -1708,9 +1705,6 @@ async function loadSalaryPage() {
               <span class="sc-chevron">›</span>
             </button>
             <div class="sc-sec-body">
-              <div class="sc-sec-actions">
-                <button class="btn btn-primary btn-sm" onclick="openSalaryPaymentModal(${emp.employee_id})">+ Log Payment</button>
-              </div>
               ${payments.length ? payments.map(p => `
                 <div class="sc-item">
                   <span class="sc-item-date">${MONTHS[p.payment_month]?.slice(0,3)||p.payment_month} ${p.payment_year}</span>
