@@ -471,25 +471,88 @@ app.get('/api/employee/my-records', requireAuth, async (req, res) => {
 app.post('/api/employee/day-off', requireAuth, async (req, res) => {
   if (req.user.role !== 'employee') return res.status(403).json({ error: 'Employees only' });
   const { date, is_day_off } = req.body;
-  if (!date || !is_day_off) return res.status(400).json({ error: 'date and is_day_off required' });
-  const val = parseFloat(is_day_off);
-  if (![0.5, 1].includes(val)) return res.status(400).json({ error: 'is_day_off must be 0.5 or 1' });
-  try {
-    await q(
-      `INSERT INTO daily_records (employee_id, record_date, is_day_off, break_minutes, phone_minutes, wasted_minutes, late_minutes, notes)
-       VALUES (?, ?, ?, 0, 0, 0, 0, 'Submitted via employee portal')
-       ON CONFLICT (employee_id, record_date) DO UPDATE SET is_day_off = EXCLUDED.is_day_off`,
-      [req.user.employee_id, date, val]
-    );
-    res.json({ success: true });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  if (!date) return res.status(400).json({ error: 'date required' });
+  const val = parseFloat(is_day_off) || 1;
+  // Check for duplicate
+  const { rows: existing } = await q('SELECT id FROM day_off_requests WHERE employee_id = ? AND request_date = ? AND status != ?', [req.user.employee_id, date, 'declined']);
+  if (existing.length) return res.status(409).json({ error: 'A request already exists for this date' });
+  await q('INSERT INTO day_off_requests (employee_id, request_date, is_day_off) VALUES (?, ?, ?)', [req.user.employee_id, date, val]);
+  res.json({ success: true, status: 'pending' });
 });
 
-// Employee: cancel own day-off request
+// Employee: cancel a pending day-off request
 app.delete('/api/employee/day-off/:date', requireAuth, async (req, res) => {
   if (req.user.role !== 'employee') return res.status(403).json({ error: 'Employees only' });
-  await q('DELETE FROM daily_records WHERE employee_id = ? AND record_date = ? AND is_day_off > 0', [req.user.employee_id, req.params.date]);
+  await q('DELETE FROM day_off_requests WHERE employee_id = ? AND request_date = ? AND status = ?', [req.user.employee_id, req.params.date, 'pending']);
   res.json({ success: true });
+});
+
+// Admin: get all pending day-off requests
+app.get('/api/day-off-requests', requireAuth, requireAdmin, async (req, res) => {
+  const { rows } = await q(`SELECT r.*, e.name as employee_name, e.department, e.job_title
+    FROM day_off_requests r JOIN employees e ON r.employee_id = e.id
+    WHERE r.status = 'pending' ORDER BY r.request_date ASC`);
+  res.json(rows);
+});
+
+// Admin: approve a day-off request
+app.put('/api/day-off-requests/:id/approve', requireAuth, requireAdmin, async (req, res) => {
+  const { rows } = await q('SELECT * FROM day_off_requests WHERE id = ?', [req.params.id]);
+  if (!rows.length) return res.status(404).json({ error: 'Not found' });
+  const r = rows[0];
+  // Write to daily_records
+  await q(`INSERT INTO daily_records (employee_id, record_date, is_day_off, notes) VALUES (?, ?, ?, ?)
+    ON CONFLICT (employee_id, record_date) DO UPDATE SET is_day_off = EXCLUDED.is_day_off`,
+    [r.employee_id, r.request_date, r.is_day_off, 'Approved day off']);
+  // Update request status
+  await q('UPDATE day_off_requests SET status = ?, reviewed_at = NOW(), reviewed_by = ? WHERE id = ?',
+    ['approved', req.user.username || 'admin', req.params.id]);
+  // Notify employee
+  const dateStr = new Date(r.request_date).toLocaleDateString('en-GB', {day:'2-digit',month:'short',year:'numeric'});
+  const typeLabel = parseFloat(r.is_day_off) === 1 ? 'Full day' : 'Half day';
+  await q('INSERT INTO emp_notifications (employee_id, message, type) VALUES (?, ?, ?)',
+    [r.employee_id, `Your ${typeLabel} off request for ${dateStr} has been approved.`, 'approved']);
+  res.json({ success: true });
+});
+
+// Admin: decline a day-off request
+app.put('/api/day-off-requests/:id/decline', requireAuth, requireAdmin, async (req, res) => {
+  const { reason } = req.body;
+  const { rows } = await q('SELECT * FROM day_off_requests WHERE id = ?', [req.params.id]);
+  if (!rows.length) return res.status(404).json({ error: 'Not found' });
+  const r = rows[0];
+  await q('UPDATE day_off_requests SET status = ?, decline_reason = ?, reviewed_at = NOW(), reviewed_by = ? WHERE id = ?',
+    ['declined', reason || '', req.user.username || 'admin', req.params.id]);
+  // Notify employee
+  const dateStr = new Date(r.request_date).toLocaleDateString('en-GB', {day:'2-digit',month:'short',year:'numeric'});
+  const typeLabel = parseFloat(r.is_day_off) === 1 ? 'Full day' : 'Half day';
+  const msg = reason
+    ? `Your ${typeLabel} off request for ${dateStr} was declined. Reason: ${reason}`
+    : `Your ${typeLabel} off request for ${dateStr} was declined.`;
+  await q('INSERT INTO emp_notifications (employee_id, message, type) VALUES (?, ?, ?)',
+    [r.employee_id, msg, 'declined']);
+  res.json({ success: true });
+});
+
+// Employee: get own notifications
+app.get('/api/employee/notifications', requireAuth, async (req, res) => {
+  if (req.user.role !== 'employee') return res.status(403).json({ error: 'Employees only' });
+  const { rows } = await q('SELECT * FROM emp_notifications WHERE employee_id = ? ORDER BY created_at DESC LIMIT 20', [req.user.employee_id]);
+  res.json(rows);
+});
+
+// Employee: mark all notifications as read
+app.put('/api/employee/notifications/read-all', requireAuth, async (req, res) => {
+  if (req.user.role !== 'employee') return res.status(403).json({ error: 'Employees only' });
+  await q('UPDATE emp_notifications SET is_read = 1 WHERE employee_id = ?', [req.user.employee_id]);
+  res.json({ success: true });
+});
+
+// Employee: get own day-off requests with status
+app.get('/api/employee/day-off-requests', requireAuth, async (req, res) => {
+  if (req.user.role !== 'employee') return res.status(403).json({ error: 'Employees only' });
+  const { rows } = await q('SELECT * FROM day_off_requests WHERE employee_id = ? ORDER BY request_date DESC', [req.user.employee_id]);
+  res.json(rows);
 });
 
 // ─── YEAR STATS (days-off allowance) ─────────────────────────────────────────
