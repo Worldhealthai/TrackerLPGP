@@ -109,6 +109,23 @@ async function loadEmployees() {
 async function loadEmpTable() {
   const res = await fetch('/api/employees/all');
   allEmployeesData = await res.json();
+
+  // Populate dept filter
+  const deptSel = document.getElementById('empDeptFilter');
+  if (deptSel) {
+    const depts = [...new Set(allEmployeesData.map(e => e.department).filter(Boolean))].sort();
+    deptSel.innerHTML = '<option value="">All</option>' + depts.map(d => `<option value="${esc(d)}">${esc(d)}</option>`).join('');
+  }
+
+  // Update count tag and sub
+  const activeEmps = allEmployeesData.filter(e => e.active);
+  const countTag = document.getElementById('empCountTag');
+  if (countTag) countTag.textContent = activeEmps.length;
+  const payrollCount = activeEmps.filter(e => e.employment_type === 'payroll').length;
+  const seCount = activeEmps.filter(e => e.employment_type === 'self_employed').length;
+  const empSub = document.getElementById('empSub');
+  if (empSub) empSub.textContent = `// ${payrollCount} payroll · ${seCount} self-employed`;
+
   renderEmpTable();
 }
 
@@ -118,14 +135,17 @@ function filterEmpTable() {
 
 function renderEmpTable() {
   const search = (document.getElementById('empSearch')?.value || '').trim().toLowerCase();
-  const list = search
-    ? allEmployeesData.filter(e => (e.name || '').toLowerCase().includes(search))
-    : allEmployeesData;
+  const deptFilter = (document.getElementById('empDeptFilter')?.value || '').toLowerCase();
+  const typeFilter = document.getElementById('empTypeFilter')?.value || '';
+  let list = allEmployeesData;
+  if (search) list = list.filter(e => (e.name || '').toLowerCase().includes(search) || (e.department || '').toLowerCase().includes(search));
+  if (deptFilter) list = list.filter(e => (e.department || '').toLowerCase() === deptFilter);
+  if (typeFilter) list = list.filter(e => e.employment_type === typeFilter);
   const tbody = document.getElementById('empTable');
   tbody.innerHTML = '';
   if (!list.length) {
-    const msg = search ? 'No employees match your search.' : 'No employees yet.';
-    tbody.innerHTML = `<tr><td colspan="6"><div class="empty-state"><div class="icon">👥</div><div>${msg}</div></div></td></tr>`;
+    const msg = (search || deptFilter || typeFilter) ? 'No employees match your search.' : 'No employees yet.';
+    tbody.innerHTML = `<tr><td colspan="8"><div class="empty-state"><div class="icon">👥</div><div>${msg}</div></div></td></tr>`;
     return;
   }
   list.forEach(emp => {
@@ -134,11 +154,17 @@ function renderEmpTable() {
     const terminated = !emp.active && emp.termination_date;
     const statusBadge = emp.active ? 'badge-green' : (terminated ? 'badge-red' : 'badge-grey');
     const statusLabel = emp.active ? 'Active' : (terminated ? `Terminated ${emp.termination_date.slice(0,10)}` : 'Inactive');
+    const initials = (emp.name || '?').split(' ').filter(Boolean).slice(0,2).map(w => w[0]).join('').toUpperCase();
     const tr = document.createElement('tr');
     tr.innerHTML = `
       <td>
-        <div style="font-weight:700;color:var(--text)">${esc(emp.name)}</div>
-        ${emp.email ? `<div style="font-size:0.74rem;color:var(--muted);margin-top:2px">${esc(emp.email)}</div>` : ''}
+        <div style="display:flex;align-items:center;gap:10px">
+          <div style="width:28px;height:28px;border-radius:7px;background:var(--accent-soft);border:1px solid var(--accent-line);color:var(--accent);font:700 10px/1 var(--font-mono);display:grid;place-items:center;flex-shrink:0">${initials}</div>
+          <div>
+            <div style="font-weight:600;color:var(--text);font-size:12.5px">${esc(emp.name)}</div>
+            <div style="font-size:10.5px;color:var(--muted);font-family:var(--font-mono)">${esc(emp.job_title||emp.department||'')}</div>
+          </div>
+        </div>
       </td>
       <td>
         ${emp.department ? `<div style="font-weight:600;font-size:0.83rem">${esc(emp.department)}</div>` : ''}
@@ -320,7 +346,33 @@ async function loadDashboard() {
   const hotelUnpaidCount = hotelData.filter(h => h.status !== 'paid').length;
   const hotelPaidTotal   = hotelData.reduce((a, h) => a + (parseFloat(h.paid_amount) || 0), 0);
 
+  // Compute total deductions and flagged employees from summary data
+  const totalDeduct = summary.reduce((a, row) => a + (parseFloat(row.total_deduction) || 0), 0);
+  const flaggedCount = summary.filter(row => (parseFloat(row.excess_days) || 0) > 0).length;
+
   document.getElementById('dashStats').innerHTML = `
+    <div style="display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:1px;background:var(--border);border:1px solid var(--border);border-radius:var(--radius);overflow:hidden;margin-bottom:16px">
+      <div style="background:var(--surface);padding:18px 20px;display:flex;flex-direction:column;gap:10px">
+        <div style="font:600 10px/1 var(--font-mono);text-transform:uppercase;letter-spacing:1px;color:var(--muted)">Headcount</div>
+        <div style="font:600 32px/1 var(--font-mono);color:var(--text);letter-spacing:-1px">${String(activeEmps.length).padStart(2,'0')}</div>
+        <div style="font:500 11px/1 var(--font-mono);color:var(--positive)">↑ active employees</div>
+      </div>
+      <div style="background:var(--surface);padding:18px 20px;display:flex;flex-direction:column;gap:10px">
+        <div style="font:600 10px/1 var(--font-mono);text-transform:uppercase;letter-spacing:1px;color:var(--muted)">Payroll · Self-emp</div>
+        <div style="font:600 32px/1 var(--font-mono);color:var(--text);letter-spacing:-1px">${payrollCount}<span style="color:var(--dim);font-size:20px">·</span>${seCount}</div>
+        <div style="font:500 11px/1 var(--font-mono);color:var(--muted)">stable</div>
+      </div>
+      <div style="background:var(--surface);padding:18px 20px;display:flex;flex-direction:column;gap:10px">
+        <div style="font:600 10px/1 var(--font-mono);text-transform:uppercase;letter-spacing:1px;color:var(--muted)">Total Deductions</div>
+        <div style="font:600 28px/1 var(--font-mono);color:var(--text);letter-spacing:-1px">£${totalDeduct.toFixed(0)}</div>
+        <div style="font:500 11px/1 var(--font-mono);color:var(--negative)">↓ YTD this year</div>
+      </div>
+      <div style="background:var(--surface);padding:18px 20px;display:flex;flex-direction:column;gap:10px">
+        <div style="font:600 10px/1 var(--font-mono);text-transform:uppercase;letter-spacing:1px;color:var(--muted)">Flagged Employees</div>
+        <div style="font:600 32px/1 var(--font-mono);color:${flaggedCount > 0 ? 'var(--negative)' : 'var(--text)'};letter-spacing:-1px">${String(flaggedCount).padStart(2,'0')}</div>
+        <div style="font:500 11px/1 var(--font-mono);color:var(--muted)">${flaggedCount > 0 ? `${flaggedCount} over allowance` : 'all within allowance'}</div>
+      </div>
+    </div>
     <div class="dash-bento">
       <div class="dash-hero-card">
         <div class="dash-hero-glow"></div>
@@ -1001,13 +1053,27 @@ async function loadAdmins() {
   const res = await fetch('/api/admins');
   if (!res.ok) return;
   const admins = await res.json();
+
+  // Update adminSub
+  const adminCount = admins.length;
+  const adminRoleCount = admins.filter(a => a.role === 'admin').length;
+  const managerCount = admins.filter(a => a.role === 'manager').length;
+  const adminSub = document.getElementById('adminSub');
+  if (adminSub) adminSub.textContent = `// ${adminCount} account${adminCount !== 1 ? 's' : ''} · ${adminRoleCount} admin · ${managerCount} manager`;
+
   const tbody = document.getElementById('adminTable');
   tbody.innerHTML = '';
   admins.forEach(a => {
+    const initials = (a.username || '?').slice(0, 2).toUpperCase();
     const tr = document.createElement('tr');
     tr.innerHTML = `
-      <td><strong>${esc(a.username)}</strong></td>
-      <td><span class="badge ${a.role==='admin'?'badge-blue':'badge-grey'}">${a.role}</span></td>
+      <td>
+        <div style="display:flex;align-items:center;gap:10px">
+          <div style="width:28px;height:28px;border-radius:7px;background:var(--accent-soft);border:1px solid var(--accent-line);color:var(--accent);font:700 10px/1 var(--font-mono);display:grid;place-items:center;flex-shrink:0">${initials}</div>
+          <strong>${esc(a.username)}</strong>
+        </div>
+      </td>
+      <td><span class="badge ${a.role==='admin'?'badge-green':'badge-blue'}">${a.role.toUpperCase()}</span></td>
       <td>${a.created_at.slice(0,10)}</td>
       <td style="text-align:right">
         <button class="btn btn-ghost btn-sm" onclick="resetPw(${a.id})">Reset PW</button>
@@ -1015,6 +1081,61 @@ async function loadAdmins() {
       </td>`;
     tbody.appendChild(tr);
   });
+
+  // Append roles + recent sign-ins section (remove old one if present)
+  const oldExtra = document.getElementById('adminExtraSection');
+  if (oldExtra) oldExtra.remove();
+
+  const signinRows = admins.map(a => {
+    const initials = (a.username || '?').slice(0, 2).toUpperCase();
+    return `
+      <div style="display:flex;align-items:center;gap:10px;padding:10px 16px;border-bottom:1px solid var(--border)">
+        <span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--positive);flex-shrink:0"></span>
+        <div style="width:28px;height:28px;border-radius:7px;background:var(--accent-soft);border:1px solid var(--accent-line);color:var(--accent);font:700 10px/1 var(--font-mono);display:grid;place-items:center;flex-shrink:0">${initials}</div>
+        <div style="flex:1;min-width:0">
+          <div style="font:600 12.5px/1 var(--font-mono);color:var(--text)">${esc(a.username)}</div>
+          <div style="font:400 10.5px/1 var(--font-mono);color:var(--muted);margin-top:3px">${a.created_at.slice(0,10)}</div>
+        </div>
+        <span class="badge ${a.role==='admin'?'badge-green':'badge-blue'}" style="font-size:0.65rem">${a.role.toUpperCase()}</span>
+      </div>`;
+  }).join('');
+
+  const extraSection = document.createElement('div');
+  extraSection.id = 'adminExtraSection';
+  extraSection.innerHTML = `
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:16px">
+      <div class="card" style="margin-bottom:0">
+        <div class="card-header">
+          <span class="card-title">Roles</span>
+        </div>
+        <div style="padding:16px">
+          <div style="margin-bottom:14px">
+            <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
+              <span class="badge badge-green">ADMIN</span>
+              <span style="font:600 12.5px/1 var(--font-sans);color:var(--text)">Full access</span>
+            </div>
+            <div style="font:400 11.5px/1.5 var(--font-mono);color:var(--muted)">Manage admins, delete records, terminate employees, all exports.</div>
+          </div>
+          <div>
+            <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
+              <span class="badge badge-blue">MANAGER</span>
+              <span style="font:600 12.5px/1 var(--font-sans);color:var(--text)">Day-to-day</span>
+            </div>
+            <div style="font:400 11.5px/1.5 var(--font-mono);color:var(--muted)">Add records, log payments, edit employees · no admin or termination.</div>
+          </div>
+        </div>
+      </div>
+      <div class="card" style="margin-bottom:0">
+        <div class="card-header">
+          <span class="card-title">Recent sign-ins</span>
+          <span style="font:600 10px/1 var(--font-mono);color:var(--muted);text-transform:uppercase;letter-spacing:0.6px">Last 7 days</span>
+        </div>
+        <div id="adminSignins">${signinRows || '<div style="padding:16px;color:var(--muted);font-size:0.85rem">No accounts yet.</div>'}</div>
+      </div>
+    </div>`;
+
+  const adminPage = document.getElementById('page-admins');
+  if (adminPage) adminPage.appendChild(extraSection);
 }
 
 function openAdminModal() { openModal('adminModal'); }
@@ -1114,6 +1235,16 @@ async function loadSalaryPage() {
       const labels = { all:'All', payroll:'Payroll', self_employed:'Self-Employed', terminated:'Terminated' };
       t.textContent = `${labels[key]} (${counts[key]})`;
     });
+
+    // Update salary page tag and sub
+    const salaryPageTag = document.getElementById('salaryPageTag');
+    if (salaryPageTag) salaryPageTag.textContent = year;
+    const salarySub = document.getElementById('salarySub');
+    if (salarySub) {
+      const activeCount = searched.filter(e => !e.is_terminated).length;
+      const flagged = searched.filter(e => !e.is_terminated && (parseFloat(e.excess_days) || 0) > 0).length;
+      salarySub.textContent = `// ${activeCount} account${activeCount !== 1 ? 's' : ''} · ${flagged > 0 ? flagged + ' flagged' : 'all clear'}`;
+    }
 
     const tab = activeSalaryTab();
     let rows = [...searched];
@@ -1853,6 +1984,14 @@ async function loadCalendar() {
   calData = await calRes.json();
   calReminders = remRes.ok ? await remRes.json() : [];
 
+  // Update calSub
+  const calSub = document.getElementById('calSub');
+  if (calSub) {
+    const daysOffCount = calData.length;
+    const reminderCount = calReminders.length;
+    calSub.textContent = `// ${MONTHS[calMonth]} ${calYear} · ${daysOffCount} day${daysOffCount !== 1 ? 's' : ''} off · ${reminderCount} reminder${reminderCount !== 1 ? 's' : ''}`;
+  }
+
   const byDate = {};
   calData.forEach(r => { if (!byDate[r.record_date]) byDate[r.record_date] = []; byDate[r.record_date].push(r); });
 
@@ -1918,31 +2057,62 @@ async function loadCalendar() {
 function renderCalSummary(byDate, empFilter) {
   const summary = document.getElementById('calSummary');
   const dates = Object.keys(byDate).sort();
-  if (!dates.length) { summary.classList.add('hidden'); return; }
 
-  let html = '';
+  // Compute stats
+  let fullDaysTotal = 0;
+  let halfDaysTotal = 0;
+  let calendarHtml = '';
+
   dates.forEach(date => {
     const entries = byDate[date].filter(r =>
       !empFilter || String(r.employee_id) === empFilter
     );
     if (!entries.length) return;
+    entries.forEach(r => {
+      const v = parseFloat(r.is_day_off);
+      if (v === 1) fullDaysTotal++;
+      else if (v === 0.5) halfDaysTotal++;
+    });
     const chips = entries.map(r => {
       const cls = parseFloat(r.is_day_off) === 1 ? 'chip-full' : 'chip-half';
       const label = parseFloat(r.is_day_off) === 1 ? 'Full' : 'Half';
       return `<span class="cal-off-item"><span class="cal-chip ${cls}">${label}</span> ${esc(r.employee_name)}</span>`;
     }).join('');
-    html += `<div class="cal-summary-card">
+    calendarHtml += `<div class="cal-summary-card">
       <h4>${formatDate(date)}</h4>
       <div class="cal-off-list">${chips}</div>
     </div>`;
   });
 
-  if (html) {
-    summary.innerHTML = `<h3 style="margin-bottom:12px;font-size:0.95rem;color:var(--muted)">Days Off This Month</h3>` + html;
-    summary.classList.remove('hidden');
+  const reminderCount = calReminders.length;
+  const hasSomething = calendarHtml || fullDaysTotal || halfDaysTotal || reminderCount;
+  if (!hasSomething) { summary.classList.add('hidden'); return; }
+
+  const statTiles = `
+    <div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:1px;background:var(--border);border:1px solid var(--border);border-radius:var(--radius);overflow:hidden;margin-bottom:16px">
+      <div style="background:var(--surface);padding:16px 18px;display:flex;flex-direction:column;gap:8px">
+        <div style="font:600 10px/1 var(--font-mono);text-transform:uppercase;letter-spacing:1px;color:var(--muted)">Full Days Off</div>
+        <div style="font:600 28px/1 var(--font-mono);color:var(--text);letter-spacing:-1px">${String(fullDaysTotal).padStart(2,'0')}</div>
+        <div style="font:500 11px/1 var(--font-mono);color:var(--negative)">this month</div>
+      </div>
+      <div style="background:var(--surface);padding:16px 18px;display:flex;flex-direction:column;gap:8px">
+        <div style="font:600 10px/1 var(--font-mono);text-transform:uppercase;letter-spacing:1px;color:var(--muted)">Half Days</div>
+        <div style="font:600 28px/1 var(--font-mono);color:var(--text);letter-spacing:-1px">${String(halfDaysTotal).padStart(2,'0')}</div>
+        <div style="font:500 11px/1 var(--font-mono);color:var(--warning)">this month</div>
+      </div>
+      <div style="background:var(--surface);padding:16px 18px;display:flex;flex-direction:column;gap:8px">
+        <div style="font:600 10px/1 var(--font-mono);text-transform:uppercase;letter-spacing:1px;color:var(--muted)">Expense Reminders</div>
+        <div style="font:600 28px/1 var(--font-mono);color:var(--text);letter-spacing:-1px">${String(reminderCount).padStart(2,'0')}</div>
+        <div style="font:500 11px/1 var(--font-mono);color:var(--info)">this month</div>
+      </div>
+    </div>`;
+
+  if (calendarHtml) {
+    summary.innerHTML = statTiles + `<h3 style="margin-bottom:12px;font-size:0.95rem;color:var(--muted)">Days Off This Month</h3>` + calendarHtml;
   } else {
-    summary.classList.add('hidden');
+    summary.innerHTML = statTiles;
   }
+  summary.classList.remove('hidden');
 }
 
 function openDayModal(dateStr, entries, remindersToday = []) {
@@ -2313,6 +2483,14 @@ function renderHotelSummary() {
   const paid    = hotelData.filter(r => r.status === 'paid').length;
   const partial = hotelData.filter(r => r.status === 'partial').length;
   const pending = hotelData.filter(r => r.status === 'pending').length;
+
+  // Update hotelSub
+  const hotelSub = document.getElementById('hotelSub');
+  if (hotelSub) {
+    const unpaid = pending + partial;
+    hotelSub.textContent = `// ${total} event${total !== 1 ? 's' : ''} · ${paid} paid · ${unpaid > 0 ? unpaid + ' outstanding' : 'all settled'}`;
+  }
+
   document.getElementById('hotelSummary').innerHTML = `
     <div class="stat-card blue"><div class="stat-label">Total Events</div><div class="stat-value">${total}</div></div>
     <div class="stat-card green"><div class="stat-label">Paid</div><div class="stat-value">${paid}</div></div>
