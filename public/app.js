@@ -2436,27 +2436,30 @@ async function renderSalaryReminderPanel() {
 
     panel.classList.remove('hidden');
     const monthName = MONTHS[month];
-    panel.innerHTML = `
-      <div class="salary-reminder-header">
-        <span>💳 ${unpaid.length} employee${unpaid.length > 1 ? 's' : ''} not yet paid for ${monthName} ${year}</span>
-        <button class="btn btn-ghost btn-sm" onclick="dismissAllReminders()">Dismiss all</button>
-      </div>
-      ${unpaid.map(emp => {
-        const sym = currencySymbol(emp.currency || 'GBP');
-        const grossMonthly = (parseFloat(emp.annual_salary) || 0) / 12;
-        const netMo = emp.net_monthly ? parseFloat(emp.net_monthly) : null;
-        const displayAmount = netMo ?? grossMonthly;
-        const taxLabel = netMo ? ` <span style="font-size:0.72rem;color:var(--muted)">(net take-home)</span>` : '';
-        return `
-          <div class="salary-reminder-row">
-            <div class="salary-reminder-name">${esc(emp.name)}</div>
-            <div class="salary-reminder-amount">${sym}${displayAmount.toLocaleString('en-GB',{minimumFractionDigits:2})} /mo${taxLabel}</div>
-            <div class="salary-reminder-actions">
-              <button class="btn btn-ghost btn-sm" onclick="skipSalaryReminder(${emp.employee_id},${year},${month})">Skip</button>
-              <button class="btn btn-primary btn-sm" onclick="openSalaryPaymentModal(${emp.employee_id})">Log Payment</button>
-            </div>
-          </div>`;
-      }).join('')}`;
+    const isOpen = localStorage.getItem('salaryReminderOpen') === '1';
+    const rows = unpaid.map(emp => {
+      const sym = currencySymbol(emp.currency || 'GBP');
+      const grossMonthly = (parseFloat(emp.annual_salary) || 0) / 12;
+      const netMo = emp.net_monthly ? parseFloat(emp.net_monthly) : null;
+      const displayAmount = netMo ?? grossMonthly;
+      const taxLabel = netMo ? ' <span style="font-size:0.72rem;color:var(--muted)">(net take-home)</span>' : '';
+      return '<div class="salary-reminder-row">' +
+        '<div class="salary-reminder-name">' + esc(emp.name) + '</div>' +
+        '<div class="salary-reminder-amount">' + sym + displayAmount.toLocaleString('en-GB',{minimumFractionDigits:2}) + ' /mo' + taxLabel + '</div>' +
+        '<div class="salary-reminder-actions">' +
+          '<button class="btn btn-ghost btn-sm" onclick="skipSalaryReminder(' + emp.employee_id + ',' + year + ',' + month + ')">Skip</button>' +
+          '<button class="btn btn-primary btn-sm" onclick="openSalaryPaymentModal(' + emp.employee_id + ')">Log Payment</button>' +
+        '</div></div>';
+    }).join('');
+    panel.innerHTML =
+      '<div class="salary-reminder-header" style="cursor:pointer" onclick="toggleSalaryReminder()">' +
+        '<span>&#128179; ' + unpaid.length + ' employee' + (unpaid.length > 1 ? 's' : '') + ' not yet paid for ' + monthName + ' ' + year + '</span>' +
+        '<div style="display:flex;gap:8px;align-items:center">' +
+          '<button class="btn btn-ghost btn-sm" onclick="event.stopPropagation();dismissAllReminders()">Dismiss all</button>' +
+          '<button class="btn btn-ghost btn-sm" id="salaryReminderToggleBtn" style="font-size:11px;padding:4px 8px">' + (isOpen ? '&#9650; Hide' : '&#9660; Show ' + unpaid.length) + '</button>' +
+        '</div>' +
+      '</div>' +
+      '<div id="salaryReminderBody" style="' + (isOpen ? '' : 'display:none') + '">' + rows + '</div>';
   } catch(e) {
     panel.classList.add('hidden');
   }
@@ -2465,6 +2468,16 @@ async function renderSalaryReminderPanel() {
 function skipSalaryReminder(empId, year, month) {
   localStorage.setItem(`paySkip_${year}_${month}_${empId}`, '1');
   renderSalaryReminderPanel();
+}
+
+function toggleSalaryReminder() {
+  const body = document.getElementById('salaryReminderBody');
+  const btn  = document.getElementById('salaryReminderToggleBtn');
+  if (!body) return;
+  const opening = body.style.display === 'none';
+  body.style.display = opening ? '' : 'none';
+  if (btn) btn.innerHTML = opening ? '&#9650; Hide' : '&#9660; Show';
+  localStorage.setItem('salaryReminderOpen', opening ? '1' : '0');
 }
 
 function dismissAllReminders() {
