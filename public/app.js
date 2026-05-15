@@ -1329,6 +1329,7 @@ async function loadSalaryPage() {
             <div class="sc-fig-lbl">Days off</div>
             <div class="sc-fig-val">${totalDaysOff} <span style="font-size:0.75rem;font-weight:600;color:#9ca3af">/ ${allowanceDays}</span></div>
             <div class="sc-fig-sub">${allowanceLabel}</div>
+            ${excessDays > 0 ? `<div class="sc-fig-deduct">−${sym}${excessDeduction.toLocaleString('en-GB',{minimumFractionDigits:2,maximumFractionDigits:2})} deducted</div>` : ''}
           </div>`}
           <div class="sc-fig ${figOutClass}">
             <div class="sc-fig-lbl">Outstanding</div>

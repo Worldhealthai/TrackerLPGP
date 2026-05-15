@@ -1177,6 +1177,7 @@ tbody tr:hover td strong { color: var(--primary); }
   font-size: 1.1rem; font-weight: 700; color: var(--text); letter-spacing: -0.4px;
 }
 .sc-fig-sub { font-size: 0.67rem; color: var(--muted-light); margin-top: 3px; }
+.sc-fig-deduct { font-size: 0.67rem; font-weight: 700; color: var(--danger); margin-top: 4px; }
 .sc-fig.sc-fig-hi  .sc-fig-val { color: var(--primary); }
 .sc-fig.sc-fig-bad .sc-fig-val { color: var(--danger); }
 .sc-fig.sc-fig-ok  .sc-fig-val { color: var(--success); }
