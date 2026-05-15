@@ -119,16 +119,16 @@
         </div>
         <div id="dashStats"></div>
 
-        <!-- Contract expiry + headcount row -->
-        <div class="dash-two-col">
-          <div id="contractExpiryPanel"></div>
-          <div id="headcountPanel"></div>
-        </div>
-
-        <!-- Upcoming reminders + Activity feed row -->
-        <div class="dash-two-col" style="margin-top:16px">
-          <div id="upcomingPanel"></div>
-          <div id="activityPanel"></div>
+        <!-- Two-column layout: left = mini cards + upcoming, right = headcount + activity -->
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;align-items:start">
+          <div style="display:flex;flex-direction:column;gap:16px">
+            <div id="contractExpiryPanel"></div>
+            <div id="upcomingPanel"></div>
+          </div>
+          <div style="display:flex;flex-direction:column;gap:16px">
+            <div id="headcountPanel"></div>
+            <div id="activityPanel"></div>
+          </div>
         </div>
 
         <div class="card">
