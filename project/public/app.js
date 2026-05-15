@@ -661,7 +661,7 @@ async function loadEmployeeRecords() {
             </span>
             <span style="font-size:1rem;font-weight:800;color:var(--danger)">−£${deduction.toFixed(2)} deduction</span>
           </div>
-          <div style="font-size:0.78rem;opacity:0.85;background:rgba(255,255,255,0.5);border-radius:6px;padding:6px 10px;display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+          <div style="font-size:0.78rem;background:rgba(0,0,0,0.25);border-radius:6px;padding:6px 10px;display:flex;gap:8px;align-items:center;flex-wrap:wrap">
             <span>📐</span>
             <span>${used} used − ${allowance} free = <strong>${excess} excess</strong></span>
             <span style="opacity:0.4">·</span>
