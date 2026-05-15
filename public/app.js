@@ -276,10 +276,14 @@ async function loadDashboard() {
   const month = now.getMonth() + 1;
 
   document.getElementById('dashStats').innerHTML = `
-    <div class="skeleton skeleton-stat"></div>
-    <div class="skeleton skeleton-stat"></div>
-    <div class="skeleton skeleton-stat"></div>
-    <div class="skeleton skeleton-stat"></div>
+    <div class="dash-bento">
+      <div class="skeleton" style="height:200px;border-radius:18px"></div>
+      <div class="dash-mini-grid">
+        <div class="skeleton" style="height:72px;border-radius:14px"></div>
+        <div class="skeleton" style="height:72px;border-radius:14px"></div>
+        <div class="skeleton" style="height:72px;border-radius:14px"></div>
+      </div>
+    </div>
   `;
 
   const [summaryRes, salaryRes, upcomingRes, expiringRes, allEmpRes] = await Promise.all([
@@ -310,24 +314,43 @@ async function loadDashboard() {
   const seCount        = activeEmps.filter(e => e.employment_type === 'self_employed').length;
 
   document.getElementById('dashStats').innerHTML = `
-    <div class="stat-card blue">
-      <div class="stat-label">Active Headcount</div>
-      <div class="stat-value">${totalHeadcount}</div>
-      <div style="font-size:0.72rem;color:var(--muted);margin-top:4px">${payrollCount} payroll · ${seCount} self-emp</div>
-    </div>
-    <div class="stat-card blue">
-      <div class="stat-label">Annual Payroll Cost</div>
-      <div class="stat-value" style="font-size:1.45rem">£${fmtK(totalPayrollGBP)}</div>
-      <div style="font-size:0.72rem;color:var(--muted);margin-top:4px">GBP payroll · ${year}</div>
-    </div>
-    <div class="stat-card red">
-      <div class="stat-label">Total Deductions (${year})</div>
-      <div class="stat-value">£${totalDeduction.toFixed(0)}</div>
-    </div>
-    <div class="stat-card ${unpaidCount > 0 ? 'red' : 'green'}" style="cursor:pointer" onclick="navigate('salary')" title="Go to salary page">
-      <div class="stat-label">Unpaid This Month</div>
-      <div class="stat-value">${unpaidCount}</div>
-      <div style="font-size:0.72rem;color:var(--muted);margin-top:4px">Click to view →</div>
+    <div class="dash-bento">
+      <div class="dash-hero-card">
+        <div class="dash-hero-glow"></div>
+        <div class="dash-hero-label">Active Headcount</div>
+        <div class="dash-hero-value">${totalHeadcount}</div>
+        <div class="dash-hero-pills">
+          <span class="dash-hero-pill dash-hero-pill--blue">${payrollCount} Payroll</span>
+          <span class="dash-hero-pill dash-hero-pill--amber">${seCount} Self-Emp</span>
+        </div>
+        <div class="dash-hero-footer">Total workforce · ${year}</div>
+      </div>
+      <div class="dash-mini-grid">
+        <div class="dash-mini-card dash-mini--indigo">
+          <div class="dash-mini-icon">💷</div>
+          <div class="dash-mini-body">
+            <div class="dash-mini-label">Annual Payroll</div>
+            <div class="dash-mini-value">£${fmtK(totalPayrollGBP)}</div>
+            <div class="dash-mini-sub">GBP employees · ${year}</div>
+          </div>
+        </div>
+        <div class="dash-mini-card dash-mini--red">
+          <div class="dash-mini-icon">📉</div>
+          <div class="dash-mini-body">
+            <div class="dash-mini-label">Total Deductions</div>
+            <div class="dash-mini-value">£${totalDeduction.toFixed(0)}</div>
+            <div class="dash-mini-sub">Year to date · ${year}</div>
+          </div>
+        </div>
+        <div class="dash-mini-card ${unpaidCount > 0 ? 'dash-mini--alert' : 'dash-mini--green'}" style="cursor:pointer" onclick="navigate('salary')" title="Go to salary page">
+          <div class="dash-mini-icon">${unpaidCount > 0 ? '🔔' : '✅'}</div>
+          <div class="dash-mini-body">
+            <div class="dash-mini-label">Unpaid This Month</div>
+            <div class="dash-mini-value">${unpaidCount}</div>
+            <div class="dash-mini-sub">${unpaidCount > 0 ? 'Action required →' : 'All paid up'}</div>
+          </div>
+        </div>
+      </div>
     </div>
   `;
 
@@ -520,7 +543,7 @@ async function loadEmployeeRecords() {
       <div class="stat-card yellow"><div class="stat-label">Late Arrivals</div><div class="stat-value">${records.reduce((a,b)=>a+b.late_minutes,0)}m</div></div>
       <div class="stat-card red"><div class="stat-label">Full Days Off</div><div class="stat-value">${fullDays}</div></div>
       <div class="stat-card red"><div class="stat-label">Half Days Off</div><div class="stat-value">${halfDays}</div></div>
-      <div class="stat-card" style="border-color:#e0e7ff"><div class="stat-label" style="color:var(--primary)">Ref. Potential (not deducted)</div><div class="stat-value" style="color:var(--primary);font-size:1.3rem">£${refTotal.toFixed(2)}</div></div>
+      <div class="stat-card blue"><div class="stat-label">Ref. Potential (not deducted)</div><div class="stat-value" style="font-size:1.3rem">£${refTotal.toFixed(2)}</div></div>
     `;
     statsBar.classList.remove('hidden');
   } else {
@@ -776,11 +799,11 @@ async function loadPaymentsSection(empId, emp) {
         const pr = empData.pro_rated;
         if (pr) {
           proRatedHtml = `
-          <div style="margin-top:14px;background:#f0fdf4;border:1px solid #86efac;border-radius:10px;padding:14px 16px">
-            <div style="font-size:0.72rem;font-weight:700;text-transform:uppercase;letter-spacing:0.5px;color:#16a34a;margin-bottom:8px">Pro-Rated Reference · Started ${pr.start_date}</div>
+          <div style="margin-top:14px;background:rgba(16,185,129,0.07);border:1px solid rgba(16,185,129,0.22);border-radius:10px;padding:14px 16px">
+            <div style="font-size:0.72rem;font-weight:700;text-transform:uppercase;letter-spacing:0.5px;color:var(--success);margin-bottom:8px">Pro-Rated Reference · Started ${pr.start_date}</div>
             <div style="font-size:0.85rem;display:flex;justify-content:space-between;font-weight:600">
               <span style="color:var(--muted)">Expected to date</span>
-              <span style="color:#16a34a;font-weight:800">${sym}${pr.total_expected.toLocaleString('en-GB',{minimumFractionDigits:2})}</span>
+              <span style="color:var(--success);font-weight:800">${sym}${pr.total_expected.toLocaleString('en-GB',{minimumFractionDigits:2})}</span>
             </div>
           </div>`;
         }
@@ -1366,10 +1389,10 @@ async function loadSalaryPage() {
             </button>
             <div class="sc-sec-body">
               <div class="sc-sec-actions">
-                <button class="btn btn-ghost btn-sm" style="border-color:#f59e0b;color:#b45309" onclick="openBonusModal(${emp.employee_id})">+ Add Bonus</button>
+                <button class="btn btn-ghost btn-sm" style="border-color:rgba(245,158,11,0.35);color:var(--warning)" onclick="openBonusModal(${emp.employee_id})">+ Add Bonus</button>
               </div>
               ${bonuses.length ? bonuses.map(b => `
-                <div class="sc-item" style="background:#fffbeb;border-color:#fde68a">
+                <div class="sc-item" style="background:rgba(245,158,11,0.07);border-color:rgba(245,158,11,0.2)">
                   <span class="sc-item-date">${b.bonus_date||''}</span>
                   <span class="sc-item-amt amb">+${sym}${parseFloat(b.amount||0).toLocaleString('en-GB',{minimumFractionDigits:2})}</span>
                   <span class="sc-item-note">${esc(b.reason||'')}${b.notes?` · ${esc(b.notes)}`:''}</span>
@@ -1439,7 +1462,7 @@ async function loadSalaryPage() {
               ${salaryHistory.map(h => `
                 <div class="sc-hist-item">
                   <span class="sc-item-date">${h.effective_from||''}</span>
-                  <span style="font-weight:800;color:#16a34a;min-width:100px">${currencySymbol(h.currency||cur)}${parseFloat(h.annual_salary||0).toLocaleString('en-GB',{minimumFractionDigits:2})}/yr</span>
+                  <span style="font-weight:800;color:var(--success);min-width:100px">${currencySymbol(h.currency||cur)}${parseFloat(h.annual_salary||0).toLocaleString('en-GB',{minimumFractionDigits:2})}/yr</span>
                   <span class="sc-item-note">${esc(h.reason||'')}</span>
                   <button class="btn btn-danger btn-sm" onclick="deleteSalaryHistory(${h.id})">×</button>
                 </div>`).join('')}
