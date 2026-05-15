@@ -3159,114 +3159,147 @@ async function loadEmployeeCalendar() {
   const MONTHS_FULL = ['January','February','March','April','May','June','July','August','September','October','November','December'];
   const DAYS = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
 
-  // Find or create employee calendar container in #page-calendar
+  // Build page scaffold once
   let container = document.getElementById('empCalContainer');
   if (!container) {
     const page = document.getElementById('page-calendar');
     if (!page) return;
     page.innerHTML =
       '<div class="page-head">' +
-        '<div><h1>My Calendar</h1><div class="sub">// Your days off &amp; upcoming events</div></div>' +
+        '<div><h1>My Calendar</h1><div class="sub">// Your days off &amp; team bookings</div></div>' +
         '<button class="btn btn-primary" onclick="openEmpDayOffModal()">+ Request Day Off</button>' +
       '</div>' +
-      '<div id="empCalContainer"></div>' +
-      // Request day-off modal
-      '<div id="empDayOffModal" class="modal hidden">' +
-        '<div class="modal-overlay" onclick="closeModal(\'empDayOffModal\')"></div>' +
-        '<div class="modal-box" style="max-width:380px">' +
-          '<div class="modal-header"><span class="modal-title">Request Day Off</span>' +
-            '<button class="modal-close" onclick="closeModal(\'empDayOffModal\')">×</button></div>' +
-          '<div class="modal-body">' +
-            '<div class="form-group" style="margin-bottom:14px"><label>Date</label><input type="date" id="empDayOffDate"></div>' +
-            '<div class="form-group" style="margin-bottom:20px"><label>Type</label>' +
-              '<select id="empDayOffType"><option value="1">Full Day</option><option value="0.5">Half Day</option></select></div>' +
-            '<button class="btn btn-primary" style="width:100%" onclick="submitEmpDayOff()">Submit Request</button>' +
-          '</div>' +
-        '</div>' +
-      '</div>';
+      '<div id="empCalContainer"></div>';
     container = document.getElementById('empCalContainer');
   }
 
-  container.innerHTML = '<div class="skeleton" style="height:300px;border-radius:12px"></div>';
+  // Ensure day-off modal lives at body level (correct overlay behaviour)
+  if (!document.getElementById('empDayOffModal')) {
+    const m = document.createElement('div');
+    m.className = 'modal-overlay';
+    m.id = 'empDayOffModal';
+    m.innerHTML =
+      '<div class="modal" style="max-width:380px">' +
+        '<div class="modal-header"><span class="modal-title">Request Day Off</span>' +
+          '<button class="modal-close" onclick="closeModal(\'empDayOffModal\')">×</button></div>' +
+        '<div style="padding:20px;display:flex;flex-direction:column;gap:14px">' +
+          '<div class="form-group"><label>Date</label><input type="date" id="empDayOffDate"></div>' +
+          '<div class="form-group"><label>Type</label>' +
+            '<select id="empDayOffType"><option value="1">Full Day</option><option value="0.5">Half Day</option></select></div>' +
+          '<button class="btn btn-primary" style="width:100%" onclick="submitEmpDayOff()">Submit Request</button>' +
+        '</div>' +
+      '</div>';
+    m.addEventListener('click', function(e) { if (e.target === m) closeModal('empDayOffModal'); });
+    document.body.appendChild(m);
+  }
+
+  container.innerHTML = '<div class="skeleton" style="height:400px;border-radius:12px"></div>';
 
   try {
-    const [requestsRes, upcomingRes] = await Promise.all([
+    const [requestsRes, teamRes, upcomingRes] = await Promise.all([
       fetch('/api/employee/day-off-requests'),
+      fetch('/api/calendar?year=' + empCalYear + '&month=' + empCalMonth),
       fetch('/api/calendar-reminders/upcoming?days=60')
     ]);
     const allRequests = requestsRes.ok ? await requestsRes.json() : [];
-    const upcoming = upcomingRes.ok ? await upcomingRes.json() : [];
+    const teamRecords = teamRes.ok    ? await teamRes.json()     : [];
+    const upcoming    = upcomingRes.ok? await upcomingRes.json() : [];
 
-    // Filter requests to current month and build map: date → request
+    // Own requests this month: date → request
     const monthPrefix = empCalYear + '-' + String(empCalMonth).padStart(2,'0');
-    const requests = allRequests.filter(r => (r.request_date||'').startsWith(monthPrefix));
-    const recordMap = {};
-    requests.forEach(r => { recordMap[r.request_date.slice(0,10)] = r; });
+    const myRequests  = allRequests.filter(r => (r.request_date||'').startsWith(monthPrefix));
+    const myMap = {};
+    myRequests.forEach(r => { myMap[r.request_date.slice(0,10)] = r; });
 
-    // Build calendar grid
-    const firstDay = new Date(empCalYear, empCalMonth - 1, 1);
+    // Team days off: date → [names] (exclude self)
+    const teamMap = {};
+    const myEmpId = String((window.currentUser || {}).employee_id || '');
+    (Array.isArray(teamRecords) ? teamRecords : []).forEach(r => {
+      if (String(r.employee_id) === myEmpId) return;
+      if (!(parseFloat(r.is_day_off) > 0)) return;
+      const d = (r.record_date || '').slice(0,10);
+      if (!d.startsWith(monthPrefix)) return;
+      if (!teamMap[d]) teamMap[d] = [];
+      const name = r.name || ('Emp#' + r.employee_id);
+      if (!teamMap[d].includes(name)) teamMap[d].push(name);
+    });
+
+    // Calendar grid
+    const firstDay   = new Date(empCalYear, empCalMonth - 1, 1);
     const daysInMonth = new Date(empCalYear, empCalMonth, 0).getDate();
-    let startDow = firstDay.getDay(); // 0=Sun
-    startDow = startDow === 0 ? 6 : startDow - 1; // Mon=0
+    let startDow = firstDay.getDay();
+    startDow = startDow === 0 ? 6 : startDow - 1;
 
-    const today = new Date().toISOString().slice(0,10);
+    const todayStr = new Date().toLocaleDateString('en-CA');
 
     let gridHtml = '<div style="display:grid;grid-template-columns:repeat(7,1fr);gap:4px;margin-bottom:6px">';
-    DAYS.forEach(d => { gridHtml += '<div style="text-align:center;font:600 10px/1 var(--font-mono);color:var(--muted);padding:4px 0">' + d + '</div>'; });
-    gridHtml += '</div><div style="display:grid;grid-template-columns:repeat(7,1fr);gap:4px">';
+    DAYS.forEach(day => { gridHtml += '<div style="text-align:center;font:600 10px/1 var(--font-mono);color:var(--muted);padding:4px 0">' + day + '</div>'; });
+    gridHtml += '</div><div style="display:grid;grid-template-columns:repeat(7,1fr);gap:5px">';
 
-    // Empty cells before first day
     for (let i = 0; i < startDow; i++) gridHtml += '<div></div>';
 
     for (let d = 1; d <= daysInMonth; d++) {
       const dateStr = empCalYear + '-' + String(empCalMonth).padStart(2,'0') + '-' + String(d).padStart(2,'0');
-      const rec = recordMap[dateStr];
-      const isToday = dateStr === today;
-      const isPast  = dateStr < today;
-      const status = rec ? rec.status : null;
-      let bg = 'var(--surface-2)';
-      let label = '';
-      if (status === 'pending') {
-        bg = '#d9770622';
-        label = '<div style="font:700 8px/1 var(--font-mono);color:#fb923c;margin-top:2px">PENDING</div>';
-      } else if (status === 'approved') {
-        bg = '#7c3aed33';
-        label = '<div style="font:700 8px/1 var(--font-mono);color:#a78bfa;margin-top:2px">APPR\'D</div>';
-      } else if (status === 'declined') {
-        bg = '#ef444422';
-        label = '<div style="font:700 8px/1 var(--font-mono);color:#f87171;margin-top:2px">DECL\'D</div>';
-      }
-      const clickable = !isPast && !rec;
-      const cancelable = rec && rec.status === 'pending';
-      gridHtml += '<div style="background:' + bg + ';border:1px solid ' + (isToday ? 'var(--primary)' : 'var(--border)') + ';border-radius:6px;padding:6px 4px;text-align:center;min-height:44px;cursor:' + (clickable||cancelable?'pointer':'default') + '"' +
-        (clickable ? ' onclick="openEmpDayOffModalDate(\'' + dateStr + '\')"' : '') +
-        (cancelable ? ' title="Click to cancel pending request" onclick="cancelEmpDayOff(\'' + dateStr + '\')"' : '') + '>' +
-        '<div style="font:' + (isToday?'800':'600') + ' 12px/1 var(--font-mono);color:' + (isToday?'var(--primary)':rec?'var(--text)':'var(--muted)') + '">' + d + '</div>' +
-        label +
-      '</div>';
-    }
-    gridHtml += '</div>';
+      const rec    = myMap[dateStr];
+      const team   = teamMap[dateStr] || [];
+      const isToday = dateStr === todayStr;
+      const isPast  = dateStr < todayStr;
+      const status  = rec ? rec.status : null;
 
-    // Upcoming reminders list
-    const now = new Date().toISOString().slice(0,10);
-    const MONS = ['JAN','FEB','MAR','APR','MAY','JUN','JUL','AUG','SEP','OCT','NOV','DEC'];
-    const futureReminders = upcoming.filter(r => (r.virtual_date||'').slice(0,10) >= now).slice(0,5);
-    let remHtml = '';
-    if (futureReminders.length) {
-      remHtml = futureReminders.map(r => {
-        const d = new Date(r.virtual_date);
-        const sym = r.currency === 'GBP' ? '£' : r.currency === 'USD' ? '$' : (r.currency+' ');
-        return '<div style="display:flex;gap:12px;padding:10px 0;border-bottom:1px solid var(--border);align-items:center">' +
-          '<div style="width:36px;min-width:36px;text-align:center;background:#1a1f2e;border:1px solid var(--border);border-radius:7px;padding:5px 0">' +
-            '<div style="font:800 13px/1 var(--font-mono);color:var(--text)">' + d.getUTCDate() + '</div>' +
-            '<div style="font:600 9px/1 var(--font-mono);color:var(--muted);margin-top:3px">' + MONS[d.getUTCMonth()] + '</div>' +
-          '</div>' +
-          '<div style="flex:1"><div style="font:600 12px/1 var(--font-sans);color:var(--text)">' + esc(r.title) + '</div>' +
-            '<div style="font:600 10px/1 var(--font-mono);color:var(--muted);margin-top:3px">' + (r.category||'').toUpperCase() + '</div></div>' +
-          (r.amount ? '<div style="font:700 12px/1 var(--font-mono);color:var(--text)">' + sym + parseFloat(r.amount).toLocaleString('en-GB',{maximumFractionDigits:0}) + '</div>' : '') +
+      let bg = isPast ? 'var(--surface)' : 'var(--surface-2)';
+      let myLabel = '';
+      if (status === 'pending') {
+        bg = '#d9770620';
+        myLabel = '<div style="font:700 8px/1 var(--font-mono);color:#fb923c;margin-top:3px">PENDING</div>';
+      } else if (status === 'approved') {
+        bg = '#6ee7d420';
+        myLabel = '<div style="font:700 8px/1 var(--font-mono);color:var(--primary);margin-top:3px">APPROVED</div>';
+      } else if (status === 'declined') {
+        bg = '#ef444418';
+        myLabel = '<div style="font:700 8px/1 var(--font-mono);color:#f87171;margin-top:3px">DECLINED</div>';
+      }
+
+      let teamHtml = '';
+      if (team.length) {
+        teamHtml = team.slice(0,2).map(n => {
+          const init = n.split(' ').map(w => w[0]).join('').slice(0,2).toUpperCase();
+          return '<div style="font:700 7px/1 var(--font-mono);background:#7c3aed33;color:#a78bfa;border-radius:3px;padding:2px 3px;margin-top:2px">' + init + '</div>';
+        }).join('');
+        if (team.length > 2) teamHtml += '<div style="font:600 7px/1 var(--font-mono);color:var(--muted);margin-top:2px">+' + (team.length-2) + '</div>';
+      }
+
+      const clickable  = !isPast && !rec;
+      const cancelable = rec && status === 'pending';
+      gridHtml +=
+        '<div style="background:' + bg + ';border:' + (isToday ? '2px solid var(--primary)' : '1px solid var(--border)') + ';border-radius:6px;padding:6px 4px 4px;text-align:center;min-height:54px;cursor:' + ((clickable||cancelable)?'pointer':'default') + ';display:flex;flex-direction:column;align-items:center"' +
+        (clickable  ? ' onclick="openEmpDayOffModalDate(\'' + dateStr + '\')"' : '') +
+        (cancelable ? ' title="Click to cancel this request" onclick="cancelEmpDayOff(\'' + dateStr + '\')"' : '') + '>' +
+          '<div style="font:' + (isToday?'800':'600') + ' 13px/1 var(--font-mono);color:' + (isToday?'var(--primary)':isPast?'var(--muted)':'var(--text)') + '">' + d + '</div>' +
+          myLabel + teamHtml +
         '</div>';
-      }).join('');
     }
+    gridHtml += '</div>' +
+      '<div style="display:flex;gap:12px;margin-top:10px;font:500 10px/1 var(--font-mono);color:var(--muted)">' +
+        '<span><span style="display:inline-block;width:9px;height:9px;background:#d9770620;border:1px solid #fb923c55;border-radius:2px;margin-right:3px;vertical-align:middle"></span>Pending</span>' +
+        '<span><span style="display:inline-block;width:9px;height:9px;background:#6ee7d420;border:1px solid var(--primary);border-radius:2px;margin-right:3px;vertical-align:middle"></span>Approved</span>' +
+        '<span><span style="display:inline-block;width:9px;height:9px;background:#7c3aed33;border-radius:2px;margin-right:3px;vertical-align:middle"></span>Team off</span>' +
+      '</div>';
+
+    // Upcoming reminders
+    const MONS = ['JAN','FEB','MAR','APR','MAY','JUN','JUL','AUG','SEP','OCT','NOV','DEC'];
+    const remHtml = upcoming.filter(r => (r.virtual_date||'').slice(0,10) >= todayStr).slice(0,5).map(r => {
+      const rd = new Date(r.virtual_date);
+      const sym = r.currency === 'GBP' ? '£' : r.currency === 'USD' ? '$' : (r.currency+' ');
+      return '<div style="display:flex;gap:12px;padding:10px 0;border-bottom:1px solid var(--border);align-items:center">' +
+        '<div style="width:36px;min-width:36px;text-align:center;background:#1a1f2e;border:1px solid var(--border);border-radius:7px;padding:5px 0">' +
+          '<div style="font:800 13px/1 var(--font-mono);color:var(--text)">' + rd.getUTCDate() + '</div>' +
+          '<div style="font:600 9px/1 var(--font-mono);color:var(--muted);margin-top:3px">' + MONS[rd.getUTCMonth()] + '</div>' +
+        '</div>' +
+        '<div style="flex:1"><div style="font:600 12px/1 var(--font-sans);color:var(--text)">' + esc(r.title) + '</div>' +
+          '<div style="font:600 10px/1 var(--font-mono);color:var(--muted);margin-top:3px">' + (r.category||'').toUpperCase() + '</div></div>' +
+        (r.amount ? '<div style="font:700 12px/1 var(--font-mono);color:var(--text)">' + sym + parseFloat(r.amount).toLocaleString('en-GB',{maximumFractionDigits:0}) + '</div>' : '') +
+      '</div>';
+    }).join('');
 
     container.innerHTML =
       '<div style="display:flex;gap:12px;align-items:center;margin-bottom:16px">' +
@@ -3275,8 +3308,11 @@ async function loadEmployeeCalendar() {
         '<button class="btn btn-ghost" onclick="empCalNext()">Next ›</button>' +
       '</div>' +
       '<div style="display:grid;grid-template-columns:3fr 2fr;gap:16px">' +
-        '<div class="card"><div class="card-header"><span class="card-title">Days Off</span><span style="font:700 11px/1 var(--font-mono);color:var(--muted)">' + requests.length + ' this month</span></div><div style="padding:16px">' + gridHtml + '</div>' +
-          '<div style="padding:8px 16px 14px;font:500 11px/1 var(--font-mono);color:var(--muted)">Click a future date to request a day off · Click a pending request to cancel it</div>' +
+        '<div class="card">' +
+          '<div class="card-header"><span class="card-title">Team Calendar</span>' +
+            '<span style="font:700 11px/1 var(--font-mono);color:var(--muted)">' + myRequests.length + ' request' + (myRequests.length!==1?'s':'') + ' this month</span></div>' +
+          '<div style="padding:16px">' + gridHtml + '</div>' +
+          '<div style="padding:0 16px 12px;font:500 11px/1 var(--font-mono);color:var(--muted)">Click a future date to request · Click PENDING to cancel</div>' +
         '</div>' +
         '<div class="card"><div class="card-header"><span class="card-title">Upcoming</span><span style="font:700 11px/1 var(--font-mono);color:var(--muted)">NEXT 60D</span></div>' +
           '<div style="padding:4px 16px 12px">' + (remHtml || '<div style="color:var(--muted);font-size:0.82rem;padding:12px 0">No upcoming reminders</div>') + '</div>' +
