@@ -1820,6 +1820,9 @@ tbody tr:hover td strong { color: var(--primary); }
   background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 10px; padding: 12px 14px; margin-top: 4px;
 }
 .sc-breakdown.danger { background: #fff5f5; border-color: #fecaca; }
+.sc-breakdown.sc-breakdown-secondary { background: #f8fafc; border-color: #e2e8f0; margin-top: 8px; }
+.sc-breakdown.sc-breakdown-secondary .sc-breakdown-title { color: #64748b; }
+.sc-breakdown.sc-breakdown-secondary .sc-breakdown-row.total { border-color: #cbd5e1; color: #64748b; }
 .sc-breakdown-title  { font-size: 0.62rem; text-transform: uppercase; letter-spacing: 0.6px; color: #16a34a; font-weight: 700; margin-bottom: 8px; }
 .sc-breakdown.danger .sc-breakdown-title { color: #dc2626; }
 .sc-breakdown-row { display: flex; justify-content: space-between; font-size: 0.81rem; padding: 3px 0; color: #374151; }

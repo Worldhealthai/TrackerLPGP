@@ -613,6 +613,16 @@ app.get('/api/salary-overview', requireAuth, async (req, res) => {
         ? calcEarnedPay(annualSal, startDateStr, terminationDateStr)
         : (startedThisYear ? calcProRatedPay(annualSal, startDateStr) : null);
 
+      // First-month full payment: start date → end of start month (regardless of today)
+      // Used to show "how much to pay at end of first month" for mid-month starters
+      let firstMonthFull = null;
+      if (!isTerminated && startedThisYear && startDateStr) {
+        const [fY, fM] = startDateStr.split('-').map(Number);
+        const lastDay = new Date(fY, fM, 0).getDate();
+        const eomStr = `${fY}-${String(fM).padStart(2,'0')}-${String(lastDay).padStart(2,'0')}`;
+        firstMonthFull = calcEarnedPay(annualSal, startDateStr, eomStr);
+      }
+
       // Salary target for this year:
       //   terminated  → earned from start to termination date
       //   started this year (active) → pro-rated from start date to Dec 31 of this year
@@ -660,6 +670,7 @@ app.get('/api/salary-overview', requireAuth, async (req, res) => {
         is_terminated:       isTerminated,
         earned_to_date:      isTerminated ? earnedPay?.total_expected ?? annualSal : null,
         pro_rated:           !isTerminated ? earnedPay : null,
+        first_month_full:    firstMonthFull,
         earned_breakdown:    isTerminated ? earnedPay : null,
         salary_history:      salaryHistory,
         payments,

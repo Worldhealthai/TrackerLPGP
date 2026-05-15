@@ -1169,12 +1169,14 @@ async function loadSalaryPage() {
       const paye            = emp.paye_breakdown || null;
       const netMonthly      = emp.net_monthly ? parseFloat(emp.net_monthly) : null;
 
-      // First-month suggestion: only when employee started mid-month
+      // First-month suggestion: use end-of-month calculation (not earned-to-today)
       const pr = emp.pro_rated;
-      const isPartialFirstMonth = pr && pr.first_month_days < pr.first_month_total_days;
+      const fm = emp.first_month_full;
+      // Partial = employee started mid-month (not day 1)
+      const isPartialFirstMonth = fm && fm.first_month_days < fm.first_month_total_days;
       const payeNetFactor = paye && annualSalary > 0 ? paye.net_annual / annualSalary : 1;
       const suggestedFirstMonthNet = isPartialFirstMonth
-        ? parseFloat((pr.first_month_pay * payeNetFactor).toFixed(2))
+        ? parseFloat((fm.first_month_pay * payeNetFactor).toFixed(2))
         : null;
 
       const initials = (emp.name || '?').split(' ').map(w => w[0]).join('').slice(0,2).toUpperCase();
@@ -1234,16 +1236,16 @@ async function loadSalaryPage() {
         </div>
 
         ${suggestedFirstMonthNet !== null ? (() => {
-          const firstMonthName = MONTHS[parseInt(pr.first_month.split('-')[1])] || pr.first_month;
+          const firstMonthName = MONTHS[parseInt(fm.first_month.split('-')[1])] || fm.first_month;
           const afterLabel = paye
             ? `after PAYE/NI${paye.pension > 0 ? '/pension' : ''}`
-            : 'self-employed';
+            : 'gross';
           return `<div class="sc-firstmonth-tip">
             <span class="sc-fm-icon">💡</span>
             <div>
-              Started partway through ${firstMonthName} — suggested first month pay:
+              Suggested payment for ${firstMonthName} (started ${fm.start_date}):
               <strong>${sym}${suggestedFirstMonthNet.toLocaleString('en-GB',{minimumFractionDigits:2})}</strong>
-              <span class="sc-fm-sub">${pr.first_month_days} of ${pr.first_month_total_days} working days · ${afterLabel}</span>
+              <span class="sc-fm-sub">${fm.first_month_days} of ${fm.first_month_total_days} working days · ${afterLabel}</span>
             </div>
           </div>`;
         })() : ''}
@@ -1394,22 +1396,35 @@ async function loadSalaryPage() {
           </div>` : ''}
 
           <!-- Pro-rated breakdown -->
-          ${emp.pro_rated ? (() => {
+          ${(emp.pro_rated || emp.first_month_full) ? (() => {
             const pr = emp.pro_rated;
+            const fmr = emp.first_month_full;
+            const showFmFull = fmr && fmr.first_month_days < fmr.first_month_total_days;
+            const fmrName = fmr ? (MONTHS[parseInt(fmr.first_month.split('-')[1])] || fmr.first_month) : null;
+            const fmrGross = fmr ? fmr.first_month_pay : 0;
+            const fmrNet = fmr ? parseFloat((fmrGross * payeNetFactor).toFixed(2)) : 0;
+            const startLabel = (fmr || pr).start_date;
             return `
           <div class="sc-section">
             <button class="sc-sec-toggle" onclick="toggleSection(this)">
-              <span class="sc-sec-title">Pro-Rated Pay — started ${pr.start_date}</span>
+              <span class="sc-sec-title">Pro-Rated Pay — started ${startLabel}</span>
               <span class="sc-chevron">›</span>
             </button>
             <div class="sc-sec-body">
+              ${showFmFull ? `
               <div class="sc-breakdown">
-                <div class="sc-breakdown-title">Earned pay to date</div>
+                <div class="sc-breakdown-title">Payment due — end of ${fmrName}</div>
+                <div class="sc-breakdown-row"><span>Working days (${fmr.first_month_days}/${fmr.first_month_total_days} in ${fmrName})</span><span>${sym}${fmrGross.toLocaleString('en-GB',{minimumFractionDigits:2})} gross</span></div>
+                ${paye ? `<div class="sc-breakdown-row total"><span>Net after PAYE/NI${paye.pension > 0 ? '/pension' : ''}</span><span>${sym}${fmrNet.toLocaleString('en-GB',{minimumFractionDigits:2})}</span></div>`
+                       : `<div class="sc-breakdown-row total"><span>Gross amount due</span><span>${sym}${fmrGross.toLocaleString('en-GB',{minimumFractionDigits:2})}</span></div>`}
+              </div>` : ''}
+              ${pr ? `
+              <div class="sc-breakdown${showFmFull ? ' sc-breakdown-secondary' : ''}">
+                <div class="sc-breakdown-title">${showFmFull ? 'Earned to today' : 'Earned pay to date'}</div>
                 <div class="sc-breakdown-row"><span>First month (${pr.first_month_days}/${pr.first_month_total_days} working days)</span><span>${sym}${pr.first_month_pay.toLocaleString('en-GB',{minimumFractionDigits:2})}</span></div>
                 ${pr.full_months_count > 0 ? `<div class="sc-breakdown-row"><span>${pr.full_months_count} full month${pr.full_months_count > 1 ? 's' : ''}</span><span>${sym}${pr.full_months_pay.toLocaleString('en-GB',{minimumFractionDigits:2})}</span></div>` : ''}
-                ${pr.current_month_pay > 0 ? `<div class="sc-breakdown-row"><span>Current month (to date)</span><span>${sym}${pr.current_month_pay.toLocaleString('en-GB',{minimumFractionDigits:2})}</span></div>` : ''}
                 <div class="sc-breakdown-row total"><span>Total expected to date</span><span>${sym}${pr.total_expected.toLocaleString('en-GB',{minimumFractionDigits:2})}</span></div>
-              </div>
+              </div>` : ''}
             </div>
           </div>`; })() : ''}
 
