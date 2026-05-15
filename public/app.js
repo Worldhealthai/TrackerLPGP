@@ -3024,62 +3024,70 @@ async function loadEmpNotifications() {
   const notifs = await res.json();
   const unread = notifs.filter(n => !n.is_read).length;
 
-  // Show badge in nav (use userLabel area or a dedicated badge)
+  // Badge button above Sign Out in sidebar-footer
   let badge = document.getElementById('empNotifBadge');
   if (!badge) {
-    // Insert badge near logout button area
-    const sidebar = document.querySelector('.sidebar-footer') || document.querySelector('.nav-bottom');
-    if (sidebar) {
-      const wrap = document.createElement('div');
-      wrap.id = 'empNotifBadge';
-      wrap.style.cssText = 'margin:8px 16px;padding:10px 14px;background:var(--surface-2);border:1px solid var(--border);border-radius:10px;cursor:pointer';
-      wrap.onclick = () => openEmpNotificationsModal(notifs);
-      sidebar.insertBefore(wrap, sidebar.firstChild);
-      badge = wrap;
-    }
+    badge = document.createElement('button');
+    badge.id = 'empNotifBadge';
+    badge.className = 'btn btn-ghost btn-sm';
+    badge.style.cssText = 'width:100%;justify-content:center;margin-bottom:6px;gap:6px';
+    const logoutBtn = document.getElementById('logoutBtn');
+    if (logoutBtn) logoutBtn.parentNode.insertBefore(badge, logoutBtn);
   }
-  if (badge) {
-    badge.onclick = () => openEmpNotificationsModal(notifs);
-    const dot = unread > 0 ? '<span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--negative);margin-right:6px"></span>' : '';
-    badge.innerHTML = dot + '<span style="font:600 11px/1 var(--font-mono);color:var(--muted)">Notifications ' +
-      (unread > 0 ? '<span style="color:var(--negative);font-weight:800">' + unread + ' new</span>' : '(none)') + '</span>';
+  badge.onclick = () => openEmpNotificationsModal(notifs);
+  const bellSvg = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>';
+  if (unread > 0) {
+    badge.innerHTML = bellSvg + ' Notifications <span style="background:var(--negative);color:#fff;font:700 9px/1 var(--font-mono);padding:2px 5px;border-radius:8px;margin-left:2px">' + unread + '</span>';
+    badge.style.borderColor = 'var(--negative)';
+    badge.style.color = 'var(--text)';
+  } else {
+    badge.innerHTML = bellSvg + ' Notifications';
+    badge.style.borderColor = '';
+    badge.style.color = '';
   }
 }
 
 function openEmpNotificationsModal(notifs) {
-  // Mark all read
   fetch('/api/employee/notifications/read-all', { method: 'PUT' });
-  // Re-render badge
   setTimeout(loadEmpNotifications, 500);
 
   const existing = document.getElementById('empNotifModal');
   if (existing) existing.remove();
 
-  const TYPE_COLOR = { approved: 'var(--positive)', declined: 'var(--negative)', info: 'var(--muted)' };
+  const TYPE_COLOR = { approved: 'var(--positive)', declined: 'var(--negative)', info: 'var(--primary)' };
+  const TYPE_ICON  = { approved: '✓', declined: '✕', info: 'ℹ' };
   const rows = notifs.length
     ? notifs.map(n => {
-        const d = new Date(n.created_at).toLocaleDateString('en-GB', {day:'2-digit',month:'short'});
+        const d = new Date(n.created_at).toLocaleDateString('en-GB', {day:'2-digit', month:'short', year:'numeric'});
         const color = TYPE_COLOR[n.type] || 'var(--muted)';
-        return '<div style="padding:12px 0;border-bottom:1px solid var(--border)">' +
-          '<div style="display:flex;justify-content:space-between;margin-bottom:4px">' +
-            '<span style="font:700 11px/1 var(--font-mono);text-transform:uppercase;color:' + color + '">' + (n.type === 'approved' ? '✓ Approved' : n.type === 'declined' ? '✕ Declined' : 'Info') + '</span>' +
-            '<span style="font:500 10px/1 var(--font-mono);color:var(--muted)">' + d + '</span>' +
+        const icon  = TYPE_ICON[n.type]  || 'ℹ';
+        const unreadDot = !n.is_read ? '<span style="width:6px;height:6px;border-radius:50%;background:var(--negative);display:inline-block;margin-right:6px;flex-shrink:0;margin-top:2px"></span>' : '';
+        return '<div style="display:flex;gap:10px;padding:14px 0;border-bottom:1px solid var(--border)">' +
+          unreadDot +
+          '<div style="flex:1">' +
+            '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">' +
+              '<span style="font:700 11px/1 var(--font-mono);text-transform:uppercase;color:' + color + '">' + icon + ' ' + n.type + '</span>' +
+              '<span style="font:500 10px/1 var(--font-mono);color:var(--muted)">' + d + '</span>' +
+            '</div>' +
+            '<div style="font:500 13px/1.5 var(--font-sans);color:var(--text)">' + esc(n.message) + '</div>' +
           '</div>' +
-          '<div style="font:500 12px/1.4 var(--font-sans);color:var(--text)">' + esc(n.message) + '</div>' +
         '</div>';
       }).join('')
-    : '<div style="color:var(--muted);font-size:0.82rem;padding:16px 0;text-align:center">No notifications yet</div>';
+    : '<div style="color:var(--muted);font-size:0.85rem;padding:24px 0;text-align:center">No notifications yet</div>';
 
   const modal = document.createElement('div');
   modal.id = 'empNotifModal';
-  modal.className = 'modal';
+  modal.className = 'modal-overlay';
   modal.innerHTML =
-    '<div class="modal-overlay" onclick="document.getElementById(\'empNotifModal\').remove()"></div>' +
-    '<div class="modal-box" style="max-width:420px">' +
+    '<div class="modal" style="max-width:440px">' +
       '<div class="modal-header"><span class="modal-title">Notifications</span>' +
         '<button class="modal-close" onclick="document.getElementById(\'empNotifModal\').remove()">×</button></div>' +
-      '<div class="modal-body" style="max-height:400px;overflow-y:auto">' + rows + '</div>' +
+      '<div style="padding:0 20px 4px;max-height:440px;overflow-y:auto">' + rows + '</div>' +
+      '<div style="padding:14px 20px;border-top:1px solid var(--border)">' +
+        '<button class="btn btn-ghost btn-sm" style="width:100%" onclick="document.getElementById(\'empNotifModal\').remove()">Close</button>' +
+      '</div>' +
     '</div>';
+  modal.addEventListener('click', e => { if (e.target === modal) modal.remove(); });
   document.body.appendChild(modal);
 }
 
@@ -3274,7 +3282,8 @@ async function loadEmployeeCalendar() {
         myLabel = '<div style="font:700 8px/1 var(--font-mono);color:var(--primary);margin-top:3px">APPROVED</div>';
       } else if (status === 'declined') {
         bg = '#ef444418';
-        myLabel = '<div style="font:700 8px/1 var(--font-mono);color:#f87171;margin-top:3px">DECLINED</div>';
+        myLabel = '<div style="font:700 8px/1 var(--font-mono);color:#f87171;margin-top:3px">DECLINED</div>' +
+          (rec.decline_reason ? '<div style="font:500 7px/1.2 var(--font-sans);color:#f87171;margin-top:2px;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="' + esc(rec.decline_reason) + '">' + esc(rec.decline_reason.slice(0,12)) + (rec.decline_reason.length > 12 ? '…' : '') + '</div>' : '');
       }
 
       let teamHtml = '';
@@ -3288,10 +3297,13 @@ async function loadEmployeeCalendar() {
 
       const clickable  = !isPast && !rec;
       const cancelable = rec && status === 'pending';
+      const declineReason = rec && status === 'declined' && rec.decline_reason ? rec.decline_reason : '';
+      const interactive = clickable || cancelable || !!declineReason;
       gridHtml +=
-        '<div style="background:' + bg + ';border:' + (isToday ? '2px solid var(--primary)' : '1px solid var(--border)') + ';border-radius:6px;padding:6px 4px 4px;text-align:center;min-height:54px;cursor:' + ((clickable||cancelable)?'pointer':'default') + ';display:flex;flex-direction:column;align-items:center"' +
-        (clickable  ? ' onclick="openEmpDayOffModalDate(\'' + dateStr + '\')"' : '') +
-        (cancelable ? ' title="Click to cancel this request" onclick="cancelEmpDayOff(\'' + dateStr + '\')"' : '') + '>' +
+        '<div style="background:' + bg + ';border:' + (isToday ? '2px solid var(--primary)' : '1px solid var(--border)') + ';border-radius:6px;padding:6px 4px 4px;text-align:center;min-height:54px;cursor:' + (interactive?'pointer':'default') + ';display:flex;flex-direction:column;align-items:center"' +
+        (clickable    ? ' onclick="openEmpDayOffModalDate(\'' + dateStr + '\')"' : '') +
+        (cancelable   ? ' title="Click to cancel this request" onclick="cancelEmpDayOff(\'' + dateStr + '\')"' : '') +
+        (declineReason ? ' onclick="showEmpDeclineReason(\'' + esc(declineReason).replace(/'/g, '\\\'') + '\')"' : '') + '>' +
           '<div style="font:' + (isToday?'800':'600') + ' 13px/1 var(--font-mono);color:' + (isToday?'var(--primary)':isPast?'var(--muted)':'var(--text)') + '">' + d + '</div>' +
           myLabel + teamHtml +
         '</div>';
@@ -3344,6 +3356,28 @@ async function loadEmployeeCalendar() {
 
 function empCalPrev() { empCalMonth--; if (empCalMonth < 1) { empCalMonth = 12; empCalYear--; } loadEmployeeCalendar(); }
 function empCalNext() { empCalMonth++; if (empCalMonth > 12) { empCalMonth = 1; empCalYear++; } loadEmployeeCalendar(); }
+
+function showEmpDeclineReason(reason) {
+  const existing = document.getElementById('empDeclineReasonModal');
+  if (existing) existing.remove();
+  const modal = document.createElement('div');
+  modal.id = 'empDeclineReasonModal';
+  modal.className = 'modal-overlay';
+  modal.innerHTML =
+    '<div class="modal" style="max-width:360px">' +
+      '<div class="modal-header"><span class="modal-title" style="color:var(--negative)">✕ Request Declined</span>' +
+        '<button class="modal-close" onclick="document.getElementById(\'empDeclineReasonModal\').remove()">×</button></div>' +
+      '<div style="padding:20px">' +
+        '<div style="font:500 11px/1 var(--font-mono);color:var(--muted);margin-bottom:8px;text-transform:uppercase;letter-spacing:1px">Reason</div>' +
+        '<div style="font:500 14px/1.5 var(--font-sans);color:var(--text)">' + esc(reason) + '</div>' +
+      '</div>' +
+      '<div style="padding:0 20px 16px">' +
+        '<button class="btn btn-ghost btn-sm" style="width:100%" onclick="document.getElementById(\'empDeclineReasonModal\').remove()">Close</button>' +
+      '</div>' +
+    '</div>';
+  modal.addEventListener('click', e => { if (e.target === modal) modal.remove(); });
+  document.body.appendChild(modal);
+}
 
 function openEmpDayOffModal() {
   document.getElementById('empDayOffDate').value = new Date().toISOString().slice(0,10);
