@@ -3107,12 +3107,14 @@ async function loadEmployeeDashboard(user) {
   el.innerHTML = '<div class="skeleton" style="height:200px;border-radius:16px"></div>';
 
   try {
-    const [profileRes, upcomingRes] = await Promise.all([
+    const [profileRes, upcomingRes, salaryRes] = await Promise.all([
       fetch('/api/employee/profile'),
-      fetch('/api/calendar-reminders/upcoming?days=30')
+      fetch('/api/calendar-reminders/upcoming?days=30'),
+      fetch('/api/employee/salary')
     ]);
     const profile  = profileRes.ok  ? await profileRes.json()  : {};
     const upcoming = upcomingRes.ok ? await upcomingRes.json() : [];
+    const sal      = salaryRes.ok   ? await salaryRes.json()   : null;
 
     const daysUsed  = parseFloat(profile.days_used) || 0;
     const allowance = profile.allowance_days || 20;
@@ -3138,6 +3140,118 @@ async function loadEmployeeDashboard(user) {
           (amt ? '<div style="font:700 12px/1 var(--font-mono);color:var(--text)">' + amt + '</div>' : '') +
         '</div>';
       }).join('');
+    }
+
+    // ── Salary card HTML (employee read-only view) ──
+    let salHtml = '';
+    if (sal && sal.annual_salary > 0) {
+      const s = sal;
+      const sSym = s.currency === 'GBP' ? '£' : s.currency === 'USD' ? '$' : (s.currency + ' ');
+      const paye = s.paye_breakdown;
+      const monthlyVal = paye ? paye.net_monthly : s.annual_salary / 12;
+      const monthlyLbl = paye ? 'Take-home / mo' : 'Monthly pay';
+      const monthlySub = paye
+        ? ('after PAYE + NI' + (paye.pension > 0 ? ' + pension' : ''))
+        : (sSym + s.annual_salary.toLocaleString('en-GB',{maximumFractionDigits:0}) + '/yr');
+      const netRemaining = parseFloat(s.net_remaining) || 0;
+      const isOverpaid   = netRemaining < 0;
+      const outColor = isOverpaid ? 'var(--positive)' : netRemaining === 0 ? 'var(--muted)' : 'var(--negative)';
+      const pctPaid  = parseInt(s.pct_paid) || 0;
+      const barW     = Math.min(100, pctPaid);
+      const barCol   = pctPaid >= 100 ? 'var(--positive)' : pctPaid > 60 ? 'var(--primary)' : 'var(--warning)';
+
+      // First-month logic (same as admin salary card)
+      const fm = s.first_month_full;
+      const isPartialFirstMonth = fm && fm.first_month_days < fm.first_month_total_days;
+      const payeNetFactor = paye && s.annual_salary > 0 ? paye.net_annual / s.annual_salary : 1;
+      let sugFirstMonthNet = isPartialFirstMonth ? parseFloat((fm.first_month_pay * payeNetFactor).toFixed(2)) : null;
+      let fmMeta2 = isPartialFirstMonth ? {
+        monthName: MONTHS[parseInt(fm.first_month.split('-')[1]) - 1] || fm.first_month,
+        daysWorked: fm.first_month_days, daysTotal: fm.first_month_total_days
+      } : null;
+      if (sugFirstMonthNet === null && s.start_date) {
+        const sd2 = new Date(s.start_date + 'T00:00:00');
+        if (sd2.getDate() > 1) {
+          const dim = new Date(sd2.getFullYear(), sd2.getMonth() + 1, 0).getDate();
+          const dw  = dim - sd2.getDate() + 1;
+          const nm  = paye ? paye.net_monthly : s.annual_salary / 12;
+          sugFirstMonthNet = parseFloat((nm * (dw / dim)).toFixed(2));
+          fmMeta2 = { monthName: MONTHS[sd2.getMonth()], daysWorked: dw, daysTotal: dim };
+        }
+      }
+      const showFM = sugFirstMonthNet !== null && fmMeta2 && !isOverpaid;
+
+      const payments = Array.isArray(s.payments) ? s.payments : [];
+      const paymentsHtml = payments.length
+        ? payments.map(p => '<div style="display:flex;justify-content:space-between;padding:9px 0;border-bottom:1px solid var(--border);font:500 12px/1 var(--font-mono);color:var(--muted)">' +
+            '<span>' + (MONTHS[p.payment_month - 1] || p.payment_month) + ' ' + p.payment_year + '</span>' +
+            '<span style="color:var(--positive)">+' + sSym + parseFloat(p.amount||0).toLocaleString('en-GB',{minimumFractionDigits:2}) + '</span>' +
+          '</div>').join('')
+        : '<div style="color:var(--muted);font:500 12px/1 var(--font-mono);padding:12px 0">No payments yet this year.</div>';
+
+      salHtml =
+        '<div class="card" style="margin-top:16px">' +
+          '<div class="card-header"><span class="card-title">My Pay — ' + s.year + '</span>' +
+            '<span style="font:700 11px/1 var(--font-mono);color:var(--muted)">' + (s.employment_type === 'self_employed' ? 'SELF-EMPLOYED' : 'PAYROLL') + '</span>' +
+          '</div>' +
+          // Progress bar
+          '<div style="padding:18px 20px;border-bottom:1px solid var(--border)">' +
+            '<div style="display:flex;justify-content:space-between;font:600 12px/1 var(--font-mono);color:var(--muted);margin-bottom:10px">' +
+              '<span>Payments received</span><span style="color:' + barCol + '">' + pctPaid + '%</span>' +
+            '</div>' +
+            '<div style="height:8px;background:var(--border);border-radius:4px">' +
+              '<div style="height:100%;width:' + barW + '%;background:' + barCol + ';border-radius:4px;transition:width .4s"></div>' +
+            '</div>' +
+            '<div style="display:flex;justify-content:space-between;font:500 11px/1 var(--font-mono);color:var(--muted);margin-top:8px">' +
+              '<span>' + sSym + parseFloat(s.total_paid).toLocaleString('en-GB',{minimumFractionDigits:2}) + ' received</span>' +
+              '<span>' + sSym + parseFloat(s.salary_target).toLocaleString('en-GB',{minimumFractionDigits:2}) + ' target</span>' +
+            '</div>' +
+          '</div>' +
+          // Stat row
+          '<div style="display:flex;border-bottom:1px solid var(--border)">' +
+            '<div style="flex:1;padding:16px 20px;border-right:1px solid var(--border)">' +
+              '<div style="font:600 9px/1 var(--font-mono);text-transform:uppercase;letter-spacing:1px;color:var(--muted);margin-bottom:8px">' + monthlyLbl + '</div>' +
+              '<div style="font:700 22px/1 var(--font-mono);color:var(--text)">' + sSym + monthlyVal.toLocaleString('en-GB',{maximumFractionDigits:0}) + '</div>' +
+              '<div style="font:500 10px/1 var(--font-mono);color:var(--muted);margin-top:6px">' + monthlySub + '</div>' +
+            '</div>' +
+            (showFM
+              ? '<div style="flex:1;padding:16px 20px;border-right:1px solid var(--border);background:rgba(251,191,36,0.05)">' +
+                  '<div style="font:600 9px/1 var(--font-mono);text-transform:uppercase;letter-spacing:1px;color:#f59e0b;margin-bottom:8px">1st Month Due</div>' +
+                  '<div style="font:700 22px/1 var(--font-mono);color:#f59e0b">' + sSym + Math.round(sugFirstMonthNet).toLocaleString('en-GB') + '</div>' +
+                  '<div style="font:500 10px/1 var(--font-mono);color:var(--muted);margin-top:6px">' + fmMeta2.daysWorked + ' of ' + fmMeta2.daysTotal + ' days · ' + fmMeta2.monthName + '</div>' +
+                '</div>'
+              : '') +
+            '<div style="flex:1;padding:16px 20px">' +
+              '<div style="font:600 9px/1 var(--font-mono);text-transform:uppercase;letter-spacing:1px;color:var(--muted);margin-bottom:8px">Year Balance</div>' +
+              '<div style="font:700 22px/1 var(--font-mono);color:' + outColor + '">' + (isOverpaid ? '−' : '') + sSym + Math.abs(netRemaining).toLocaleString('en-GB',{maximumFractionDigits:0}) + '</div>' +
+              '<div style="font:500 10px/1 var(--font-mono);color:var(--muted);margin-top:6px">' + (isOverpaid ? 'overpaid' : s.year + ' balance') + '</div>' +
+            '</div>' +
+          '</div>' +
+          // PAYE breakdown (if applicable)
+          (paye ? '<div style="padding:16px 20px;border-bottom:1px solid var(--border);display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px">' +
+              '<div style="text-align:center">' +
+                '<div style="font:600 9px/1 var(--font-mono);text-transform:uppercase;letter-spacing:1px;color:var(--muted);margin-bottom:6px">Income Tax</div>' +
+                '<div style="font:700 16px/1 var(--font-mono);color:var(--text)">' + sSym + paye.income_tax.toLocaleString('en-GB',{minimumFractionDigits:0}) + '</div>' +
+                '<div style="font:500 10px/1 var(--font-mono);color:var(--muted);margin-top:4px">per year</div>' +
+              '</div>' +
+              '<div style="text-align:center;border-left:1px solid var(--border);border-right:1px solid var(--border)">' +
+                '<div style="font:600 9px/1 var(--font-mono);text-transform:uppercase;letter-spacing:1px;color:var(--muted);margin-bottom:6px">National Ins.</div>' +
+                '<div style="font:700 16px/1 var(--font-mono);color:var(--text)">' + sSym + paye.national_insurance.toLocaleString('en-GB',{minimumFractionDigits:0}) + '</div>' +
+                '<div style="font:500 10px/1 var(--font-mono);color:var(--muted);margin-top:4px">per year</div>' +
+              '</div>' +
+              '<div style="text-align:center">' +
+                '<div style="font:600 9px/1 var(--font-mono);text-transform:uppercase;letter-spacing:1px;color:var(--muted);margin-bottom:6px">Take-home</div>' +
+                '<div style="font:700 16px/1 var(--font-mono);color:var(--positive)">' + sSym + paye.net_annual.toLocaleString('en-GB',{minimumFractionDigits:0}) + '</div>' +
+                '<div style="font:500 10px/1 var(--font-mono);color:var(--muted);margin-top:4px">per year</div>' +
+              '</div>' +
+            '</div>'
+          : '') +
+          // Payments list
+          '<div style="padding:16px 20px">' +
+            '<div style="font:600 10px/1 var(--font-mono);text-transform:uppercase;letter-spacing:1px;color:var(--muted);margin-bottom:12px">Payments (' + payments.length + ')</div>' +
+            paymentsHtml +
+          '</div>' +
+        '</div>';
     }
 
     el.innerHTML =
@@ -3168,7 +3282,8 @@ async function loadEmployeeDashboard(user) {
           '<div class="card-header"><span class="card-title">Upcoming</span><span style="font:700 11px/1 var(--font-mono);color:var(--muted)">NEXT 30D</span></div>' +
           '<div style="padding:4px 18px 12px">' + (upcomingHtml || '<div style="color:var(--muted);font-size:0.82rem;padding:16px 0">No upcoming reminders</div>') + '</div>' +
         '</div>' +
-      '</div>';
+      '</div>' +
+      salHtml;
 
     // Hide the other dashboard panels
     ['contractExpiryPanel','headcountPanel','upcomingPanel','activityPanel'].forEach(id => {
