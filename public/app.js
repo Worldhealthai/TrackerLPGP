@@ -1669,14 +1669,24 @@ async function loadSalaryPage() {
             : (sym + annualSalary.toLocaleString('en-GB',{maximumFractionDigits:0}) + '/yr');
           const outColor = isOverpaid ? 'var(--positive)' : netRemaining === 0 ? 'var(--muted)' : 'var(--negative)';
           const outSub   = isOverpaid ? 'overpaid' : isTerminated ? 'final balance' : (year + ' balance');
+          const showFirstMonth = suggestedFirstMonthNet !== null && fmMeta && !isOverpaid;
+          const fmMonthName = fmMeta ? (fmMeta.monthName || '') : '';
+          const fmSub = fmMeta ? fmMeta.daysWorked + ' of ' + fmMeta.daysTotal + ' days · ' + fmMonthName : '';
           return '<div style="display:flex;border-top:1px solid var(--border);border-bottom:1px solid var(--border)">' +
             '<div style="flex:1;padding:16px 20px;border-right:1px solid var(--border)">' +
               '<div style="font:600 9px/1 var(--font-mono);text-transform:uppercase;letter-spacing:1px;color:var(--muted);margin-bottom:8px">' + monthlyLbl + '</div>' +
               '<div style="font:700 22px/1 var(--font-mono);color:var(--text)">' + sym + monthlyVal.toLocaleString('en-GB',{maximumFractionDigits:0}) + '</div>' +
               '<div style="font:500 10px/1 var(--font-mono);color:var(--muted);margin-top:6px">' + monthlySub + '</div>' +
             '</div>' +
+            (showFirstMonth
+              ? '<div style="flex:1;padding:16px 20px;border-right:1px solid var(--border);background:rgba(251,191,36,0.05)">' +
+                  '<div style="font:600 9px/1 var(--font-mono);text-transform:uppercase;letter-spacing:1px;color:#f59e0b;margin-bottom:8px">1st Month Due</div>' +
+                  '<div style="font:700 22px/1 var(--font-mono);color:#f59e0b">' + sym + Math.round(suggestedFirstMonthNet).toLocaleString('en-GB') + '</div>' +
+                  '<div style="font:500 10px/1 var(--font-mono);color:var(--muted);margin-top:6px">' + fmSub + '</div>' +
+                '</div>'
+              : '') +
             '<div style="flex:1;padding:16px 20px">' +
-              '<div style="font:600 9px/1 var(--font-mono);text-transform:uppercase;letter-spacing:1px;color:var(--muted);margin-bottom:8px">Outstanding</div>' +
+              '<div style="font:600 9px/1 var(--font-mono);text-transform:uppercase;letter-spacing:1px;color:var(--muted);margin-bottom:8px">Year Balance</div>' +
               '<div style="font:700 22px/1 var(--font-mono);color:' + outColor + '">' + (isOverpaid ? '−' : '') + sym + Math.abs(netRemaining).toLocaleString('en-GB',{maximumFractionDigits:0}) + '</div>' +
               '<div style="font:500 10px/1 var(--font-mono);color:var(--muted);margin-top:6px">' + outSub + '</div>' +
             '</div>' +
