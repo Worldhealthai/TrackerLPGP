@@ -17,6 +17,13 @@ document.addEventListener('DOMContentLoaded', async () => {
   const res = await fetch('/api/me');
   if (!res.ok) { window.location.href = '/login.html'; return; }
   currentUser = await res.json();
+  window.currentUser = currentUser;
+
+  // Check user role before initializing
+  if (currentUser.role === 'employee') {
+    await initEmployeePortal(currentUser);
+    return; // Don't run admin init
+  }
 
   const initials = currentUser.username.slice(0,2).toUpperCase();
   document.getElementById('userLabel').innerHTML = `<div class="sidebar-user-pill"><div class="sidebar-user-avatar">${esc(initials)}</div><span class="sidebar-user-name">${esc(currentUser.username)}</span><span class="sidebar-user-role">${esc(currentUser.role)}</span></div>`;
@@ -51,6 +58,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   await loadEmployees().catch(err => console.error('loadEmployees failed:', err));
   loadDashboard();
+  refreshCalendarBadge();
 
   // Initial badge — silent, non-blocking
   fetch(`/api/salary-overview?year=${new Date().getFullYear()}`)
@@ -182,6 +190,7 @@ function renderEmpTable() {
       <td><span class="badge ${statusBadge}" style="white-space:normal">${esc(statusLabel)}</span></td>
       <td style="text-align:right">
         <button class="btn btn-ghost btn-sm" onclick='openEmpModal(${JSON.stringify(emp)})'>Edit</button>
+        <button class="btn btn-ghost btn-sm" onclick="openSetPinModal(${emp.id},'${esc(emp.name)}')">Set PIN</button>
         ${emp.active
           ? `<button class="btn btn-danger btn-sm" onclick="openTerminateModal(${emp.id},'${esc(emp.name)}')">Terminate</button>`
           : `<button class="btn btn-ghost btn-sm" onclick="reactivateEmployee(${emp.id})">Reactivate</button>`}
@@ -636,7 +645,7 @@ function renderDashActivity(summary, expiring, hotelData, salaryData) {
   if (!items.length) { el.innerHTML = ''; return; }
 
   const TONE_COLOR = { pos:'var(--positive)', neg:'var(--negative)', warn:'var(--warning)', info:'var(--info)' };
-  const rows = items.slice(0,6).map(it =>
+  const rows = items.slice(0,5).map(it =>
     '<div style="display:flex;gap:10px;padding:11px 16px;border-bottom:1px solid var(--line);align-items:flex-start">' +
       '<div style="width:28px;height:28px;border-radius:6px;background:var(--surface-2);border:1px solid var(--border);display:grid;place-items:center;flex-shrink:0;color:' + TONE_COLOR[it.tone] + '">' + it.icon + '</div>' +
       '<div style="flex:1;min-width:0">' +
@@ -791,8 +800,8 @@ async function loadEmployeeRecords() {
     });
   }
 
-  // Payments section
-  loadPaymentsSection(empId, emp);
+  // Payments are managed in the Salary page — keep this section hidden
+  document.getElementById('paymentsSection')?.classList.add('hidden');
 }
 
 // ─── RECORD MODAL ────────────────────────────────────────────────────────────
@@ -1651,44 +1660,43 @@ async function loadSalaryPage() {
           </div>
         </div>
 
-        ${suggestedFirstMonthNet !== null && fmMeta ? `<div class="sc-firstmonth-tip">
-            <span class="sc-fm-icon">💡</span>
-            <div>
-              Suggested payment for ${fmMeta.monthName} (started ${fmMeta.startDate}):
-              <strong>${sym}${suggestedFirstMonthNet.toLocaleString('en-GB',{minimumFractionDigits:2})}</strong>
-              <span class="sc-fm-sub">${fmMeta.daysWorked} of ${fmMeta.daysTotal} days · ${paye ? 'after PAYE/NI' + (paye.pension > 0 ? '/pension' : '') : 'pro-rata'}</span>
-            </div>
-          </div>` : ''}
 
-        <div class="sc-figures">
-          ${paye ? `
-          <div class="sc-fig">
-            <div class="sc-fig-lbl">Gross / month</div>
-            <div class="sc-fig-val">${sym}${paye.gross_monthly.toLocaleString('en-GB',{maximumFractionDigits:0})}</div>
-            <div class="sc-fig-sub">before deductions</div>
-          </div>
-          <div class="sc-fig sc-fig-hi">
-            <div class="sc-fig-lbl">Take-home / month</div>
-            <div class="sc-fig-val">${sym}${paye.net_monthly.toLocaleString('en-GB',{maximumFractionDigits:0})}</div>
-            <div class="sc-fig-sub">after PAYE + NI${paye.pension > 0 ? ' + pension' : ''}</div>
-          </div>` : `
-          <div class="sc-fig">
-            <div class="sc-fig-lbl">Monthly pay</div>
-            <div class="sc-fig-val">${sym}${(annualSalary/12).toLocaleString('en-GB',{maximumFractionDigits:0})}</div>
-            <div class="sc-fig-sub">${sym}${annualSalary.toLocaleString('en-GB',{maximumFractionDigits:0})}/yr</div>
-          </div>
-          <div class="sc-fig ${excessDays > 0 ? 'sc-fig-bad' : 'sc-fig-ok'}">
-            <div class="sc-fig-lbl">Days off</div>
-            <div class="sc-fig-val">${totalDaysOff} <span style="font-size:0.75rem;font-weight:600;color:#9ca3af">/ ${allowanceDays}</span></div>
-            <div class="sc-fig-sub">${allowanceLabel}</div>
-            ${excessDays > 0 ? `<div class="sc-fig-deduct">−${sym}${excessDeduction.toLocaleString('en-GB',{minimumFractionDigits:2,maximumFractionDigits:2})} deducted</div>` : ''}
-          </div>`}
-          <div class="sc-fig ${figOutClass}">
-            <div class="sc-fig-lbl">Outstanding</div>
-            <div class="sc-fig-val">${isOverpaid ? '−' : ''}${sym}${Math.abs(netRemaining).toLocaleString('en-GB',{maximumFractionDigits:0})}</div>
-            <div class="sc-fig-sub">${isOverpaid ? 'overpaid' : isTerminated ? 'final balance' : `${year} balance`}</div>
-          </div>
-        </div>
+        ${(() => {
+          const monthlyVal = paye ? paye.net_monthly : annualSalary / 12;
+          const monthlyLbl = paye ? 'Take-home / mo' : 'Monthly pay';
+          const monthlySub = paye
+            ? ('after PAYE + NI' + (paye.pension > 0 ? ' + pension' : ''))
+            : (sym + annualSalary.toLocaleString('en-GB',{maximumFractionDigits:0}) + '/yr');
+          const outColor = isOverpaid ? 'var(--positive)' : netRemaining === 0 ? 'var(--muted)' : 'var(--negative)';
+          const outSub   = isOverpaid ? 'overpaid' : isTerminated ? 'final balance' : (year + ' balance');
+          const showFirstMonth = suggestedFirstMonthNet !== null && fmMeta && !isOverpaid;
+          const fmMonthName = fmMeta ? (fmMeta.monthName || '') : '';
+          const fmSub = fmMeta ? fmMeta.daysWorked + ' of ' + fmMeta.daysTotal + ' days · ' + fmMonthName : '';
+          return '<div style="display:flex;border-top:1px solid var(--border);border-bottom:1px solid var(--border)">' +
+            '<div style="flex:1;padding:16px 20px;border-right:1px solid var(--border)">' +
+              '<div style="font:600 9px/1 var(--font-mono);text-transform:uppercase;letter-spacing:1px;color:var(--muted);margin-bottom:8px">' + monthlyLbl + '</div>' +
+              '<div style="font:700 22px/1 var(--font-mono);color:var(--text)">' + sym + monthlyVal.toLocaleString('en-GB',{maximumFractionDigits:0}) + '</div>' +
+              '<div style="font:500 10px/1 var(--font-mono);color:var(--muted);margin-top:6px">' + monthlySub + '</div>' +
+            '</div>' +
+            (showFirstMonth
+              ? '<div style="flex:1;padding:16px 20px;border-right:1px solid var(--border);background:rgba(251,191,36,0.05)">' +
+                  '<div style="font:600 9px/1 var(--font-mono);text-transform:uppercase;letter-spacing:1px;color:#f59e0b;margin-bottom:8px">1st Month Due</div>' +
+                  '<div style="font:700 22px/1 var(--font-mono);color:#f59e0b">' + sym + Math.round(suggestedFirstMonthNet).toLocaleString('en-GB') + '</div>' +
+                  '<div style="font:500 10px/1 var(--font-mono);color:var(--muted);margin-top:6px">' + fmSub + '</div>' +
+                '</div>'
+              : '') +
+            '<div style="flex:1;padding:16px 20px">' +
+              '<div style="font:600 9px/1 var(--font-mono);text-transform:uppercase;letter-spacing:1px;color:var(--muted);margin-bottom:8px">Year Balance</div>' +
+              '<div style="font:700 22px/1 var(--font-mono);color:' + outColor + '">' + (isOverpaid ? '−' : '') + sym + Math.abs(netRemaining).toLocaleString('en-GB',{maximumFractionDigits:0}) + '</div>' +
+              '<div style="font:500 10px/1 var(--font-mono);color:var(--muted);margin-top:6px">' + outSub + '</div>' +
+            '</div>' +
+          '</div>' +
+          (!paye && excessDays > 0
+            ? '<div style="padding:8px 20px;font:500 11px/1 var(--font-mono);color:var(--negative);border-bottom:1px solid var(--border)">' +
+              '⚠ ' + excessDays + ' excess day' + (excessDays > 1 ? 's' : '') + ' — −' + sym + excessDeduction.toLocaleString('en-GB',{minimumFractionDigits:2}) + ' deducted' +
+              '</div>'
+            : '');
+        })()}
 
         <div class="sc-sections">
 
@@ -1700,9 +1708,6 @@ async function loadSalaryPage() {
               <span class="sc-chevron">›</span>
             </button>
             <div class="sc-sec-body">
-              <div class="sc-sec-actions">
-                <button class="btn btn-primary btn-sm" onclick="openSalaryPaymentModal(${emp.employee_id})">+ Log Payment</button>
-              </div>
               ${payments.length ? payments.map(p => `
                 <div class="sc-item">
                   <span class="sc-item-date">${MONTHS[p.payment_month]?.slice(0,3)||p.payment_month} ${p.payment_year}</span>
@@ -1807,9 +1812,29 @@ async function loadSalaryPage() {
           </div>` : ''}
 
           <!-- Pro-rated breakdown -->
-          ${(emp.pro_rated || emp.first_month_full) ? (() => {
+          ${(emp.pro_rated || emp.first_month_full || (suggestedFirstMonthNet !== null && fmMeta)) ? (() => {
             const pr = emp.pro_rated;
             const fmr = emp.first_month_full;
+            // Client-side fallback only (no server data)
+            if (!pr && !fmr && suggestedFirstMonthNet !== null && fmMeta) {
+              const grossMonthly = annualSalary / 12;
+              const grossProrata = grossMonthly * (fmMeta.daysWorked / fmMeta.daysTotal);
+              const payLabel = paye ? ('Net after PAYE/NI' + (paye.pension > 0 ? '/pension' : '')) : 'Pro-rata amount';
+              return `
+          <div class="sc-section">
+            <button class="sc-sec-toggle" onclick="toggleSection(this)">
+              <span class="sc-sec-title">Pro-Rated Pay — started ${fmMeta.startDate}</span>
+              <span class="sc-chevron">›</span>
+            </button>
+            <div class="sc-sec-body">
+              <div class="sc-breakdown">
+                <div class="sc-breakdown-title">First month payment — ${fmMeta.monthName}</div>
+                <div class="sc-breakdown-row"><span>${fmMeta.daysWorked} of ${fmMeta.daysTotal} days in ${fmMeta.monthName}</span><span>${sym}${grossProrata.toLocaleString('en-GB',{minimumFractionDigits:2})} gross</span></div>
+                <div class="sc-breakdown-row total"><span>${payLabel}</span><span>${sym}${suggestedFirstMonthNet.toLocaleString('en-GB',{minimumFractionDigits:2})}</span></div>
+              </div>
+            </div>
+          </div>`;
+            }
             const showFmFull = fmr && fmr.first_month_days < fmr.first_month_total_days;
             const fmrName = fmr ? (MONTHS[parseInt(fmr.first_month.split('-')[1])] || fmr.first_month) : null;
             const fmrGross = fmr ? fmr.first_month_pay : 0;
@@ -2196,12 +2221,16 @@ async function loadCalendar() {
 
   const empFilter = document.getElementById('calEmpFilter').value;
 
-  const [calRes, remRes] = await Promise.all([
+  const [calRes, remRes, pendingRes] = await Promise.all([
     fetch(`/api/calendar?year=${calYear}&month=${calMonth}`),
-    fetch(`/api/calendar-reminders?year=${calYear}&month=${calMonth}`)
+    fetch(`/api/calendar-reminders?year=${calYear}&month=${calMonth}`),
+    fetch(`/api/day-off-requests`)
   ]);
   calData = await calRes.json();
   calReminders = remRes.ok ? await remRes.json() : [];
+  const pendingRequests = pendingRes.ok ? await pendingRes.json() : [];
+  renderDayOffRequestsBanner(pendingRequests);
+  updateCalendarBadge(pendingRequests.length);
 
   // Update calSub
   const calSub = document.getElementById('calSub');
@@ -2332,6 +2361,62 @@ function renderCalSummary(byDate, empFilter) {
     summary.innerHTML = statTiles;
   }
   summary.classList.remove('hidden');
+}
+
+function renderDayOffRequestsBanner(pending) {
+  let banner = document.getElementById('dayOffRequestsBanner');
+  if (!banner) {
+    const calPage = document.getElementById('page-calendar');
+    if (!calPage) return;
+    banner = document.createElement('div');
+    banner.id = 'dayOffRequestsBanner';
+    calPage.insertBefore(banner, calPage.firstChild);
+  }
+  if (!pending.length) { banner.innerHTML = ''; return; }
+
+  const MONS = ['JAN','FEB','MAR','APR','MAY','JUN','JUL','AUG','SEP','OCT','NOV','DEC'];
+  const rows = pending.map(r => {
+    const d = new Date(r.request_date);
+    const typeLabel = parseFloat(r.is_day_off) === 1 ? 'Full day' : 'Half day';
+    return '<div style="display:flex;align-items:center;gap:12px;padding:10px 16px;border-bottom:1px solid var(--border)">' +
+      '<div style="width:36px;text-align:center;background:#1a1f2e;border:1px solid var(--border);border-radius:6px;padding:5px 0;flex-shrink:0">' +
+        '<div style="font:800 13px/1 var(--font-mono);color:var(--text)">' + d.getUTCDate() + '</div>' +
+        '<div style="font:600 9px/1 var(--font-mono);color:var(--muted)">' + MONS[d.getUTCMonth()] + '</div>' +
+      '</div>' +
+      '<div style="flex:1">' +
+        '<div style="font:600 13px/1 var(--font-sans);color:var(--text)">' + esc(r.employee_name) + '</div>' +
+        '<div style="font:500 11px/1 var(--font-mono);color:var(--muted);margin-top:3px">' + typeLabel + (r.department ? ' · ' + esc(r.department) : '') + '</div>' +
+      '</div>' +
+      '<div style="display:flex;gap:6px">' +
+        '<button class="btn btn-primary btn-sm" onclick="approveLeave(' + r.id + ')">Approve</button>' +
+        '<button class="btn btn-danger btn-sm" onclick="declineLeave(' + r.id + ')">Decline</button>' +
+      '</div>' +
+    '</div>';
+  }).join('');
+
+  banner.innerHTML =
+    '<div class="card" style="margin-bottom:16px;border:1px solid var(--warning)">' +
+      '<div class="card-header" style="background:var(--warning)22">' +
+        '<span class="card-title">Pending Day-Off Requests</span>' +
+        '<span style="font:700 11px/1 var(--font-mono);color:var(--muted)">' + pending.length + ' pending</span>' +
+      '</div>' +
+      '<div>' + rows + '</div>' +
+    '</div>';
+}
+
+async function approveLeave(id) {
+  const res = await fetch('/api/day-off-requests/' + id + '/approve', { method: 'PUT' });
+  if (res.ok) { showToast('Day off approved', 'success'); loadCalendar(); }
+  else showToast('Failed to approve', 'error');
+}
+
+async function declineLeave(id) {
+  const reason = prompt('Reason for declining (optional):') ?? '';
+  const res = await fetch('/api/day-off-requests/' + id + '/decline', {
+    method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ reason })
+  });
+  if (res.ok) { showToast('Request declined', 'success'); loadCalendar(); }
+  else showToast('Failed to decline', 'error');
 }
 
 function openDayModal(dateStr, entries, remindersToday = []) {
@@ -2523,6 +2608,22 @@ function updateSalaryBadge(count) {
     if (count > 0) { el.textContent = count; el.classList.remove('hidden'); }
     else el.classList.add('hidden');
   });
+}
+
+function updateCalendarBadge(count) {
+  ['calNavBadge', 'calBellBadge'].forEach(id => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    if (count > 0) { el.textContent = count; el.classList.remove('hidden'); }
+    else el.classList.add('hidden');
+  });
+}
+
+async function refreshCalendarBadge() {
+  try {
+    const res = await fetch('/api/day-off-requests');
+    if (res.ok) updateCalendarBadge((await res.json()).length);
+  } catch {}
 }
 
 // ─── SALARY REMINDER PANEL ────────────────────────────────────────────────────
@@ -2865,4 +2966,465 @@ async function deleteHotelExpense(id) {
   if (!res.ok) { showToast('Delete failed', 'error'); return; }
   showToast('Deleted', 'success');
   loadHotelExpenses();
+}
+
+// ─── EMPLOYEE PORTAL ──────────────────────────────────────────────────────────
+async function checkUserRole() {
+  try {
+    const res = await fetch('/api/me');
+    if (!res.ok) return null;
+    return await res.json();
+  } catch { return null; }
+}
+
+async function initEmployeePortal(user) {
+  window.currentUser = user;
+
+  // Wire logout
+  document.getElementById('logoutBtn')?.addEventListener('click', async () => {
+    await fetch('/api/logout', { method: 'POST' });
+    window.location.href = '/login.html';
+  });
+
+  // Hide non-allowed nav items
+  document.querySelectorAll('.nav-item').forEach(el => {
+    const page = el.dataset.page;
+    if (page !== 'dashboard' && page !== 'calendar') el.style.display = 'none';
+  });
+  document.querySelectorAll('.bottom-nav-item').forEach(el => {
+    const page = el.dataset.page;
+    if (page !== 'dashboard' && page !== 'calendar') el.style.display = 'none';
+  });
+  const addEmpBtn = document.getElementById('addEmpBtn');
+  if (addEmpBtn) addEmpBtn.style.display = 'none';
+
+  document.title = 'LPGP – My Portal';
+
+  // Override navigate
+  window.navigate = function(page) {
+    if (page !== 'dashboard' && page !== 'calendar') return;
+    document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+    document.querySelectorAll('.nav-item, .bottom-nav-item').forEach(n => n.classList.remove('active'));
+    const pageEl = document.getElementById('page-' + page);
+    if (pageEl) pageEl.classList.add('active');
+    document.querySelectorAll('[data-page="' + page + '"]').forEach(n => n.classList.add('active'));
+    if (page === 'dashboard') loadEmployeeDashboard(user);
+    if (page === 'calendar') loadEmployeeCalendar();
+  };
+
+  // Attach click handlers since admin init was skipped
+  document.querySelectorAll('.nav-item').forEach(el => {
+    el.addEventListener('click', () => window.navigate(el.dataset.page));
+  });
+  document.querySelectorAll('.bottom-nav-item').forEach(el => {
+    el.addEventListener('click', () => window.navigate(el.dataset.page));
+  });
+
+  // Poll notifications
+  loadEmpNotifications();
+  setInterval(loadEmpNotifications, 30000);
+
+  // Show dashboard
+  window.navigate('dashboard');
+}
+
+async function loadEmpNotifications() {
+  const res = await fetch('/api/employee/notifications');
+  if (!res.ok) return;
+  const notifs = await res.json();
+  const unread = notifs.filter(n => !n.is_read).length;
+
+  // Badge button above Sign Out in sidebar-footer
+  let badge = document.getElementById('empNotifBadge');
+  if (!badge) {
+    badge = document.createElement('button');
+    badge.id = 'empNotifBadge';
+    badge.className = 'btn btn-ghost btn-sm';
+    badge.style.cssText = 'width:100%;justify-content:center;margin-bottom:6px;gap:6px';
+    const logoutBtn = document.getElementById('logoutBtn');
+    if (logoutBtn) logoutBtn.parentNode.insertBefore(badge, logoutBtn);
+  }
+  badge.onclick = () => openEmpNotificationsModal(notifs);
+  const bellSvg = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>';
+  if (unread > 0) {
+    badge.innerHTML = bellSvg + ' Notifications <span style="background:var(--negative);color:#fff;font:700 9px/1 var(--font-mono);padding:2px 5px;border-radius:8px;margin-left:2px">' + unread + '</span>';
+    badge.style.borderColor = 'var(--negative)';
+    badge.style.color = 'var(--text)';
+  } else {
+    badge.innerHTML = bellSvg + ' Notifications';
+    badge.style.borderColor = '';
+    badge.style.color = '';
+  }
+}
+
+function openEmpNotificationsModal(notifs) {
+  fetch('/api/employee/notifications/read-all', { method: 'PUT' });
+  setTimeout(loadEmpNotifications, 500);
+
+  const existing = document.getElementById('empNotifModal');
+  if (existing) existing.remove();
+
+  const TYPE_COLOR = { approved: 'var(--positive)', declined: 'var(--negative)', info: 'var(--primary)' };
+  const TYPE_ICON  = { approved: '✓', declined: '✕', info: 'ℹ' };
+  const rows = notifs.length
+    ? notifs.map(n => {
+        const d = new Date(n.created_at).toLocaleDateString('en-GB', {day:'2-digit', month:'short', year:'numeric'});
+        const color = TYPE_COLOR[n.type] || 'var(--muted)';
+        const icon  = TYPE_ICON[n.type]  || 'ℹ';
+        const unreadDot = !n.is_read ? '<span style="width:6px;height:6px;border-radius:50%;background:var(--negative);display:inline-block;margin-right:6px;flex-shrink:0;margin-top:2px"></span>' : '';
+        return '<div style="display:flex;gap:10px;padding:14px 0;border-bottom:1px solid var(--border)">' +
+          unreadDot +
+          '<div style="flex:1">' +
+            '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">' +
+              '<span style="font:700 11px/1 var(--font-mono);text-transform:uppercase;color:' + color + '">' + icon + ' ' + n.type + '</span>' +
+              '<span style="font:500 10px/1 var(--font-mono);color:var(--muted)">' + d + '</span>' +
+            '</div>' +
+            '<div style="font:500 13px/1.5 var(--font-sans);color:var(--text)">' + esc(n.message) + '</div>' +
+          '</div>' +
+        '</div>';
+      }).join('')
+    : '<div style="color:var(--muted);font-size:0.85rem;padding:24px 0;text-align:center">No notifications yet</div>';
+
+  const modal = document.createElement('div');
+  modal.id = 'empNotifModal';
+  modal.className = 'modal-overlay';
+  modal.innerHTML =
+    '<div class="modal" style="max-width:440px">' +
+      '<div class="modal-header"><span class="modal-title">Notifications</span>' +
+        '<button class="modal-close" onclick="document.getElementById(\'empNotifModal\').remove()">×</button></div>' +
+      '<div style="padding:0 20px 4px;max-height:440px;overflow-y:auto">' + rows + '</div>' +
+      '<div style="padding:14px 20px;border-top:1px solid var(--border)">' +
+        '<button class="btn btn-ghost btn-sm" style="width:100%" onclick="document.getElementById(\'empNotifModal\').remove()">Close</button>' +
+      '</div>' +
+    '</div>';
+  modal.addEventListener('click', e => { if (e.target === modal) modal.remove(); });
+  document.body.appendChild(modal);
+}
+
+async function loadEmployeeDashboard(user) {
+  const el = document.getElementById('dashStats');
+  if (!el) return;
+  el.innerHTML = '<div class="skeleton" style="height:200px;border-radius:16px"></div>';
+
+  try {
+    const [profileRes, upcomingRes] = await Promise.all([
+      fetch('/api/employee/profile'),
+      fetch('/api/calendar-reminders/upcoming?days=30')
+    ]);
+    const profile  = profileRes.ok  ? await profileRes.json()  : {};
+    const upcoming = upcomingRes.ok ? await upcomingRes.json() : [];
+
+    const daysUsed  = parseFloat(profile.days_used) || 0;
+    const allowance = profile.allowance_days || 20;
+    const remaining = Math.max(0, allowance - daysUsed);
+    const pct       = Math.min(100, Math.round((daysUsed / allowance) * 100));
+    const initials  = (profile.name || '?').split(' ').map(w => w[0]).join('').slice(0,2).toUpperCase();
+    const barColor  = pct > 80 ? 'var(--negative)' : pct > 60 ? 'var(--warning)' : 'var(--positive)';
+    const MONS = ['JAN','FEB','MAR','APR','MAY','JUN','JUL','AUG','SEP','OCT','NOV','DEC'];
+
+    let upcomingHtml = '';
+    if (upcoming.length) {
+      upcomingHtml = upcoming.slice(0,4).map(r => {
+        const d = new Date(r.virtual_date);
+        const sym = r.currency === 'GBP' ? '£' : r.currency === 'USD' ? '$' : (r.currency + ' ');
+        const amt = r.amount ? sym + parseFloat(r.amount).toLocaleString('en-GB',{maximumFractionDigits:0}) : '';
+        return '<div style="display:flex;gap:12px;padding:11px 0;border-bottom:1px solid var(--border);align-items:center">' +
+          '<div style="width:38px;min-width:38px;text-align:center;background:#1a1f2e;border:1px solid var(--border);border-radius:7px;padding:6px 0">' +
+            '<div style="font:800 14px/1 var(--font-mono);color:var(--text)">' + d.getUTCDate() + '</div>' +
+            '<div style="font:600 9px/1 var(--font-mono);color:var(--muted);margin-top:3px">' + MONS[d.getUTCMonth()] + '</div>' +
+          '</div>' +
+          '<div style="flex:1"><div style="font:600 12px/1 var(--font-sans);color:var(--text)">' + esc(r.title) + '</div>' +
+            '<div style="font:600 10px/1 var(--font-mono);color:var(--muted);margin-top:4px">' + (r.category||'').toUpperCase() + '</div></div>' +
+          (amt ? '<div style="font:700 12px/1 var(--font-mono);color:var(--text)">' + amt + '</div>' : '') +
+        '</div>';
+      }).join('');
+    }
+
+    el.innerHTML =
+      '<div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:0">' +
+        // Profile card
+        '<div class="card">' +
+          '<div style="padding:24px">' +
+            '<div style="display:flex;align-items:center;gap:16px;margin-bottom:20px">' +
+              '<div style="width:52px;height:52px;border-radius:50%;background:var(--primary);display:flex;align-items:center;justify-content:center;font:800 18px/1 var(--font-mono);color:#000;flex-shrink:0">' + initials + '</div>' +
+              '<div>' +
+                '<div style="font:700 18px/1 var(--font-sans);color:var(--text)">' + esc(profile.name||'') + '</div>' +
+                '<div style="font:500 12px/1 var(--font-mono);color:var(--muted);margin-top:4px">' + esc([profile.job_title, profile.department].filter(Boolean).join(' · ')) + '</div>' +
+              '</div>' +
+            '</div>' +
+            (profile.start_date ? '<div style="font:500 11px/1 var(--font-mono);color:var(--muted);margin-bottom:16px">Since ' + profile.start_date + '</div>' : '') +
+            '<div style="font:600 10px/1 var(--font-mono);text-transform:uppercase;letter-spacing:1px;color:var(--muted);margin-bottom:8px">Days Off ' + (profile.year||new Date().getFullYear()) + '</div>' +
+            '<div style="display:flex;justify-content:space-between;font:600 12px/1 var(--font-mono);color:var(--muted);margin-bottom:6px">' +
+              '<span>' + daysUsed + ' used</span><span style="color:' + barColor + '">' + remaining + ' remaining</span>' +
+            '</div>' +
+            '<div style="height:8px;background:var(--border);border-radius:4px;margin-bottom:8px">' +
+              '<div style="height:100%;width:' + pct + '%;background:' + barColor + ';border-radius:4px"></div>' +
+            '</div>' +
+            '<div style="font:500 11px/1 var(--font-mono);color:var(--muted)">' + daysUsed + ' / ' + allowance + ' days used &middot; ' + pct + '%</div>' +
+          '</div>' +
+        '</div>' +
+        // Upcoming reminders
+        '<div class="card">' +
+          '<div class="card-header"><span class="card-title">Upcoming</span><span style="font:700 11px/1 var(--font-mono);color:var(--muted)">NEXT 30D</span></div>' +
+          '<div style="padding:4px 18px 12px">' + (upcomingHtml || '<div style="color:var(--muted);font-size:0.82rem;padding:16px 0">No upcoming reminders</div>') + '</div>' +
+        '</div>' +
+      '</div>';
+
+    // Hide the other dashboard panels
+    ['contractExpiryPanel','headcountPanel','upcomingPanel','activityPanel'].forEach(id => {
+      const e = document.getElementById(id);
+      if (e) e.innerHTML = '';
+    });
+    const dashTable = document.querySelector('.card .table-wrap');
+    // hide the full employee summary table section
+    const dashTableCard = document.getElementById('dashTable');
+    if (dashTableCard) {
+      const card = dashTableCard.closest('.card');
+      if (card) card.style.display = 'none';
+    }
+
+  } catch(e) {
+    el.innerHTML = '<div class="alert alert-error">Failed to load profile: ' + e.message + '</div>';
+  }
+}
+
+let empCalYear  = new Date().getFullYear();
+let empCalMonth = new Date().getMonth() + 1;
+
+async function loadEmployeeCalendar() {
+  const MONTHS_FULL = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+  const DAYS = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
+
+  // Build page scaffold once
+  let container = document.getElementById('empCalContainer');
+  if (!container) {
+    const page = document.getElementById('page-calendar');
+    if (!page) return;
+    page.innerHTML =
+      '<div class="page-head">' +
+        '<div><h1>My Calendar</h1><div class="sub">// Your days off &amp; team bookings</div></div>' +
+        '<button class="btn btn-primary" onclick="openEmpDayOffModal()">+ Request Day Off</button>' +
+      '</div>' +
+      '<div id="empCalContainer"></div>';
+    container = document.getElementById('empCalContainer');
+  }
+
+  // Ensure day-off modal lives at body level (correct overlay behaviour)
+  if (!document.getElementById('empDayOffModal')) {
+    const m = document.createElement('div');
+    m.className = 'modal-overlay';
+    m.id = 'empDayOffModal';
+    m.innerHTML =
+      '<div class="modal" style="max-width:380px">' +
+        '<div class="modal-header"><span class="modal-title">Request Day Off</span>' +
+          '<button class="modal-close" onclick="closeModal(\'empDayOffModal\')">×</button></div>' +
+        '<div style="padding:20px;display:flex;flex-direction:column;gap:14px">' +
+          '<div class="form-group"><label>Date</label><input type="date" id="empDayOffDate"></div>' +
+          '<div class="form-group"><label>Type</label>' +
+            '<select id="empDayOffType"><option value="1">Full Day</option><option value="0.5">Half Day</option></select></div>' +
+          '<button class="btn btn-primary" style="width:100%" onclick="submitEmpDayOff()">Submit Request</button>' +
+        '</div>' +
+      '</div>';
+    m.addEventListener('click', function(e) { if (e.target === m) closeModal('empDayOffModal'); });
+    document.body.appendChild(m);
+  }
+
+  container.innerHTML = '<div class="skeleton" style="height:400px;border-radius:12px"></div>';
+
+  try {
+    const [requestsRes, teamRes, upcomingRes] = await Promise.all([
+      fetch('/api/employee/day-off-requests'),
+      fetch('/api/calendar?year=' + empCalYear + '&month=' + empCalMonth),
+      fetch('/api/calendar-reminders/upcoming?days=60')
+    ]);
+    const allRequests = requestsRes.ok ? await requestsRes.json() : [];
+    const teamRecords = teamRes.ok    ? await teamRes.json()     : [];
+    const upcoming    = upcomingRes.ok? await upcomingRes.json() : [];
+
+    // Own requests this month: date → request
+    const monthPrefix = empCalYear + '-' + String(empCalMonth).padStart(2,'0');
+    const myRequests  = allRequests.filter(r => (r.request_date||'').startsWith(monthPrefix));
+    const myMap = {};
+    myRequests.forEach(r => { myMap[r.request_date.slice(0,10)] = r; });
+
+    // Team days off: date → [names] (exclude self)
+    const teamMap = {};
+    const myEmpId = String((window.currentUser || {}).employee_id || '');
+    (Array.isArray(teamRecords) ? teamRecords : []).forEach(r => {
+      if (String(r.employee_id) === myEmpId) return;
+      if (!(parseFloat(r.is_day_off) > 0)) return;
+      const d = (r.record_date || '').slice(0,10);
+      if (!d.startsWith(monthPrefix)) return;
+      if (!teamMap[d]) teamMap[d] = [];
+      const name = r.name || ('Emp#' + r.employee_id);
+      if (!teamMap[d].includes(name)) teamMap[d].push(name);
+    });
+
+    // Calendar grid
+    const firstDay   = new Date(empCalYear, empCalMonth - 1, 1);
+    const daysInMonth = new Date(empCalYear, empCalMonth, 0).getDate();
+    let startDow = firstDay.getDay();
+    startDow = startDow === 0 ? 6 : startDow - 1;
+
+    const todayStr = new Date().toLocaleDateString('en-CA');
+
+    let gridHtml = '<div style="display:grid;grid-template-columns:repeat(7,1fr);gap:4px;margin-bottom:6px">';
+    DAYS.forEach(day => { gridHtml += '<div style="text-align:center;font:600 10px/1 var(--font-mono);color:var(--muted);padding:4px 0">' + day + '</div>'; });
+    gridHtml += '</div><div style="display:grid;grid-template-columns:repeat(7,1fr);gap:5px">';
+
+    for (let i = 0; i < startDow; i++) gridHtml += '<div></div>';
+
+    for (let d = 1; d <= daysInMonth; d++) {
+      const dateStr = empCalYear + '-' + String(empCalMonth).padStart(2,'0') + '-' + String(d).padStart(2,'0');
+      const rec    = myMap[dateStr];
+      const team   = teamMap[dateStr] || [];
+      const isToday = dateStr === todayStr;
+      const isPast  = dateStr < todayStr;
+      const status  = rec ? rec.status : null;
+
+      let bg = isPast ? 'var(--surface)' : 'var(--surface-2)';
+      let myLabel = '';
+      if (status === 'pending') {
+        bg = '#d9770620';
+        myLabel = '<div style="font:700 8px/1 var(--font-mono);color:#fb923c;margin-top:3px">PENDING</div>';
+      } else if (status === 'approved') {
+        bg = '#6ee7d420';
+        myLabel = '<div style="font:700 8px/1 var(--font-mono);color:var(--primary);margin-top:3px">APPROVED</div>';
+      } else if (status === 'declined') {
+        bg = '#ef444418';
+        myLabel = '<div style="font:700 8px/1 var(--font-mono);color:#f87171;margin-top:3px">DECLINED</div>' +
+          (rec.decline_reason ? '<div style="font:500 7px/1.2 var(--font-sans);color:#f87171;margin-top:2px;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="' + esc(rec.decline_reason) + '">' + esc(rec.decline_reason.slice(0,12)) + (rec.decline_reason.length > 12 ? '…' : '') + '</div>' : '');
+      }
+
+      let teamHtml = '';
+      if (team.length) {
+        teamHtml = team.slice(0,2).map(n => {
+          const init = n.split(' ').map(w => w[0]).join('').slice(0,2).toUpperCase();
+          return '<div style="font:700 7px/1 var(--font-mono);background:#7c3aed33;color:#a78bfa;border-radius:3px;padding:2px 3px;margin-top:2px">' + init + '</div>';
+        }).join('');
+        if (team.length > 2) teamHtml += '<div style="font:600 7px/1 var(--font-mono);color:var(--muted);margin-top:2px">+' + (team.length-2) + '</div>';
+      }
+
+      const clickable  = !isPast && !rec;
+      const cancelable = rec && status === 'pending';
+      const declineReason = rec && status === 'declined' && rec.decline_reason ? rec.decline_reason : '';
+      const interactive = clickable || cancelable || !!declineReason;
+      gridHtml +=
+        '<div style="background:' + bg + ';border:' + (isToday ? '2px solid var(--primary)' : '1px solid var(--border)') + ';border-radius:6px;padding:6px 4px 4px;text-align:center;min-height:54px;cursor:' + (interactive?'pointer':'default') + ';display:flex;flex-direction:column;align-items:center"' +
+        (clickable    ? ' onclick="openEmpDayOffModalDate(\'' + dateStr + '\')"' : '') +
+        (cancelable   ? ' title="Click to cancel this request" onclick="cancelEmpDayOff(\'' + dateStr + '\')"' : '') +
+        (declineReason ? ' onclick="showEmpDeclineReason(\'' + esc(declineReason).replace(/'/g, '\\\'') + '\')"' : '') + '>' +
+          '<div style="font:' + (isToday?'800':'600') + ' 13px/1 var(--font-mono);color:' + (isToday?'var(--primary)':isPast?'var(--muted)':'var(--text)') + '">' + d + '</div>' +
+          myLabel + teamHtml +
+        '</div>';
+    }
+    gridHtml += '</div>' +
+      '<div style="display:flex;gap:12px;margin-top:10px;font:500 10px/1 var(--font-mono);color:var(--muted)">' +
+        '<span><span style="display:inline-block;width:9px;height:9px;background:#d9770620;border:1px solid #fb923c55;border-radius:2px;margin-right:3px;vertical-align:middle"></span>Pending</span>' +
+        '<span><span style="display:inline-block;width:9px;height:9px;background:#6ee7d420;border:1px solid var(--primary);border-radius:2px;margin-right:3px;vertical-align:middle"></span>Approved</span>' +
+        '<span><span style="display:inline-block;width:9px;height:9px;background:#7c3aed33;border-radius:2px;margin-right:3px;vertical-align:middle"></span>Team off</span>' +
+      '</div>';
+
+    // Upcoming reminders
+    const MONS = ['JAN','FEB','MAR','APR','MAY','JUN','JUL','AUG','SEP','OCT','NOV','DEC'];
+    const remHtml = upcoming.filter(r => (r.virtual_date||'').slice(0,10) >= todayStr).slice(0,5).map(r => {
+      const rd = new Date(r.virtual_date);
+      const sym = r.currency === 'GBP' ? '£' : r.currency === 'USD' ? '$' : (r.currency+' ');
+      return '<div style="display:flex;gap:12px;padding:10px 0;border-bottom:1px solid var(--border);align-items:center">' +
+        '<div style="width:36px;min-width:36px;text-align:center;background:#1a1f2e;border:1px solid var(--border);border-radius:7px;padding:5px 0">' +
+          '<div style="font:800 13px/1 var(--font-mono);color:var(--text)">' + rd.getUTCDate() + '</div>' +
+          '<div style="font:600 9px/1 var(--font-mono);color:var(--muted);margin-top:3px">' + MONS[rd.getUTCMonth()] + '</div>' +
+        '</div>' +
+        '<div style="flex:1"><div style="font:600 12px/1 var(--font-sans);color:var(--text)">' + esc(r.title) + '</div>' +
+          '<div style="font:600 10px/1 var(--font-mono);color:var(--muted);margin-top:3px">' + (r.category||'').toUpperCase() + '</div></div>' +
+        (r.amount ? '<div style="font:700 12px/1 var(--font-mono);color:var(--text)">' + sym + parseFloat(r.amount).toLocaleString('en-GB',{maximumFractionDigits:0}) + '</div>' : '') +
+      '</div>';
+    }).join('');
+
+    container.innerHTML =
+      '<div style="display:flex;gap:12px;align-items:center;margin-bottom:16px">' +
+        '<button class="btn btn-ghost" onclick="empCalPrev()">‹ Prev</button>' +
+        '<div style="flex:1;text-align:center;font:700 16px/1 var(--font-sans);color:var(--text)">' + MONTHS_FULL[empCalMonth-1] + ' ' + empCalYear + '</div>' +
+        '<button class="btn btn-ghost" onclick="empCalNext()">Next ›</button>' +
+      '</div>' +
+      '<div style="display:grid;grid-template-columns:3fr 2fr;gap:16px">' +
+        '<div class="card">' +
+          '<div class="card-header"><span class="card-title">Team Calendar</span>' +
+            '<span style="font:700 11px/1 var(--font-mono);color:var(--muted)">' + myRequests.length + ' request' + (myRequests.length!==1?'s':'') + ' this month</span></div>' +
+          '<div style="padding:16px">' + gridHtml + '</div>' +
+          '<div style="padding:0 16px 12px;font:500 11px/1 var(--font-mono);color:var(--muted)">Click a future date to request · Click PENDING to cancel</div>' +
+        '</div>' +
+        '<div class="card"><div class="card-header"><span class="card-title">Upcoming</span><span style="font:700 11px/1 var(--font-mono);color:var(--muted)">NEXT 60D</span></div>' +
+          '<div style="padding:4px 16px 12px">' + (remHtml || '<div style="color:var(--muted);font-size:0.82rem;padding:12px 0">No upcoming reminders</div>') + '</div>' +
+        '</div>' +
+      '</div>';
+
+  } catch(e) {
+    container.innerHTML = '<div class="alert alert-error">Failed to load calendar: ' + e.message + '</div>';
+  }
+}
+
+function empCalPrev() { empCalMonth--; if (empCalMonth < 1) { empCalMonth = 12; empCalYear--; } loadEmployeeCalendar(); }
+function empCalNext() { empCalMonth++; if (empCalMonth > 12) { empCalMonth = 1; empCalYear++; } loadEmployeeCalendar(); }
+
+function showEmpDeclineReason(reason) {
+  const existing = document.getElementById('empDeclineReasonModal');
+  if (existing) existing.remove();
+  const modal = document.createElement('div');
+  modal.id = 'empDeclineReasonModal';
+  modal.className = 'modal-overlay';
+  modal.innerHTML =
+    '<div class="modal" style="max-width:360px">' +
+      '<div class="modal-header"><span class="modal-title" style="color:var(--negative)">✕ Request Declined</span>' +
+        '<button class="modal-close" onclick="document.getElementById(\'empDeclineReasonModal\').remove()">×</button></div>' +
+      '<div style="padding:20px">' +
+        '<div style="font:500 11px/1 var(--font-mono);color:var(--muted);margin-bottom:8px;text-transform:uppercase;letter-spacing:1px">Reason</div>' +
+        '<div style="font:500 14px/1.5 var(--font-sans);color:var(--text)">' + esc(reason) + '</div>' +
+      '</div>' +
+      '<div style="padding:0 20px 16px">' +
+        '<button class="btn btn-ghost btn-sm" style="width:100%" onclick="document.getElementById(\'empDeclineReasonModal\').remove()">Close</button>' +
+      '</div>' +
+    '</div>';
+  modal.addEventListener('click', e => { if (e.target === modal) modal.remove(); });
+  document.body.appendChild(modal);
+}
+
+function openEmpDayOffModal() {
+  document.getElementById('empDayOffDate').value = new Date().toISOString().slice(0,10);
+  openModal('empDayOffModal');
+}
+function openEmpDayOffModalDate(date) {
+  document.getElementById('empDayOffDate').value = date;
+  openModal('empDayOffModal');
+}
+
+async function submitEmpDayOff() {
+  const date = document.getElementById('empDayOffDate').value;
+  const is_day_off = document.getElementById('empDayOffType').value;
+  if (!date) return showToast('Please select a date', 'error');
+  const res = await fetch('/api/employee/day-off', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ date, is_day_off }) });
+  const data = await res.json();
+  if (res.ok) { closeModal('empDayOffModal'); showToast('Day off submitted!', 'success'); loadEmployeeCalendar(); }
+  else showToast(data.error || 'Failed', 'error');
+}
+
+async function cancelEmpDayOff(date) {
+  if (!await showConfirm('Cancel your pending day off request for ' + date + '?')) return;
+  const res = await fetch('/api/employee/day-off/' + date, { method:'DELETE' });
+  if (res.ok) { showToast('Request cancelled', 'success'); loadEmployeeCalendar(); }
+  else showToast('Failed to cancel', 'error');
+}
+
+function openSetPinModal(empId, empName) {
+  // simple prompt approach
+  const pin = prompt('Set portal PIN for ' + empName + ' (min 4 characters):');
+  if (!pin || pin.length < 4) { showToast('PIN must be at least 4 characters', 'error'); return; }
+  fetch('/api/employees/' + empId + '/portal-pin', {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ pin })
+  }).then(r => r.json()).then(d => {
+    if (d.success) showToast('Portal PIN set for ' + empName, 'success');
+    else showToast(d.error || 'Failed', 'error');
+  });
 }
