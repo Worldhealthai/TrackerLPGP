@@ -1520,27 +1520,25 @@ async function loadSalaryPage() {
     salaryTotalsEl.style.cssText = 'display:grid;grid-template-columns:repeat(4,1fr);gap:1px;background:var(--border);border:1px solid var(--border);border-radius:var(--radius);overflow:hidden;margin-bottom:24px';
     const outstandingColor = totalOutstandingGBP > 0 ? 'var(--negative)' : 'var(--positive)';
     const unpaidLabel = unpaidCount > 0 ? (unpaidCount + ' employee' + (unpaidCount !== 1 ? 's' : '') + ' unpaid') : 'all paid up';
-    salaryTotalsEl.innerHTML =
-      '<div style="background:var(--surface);padding:20px 24px;display:flex;flex-direction:column;gap:12px">' +
-        '<div style="font:600 10px/1 var(--font-mono);text-transform:uppercase;letter-spacing:1.2px;color:var(--muted)">Paid YTD</div>' +
-        '<div style="font:700 32px/1 var(--font-mono);color:var(--text);letter-spacing:-1.5px">' + fmtGBP(totalPaidGBP) + '</div>' +
-        '<div style="font:500 11px/1 var(--font-mono);color:var(--positive)">' + paidPct.toFixed(0) + '% of target</div>' +
-      '</div>' +
-      '<div style="background:var(--surface);padding:20px 24px;display:flex;flex-direction:column;gap:12px">' +
-        '<div style="font:600 10px/1 var(--font-mono);text-transform:uppercase;letter-spacing:1.2px;color:var(--muted)">Due YTD</div>' +
-        '<div style="font:700 32px/1 var(--font-mono);color:var(--text);letter-spacing:-1.5px">' + fmtGBP(totalDueGBP) + '</div>' +
-        '<div style="font:500 11px/1 var(--font-mono);color:var(--muted)">salary target ' + year + '</div>' +
-      '</div>' +
-      '<div style="background:var(--surface);padding:20px 24px;display:flex;flex-direction:column;gap:12px">' +
-        '<div style="font:600 10px/1 var(--font-mono);text-transform:uppercase;letter-spacing:1.2px;color:var(--muted)">Outstanding</div>' +
-        '<div style="font:700 32px/1 var(--font-mono);color:' + outstandingColor + ';letter-spacing:-1.5px">' + fmtGBP(Math.abs(totalOutstandingGBP)) + '</div>' +
-        '<div style="font:500 11px/1 var(--font-mono);color:var(--muted)">' + unpaidLabel + '</div>' +
-      '</div>' +
-      '<div style="background:var(--surface);padding:20px 24px;display:flex;flex-direction:column;gap:12px">' +
-        '<div style="font:600 10px/1 var(--font-mono);text-transform:uppercase;letter-spacing:1.2px;color:var(--muted)">Bonuses YTD</div>' +
-        '<div style="font:700 32px/1 var(--font-mono);color:var(--text);letter-spacing:-1.5px">' + fmtGBP(totalBonusGBP) + '</div>' +
-        '<div style="font:500 11px/1 var(--font-mono);color:var(--muted)">across all staff</div>' +
+
+    // Store rows for breakdown modal access
+    window._salaryRows = rows;
+    window._salaryAedRate = AED_TO_GBP;
+
+    const statBox = (label, value, sub, subColor, key) =>
+      '<div style="background:var(--surface);padding:20px 24px;display:flex;flex-direction:column;gap:12px;cursor:pointer;transition:background .15s" ' +
+        'onmouseenter="this.style.background=\'#12172a\'" onmouseleave="this.style.background=\'var(--surface)\'" ' +
+        'onclick="showSalaryBreakdown(\'' + key + '\')">' +
+        '<div style="font:600 10px/1 var(--font-mono);text-transform:uppercase;letter-spacing:1.2px;color:var(--muted)">' + label + '</div>' +
+        '<div style="font:700 32px/1 var(--font-mono);color:' + (key === 'outstanding' ? outstandingColor : 'var(--text)') + ';letter-spacing:-1.5px">' + value + '</div>' +
+        '<div style="font:500 11px/1 var(--font-mono);color:' + subColor + '">' + sub + '</div>' +
       '</div>';
+
+    salaryTotalsEl.innerHTML =
+      statBox('Paid YTD',     fmtGBP(totalPaidGBP),               paidPct.toFixed(0) + '% of target',  'var(--positive)', 'paid') +
+      statBox('Due YTD',      fmtGBP(totalDueGBP),                'salary target ' + year,              'var(--muted)',    'due') +
+      statBox('Outstanding',  fmtGBP(Math.abs(totalOutstandingGBP)), unpaidLabel,                        'var(--muted)',    'outstanding') +
+      statBox('Bonuses YTD',  fmtGBP(totalBonusGBP),              'across all staff',                   'var(--muted)',    'bonuses');
 
     // ── Per-employee cards ──
     if (!rows.length) {
@@ -1932,6 +1930,98 @@ async function loadSalaryPage() {
 
 function toggleSection(btn) {
   btn.closest('.sc-section').classList.toggle('open');
+}
+
+function showSalaryBreakdown(key) {
+  const rows = window._salaryRows || [];
+  const AED_TO_GBP = window._salaryAedRate || (1/4.67);
+  const fmtGBP = v => '£' + Math.abs(v).toLocaleString('en-GB', {minimumFractionDigits:2, maximumFractionDigits:2});
+  const fmtCur = (v, cur) => {
+    const sym = cur === 'GBP' ? '£' : cur === 'USD' ? '$' : (cur + ' ');
+    return sym + Math.abs(v).toLocaleString('en-GB', {minimumFractionDigits:2, maximumFractionDigits:2});
+  };
+  const toGBP = (v, cur) => cur === 'AED' ? v * AED_TO_GBP : v;
+
+  const titles = { paid: 'Paid YTD', due: 'Due YTD (Salary Target)', outstanding: 'Outstanding Balance', bonuses: 'Bonuses YTD' };
+  const notes  = { paid: 'Actual payments logged', due: 'Net salary target incl. PAYE/NI deductions', outstanding: 'Net remaining after payments & deductions (excl. bonuses)', bonuses: 'Bonus payments logged' };
+
+  // Build per-employee rows
+  const empRows = rows.map(emp => {
+    const cur = emp.currency || 'GBP';
+    let nativeVal, gbpVal, label;
+    if (key === 'paid') {
+      nativeVal = parseFloat(emp.total_paid) || 0;
+      gbpVal    = toGBP(nativeVal, cur);
+      label     = nativeVal;
+    } else if (key === 'due') {
+      nativeVal = parseFloat(emp.salary_target ?? emp.annual_salary) || 0;
+      gbpVal    = toGBP(nativeVal, cur);
+    } else if (key === 'outstanding') {
+      nativeVal = parseFloat(emp.net_remaining) || 0;
+      gbpVal    = toGBP(nativeVal, cur);
+    } else { // bonuses
+      nativeVal = parseFloat(emp.total_bonuses) || 0;
+      gbpVal    = toGBP(nativeVal, cur);
+    }
+    return { emp, cur, nativeVal, gbpVal };
+  }).filter(r => Math.abs(r.nativeVal) > 0.005)
+    .sort((a, b) => Math.abs(b.gbpVal) - Math.abs(a.gbpVal));
+
+  const totalGBP = empRows.reduce((s, r) => s + r.gbpVal, 0);
+
+  const rowsHtml = empRows.map(({ emp, cur, nativeVal, gbpVal }) => {
+    const isNeg = nativeVal < 0;
+    const valColor = key === 'outstanding' ? (isNeg ? 'var(--positive)' : 'var(--negative)') : 'var(--text)';
+    const deductHtml = key === 'outstanding' ? (() => {
+      const od  = parseFloat(emp.total_office_deductions) || 0;
+      const ed  = parseFloat(emp.excess_deduction) || 0;
+      const paid = parseFloat(emp.total_paid) || 0;
+      const target = parseFloat(emp.salary_target ?? emp.annual_salary) || 0;
+      const parts = [];
+      if (paid > 0)  parts.push('<span style="color:var(--positive)">−' + fmtCur(paid, cur) + ' paid</span>');
+      if (od > 0)    parts.push('<span style="color:var(--negative)">−' + fmtCur(od, cur) + ' deductions</span>');
+      if (ed > 0)    parts.push('<span style="color:var(--negative)">−' + fmtCur(ed, cur) + ' excess days</span>');
+      return parts.length ? '<div style="font:500 10px/1.4 var(--font-mono);color:var(--muted);margin-top:3px">' + parts.join(' · ') + '</div>' : '';
+    })() : '';
+    return '<div style="display:flex;align-items:center;gap:12px;padding:11px 0;border-bottom:1px solid var(--border)">' +
+      '<div style="width:32px;height:32px;border-radius:50%;background:var(--primary);display:flex;align-items:center;justify-content:center;font:700 11px/1 var(--font-mono);color:#000;flex-shrink:0">' +
+        (emp.name||'?').split(' ').map(w=>w[0]).join('').slice(0,2).toUpperCase() +
+      '</div>' +
+      '<div style="flex:1;min-width:0">' +
+        '<div style="font:600 13px/1 var(--font-sans);color:var(--text)">' + esc(emp.name||'') + '</div>' +
+        '<div style="font:500 10px/1 var(--font-mono);color:var(--muted);margin-top:2px">' + esc(emp.job_title||emp.department||'') + '</div>' +
+        deductHtml +
+      '</div>' +
+      '<div style="text-align:right;flex-shrink:0">' +
+        '<div style="font:700 14px/1 var(--font-mono);color:' + valColor + '">' + (isNeg ? '−' : '') + fmtCur(nativeVal, cur) + '</div>' +
+        (cur !== 'GBP' ? '<div style="font:500 10px/1 var(--font-mono);color:var(--muted);margin-top:3px">≈ ' + fmtGBP(gbpVal) + ' GBP</div>' : '') +
+      '</div>' +
+    '</div>';
+  }).join('');
+
+  const modal = document.createElement('div');
+  modal.className = 'modal-overlay';
+  modal.innerHTML =
+    '<div class="modal" style="max-width:520px;max-height:80vh;display:flex;flex-direction:column">' +
+      '<div class="modal-header" style="flex-shrink:0">' +
+        '<h3 class="modal-title">' + titles[key] + '</h3>' +
+        '<button class="modal-close" onclick="this.closest(\'.modal-overlay\').remove()">×</button>' +
+      '</div>' +
+      '<div style="padding:0 20px 8px;flex-shrink:0">' +
+        '<div style="font:500 11px/1 var(--font-mono);color:var(--muted)">' + notes[key] + '</div>' +
+        (key === 'outstanding' ? '<div style="font:500 11px/1 var(--font-mono);color:var(--muted);margin-top:4px">Excludes bonuses · AED converted at 1 AED = ' + AED_TO_GBP.toFixed(4) + ' GBP</div>' : '') +
+      '</div>' +
+      '<div style="overflow-y:auto;padding:0 20px 8px;flex:1">' +
+        (rowsHtml || '<div style="color:var(--muted);padding:20px 0;font:500 12px/1 var(--font-mono)">No data.</div>') +
+      '</div>' +
+      '<div style="padding:16px 20px;border-top:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;flex-shrink:0;background:var(--surface)">' +
+        '<span style="font:600 11px/1 var(--font-mono);color:var(--muted)">TOTAL (' + empRows.length + ' employee' + (empRows.length !== 1 ? 's' : '') + ')</span>' +
+        '<span style="font:700 18px/1 var(--font-mono);color:var(--text)">' + fmtGBP(totalGBP) + '</span>' +
+      '</div>' +
+    '</div>';
+  modal.addEventListener('click', e => { if (e.target === modal) modal.remove(); });
+  document.body.appendChild(modal);
+  requestAnimationFrame(() => modal.classList.add('open'));
 }
 
 // ─── HR NOTES ─────────────────────────────────────────────────────────────────
