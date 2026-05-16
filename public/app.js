@@ -1670,24 +1670,36 @@ async function loadSalaryPage() {
           const showFirstMonth = suggestedFirstMonthNet !== null && fmMeta && !isOverpaid;
           const fmMonthName = fmMeta ? (fmMeta.monthName || '') : '';
           const fmSub = fmMeta ? fmMeta.daysWorked + ' of ' + fmMeta.daysTotal + ' days · ' + fmMonthName : '';
+          // For first-month starters not yet paid: make pro-rated amount the primary "pay this" figure
+          const firstMonthUnpaid = showFirstMonth && totalPaidEmp === 0;
           return '<div style="display:flex;border-top:1px solid var(--border);border-bottom:1px solid var(--border)">' +
             '<div style="flex:1;padding:16px 20px;border-right:1px solid var(--border)">' +
               '<div style="font:600 9px/1 var(--font-mono);text-transform:uppercase;letter-spacing:1px;color:var(--muted);margin-bottom:8px">' + monthlyLbl + '</div>' +
               '<div style="font:700 22px/1 var(--font-mono);color:var(--text)">' + sym + monthlyVal.toLocaleString('en-GB',{maximumFractionDigits:0}) + '</div>' +
               '<div style="font:500 10px/1 var(--font-mono);color:var(--muted);margin-top:6px">' + monthlySub + '</div>' +
             '</div>' +
-            (showFirstMonth
-              ? '<div style="flex:1;padding:16px 20px;border-right:1px solid var(--border);background:rgba(251,191,36,0.05)">' +
-                  '<div style="font:600 9px/1 var(--font-mono);text-transform:uppercase;letter-spacing:1px;color:#f59e0b;margin-bottom:8px">1st Month Due</div>' +
+            (firstMonthUnpaid
+              // ── First-month starter, not paid yet: show pro-rated amount as the "pay this" number ──
+              ? '<div style="flex:1;padding:16px 20px;background:rgba(251,191,36,0.06)">' +
+                  '<div style="font:600 9px/1 var(--font-mono);text-transform:uppercase;letter-spacing:1px;color:#f59e0b;margin-bottom:8px">Pay This Month</div>' +
                   '<div style="font:700 22px/1 var(--font-mono);color:#f59e0b">' + sym + Math.round(suggestedFirstMonthNet).toLocaleString('en-GB') + '</div>' +
                   '<div style="font:500 10px/1 var(--font-mono);color:var(--muted);margin-top:6px">' + fmSub + '</div>' +
+                  '<div style="font:500 10px/1 var(--font-mono);color:var(--muted);margin-top:4px;opacity:.7">year balance: ' + sym + Math.abs(netRemaining).toLocaleString('en-GB',{maximumFractionDigits:0}) + '</div>' +
                 '</div>'
-              : '') +
-            '<div style="flex:1;padding:16px 20px">' +
-              '<div style="font:600 9px/1 var(--font-mono);text-transform:uppercase;letter-spacing:1px;color:var(--muted);margin-bottom:8px">Year Balance</div>' +
-              '<div style="font:700 22px/1 var(--font-mono);color:' + outColor + '">' + (isOverpaid ? '−' : '') + sym + Math.abs(netRemaining).toLocaleString('en-GB',{maximumFractionDigits:0}) + '</div>' +
-              '<div style="font:500 10px/1 var(--font-mono);color:var(--muted);margin-top:6px">' + outSub + '</div>' +
-            '</div>' +
+              // ── Normal: monthly + year balance (+ optional 1st month middle column if partially paid) ──
+              : (showFirstMonth
+                  ? '<div style="flex:1;padding:16px 20px;border-right:1px solid var(--border);background:rgba(251,191,36,0.05)">' +
+                      '<div style="font:600 9px/1 var(--font-mono);text-transform:uppercase;letter-spacing:1px;color:#f59e0b;margin-bottom:8px">1st Month Due</div>' +
+                      '<div style="font:700 22px/1 var(--font-mono);color:#f59e0b">' + sym + Math.round(suggestedFirstMonthNet).toLocaleString('en-GB') + '</div>' +
+                      '<div style="font:500 10px/1 var(--font-mono);color:var(--muted);margin-top:6px">' + fmSub + '</div>' +
+                    '</div>'
+                  : '') +
+                '<div style="flex:1;padding:16px 20px">' +
+                  '<div style="font:600 9px/1 var(--font-mono);text-transform:uppercase;letter-spacing:1px;color:var(--muted);margin-bottom:8px">Year Balance</div>' +
+                  '<div style="font:700 22px/1 var(--font-mono);color:' + outColor + '">' + (isOverpaid ? '−' : '') + sym + Math.abs(netRemaining).toLocaleString('en-GB',{maximumFractionDigits:0}) + '</div>' +
+                  '<div style="font:500 10px/1 var(--font-mono);color:var(--muted);margin-top:6px">' + outSub + '</div>' +
+                '</div>'
+            ) +
           '</div>' +
           (!paye && excessDays > 0
             ? '<div style="padding:8px 20px;font:500 11px/1 var(--font-mono);color:var(--negative);border-bottom:1px solid var(--border)">' +
