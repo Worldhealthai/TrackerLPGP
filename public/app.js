@@ -1637,7 +1637,7 @@ async function loadSalaryPage() {
             <div class="sc-emp-badges">
               <span class="badge ${typeBadge}" style="font-size:0.67rem">${typeLabel}</span>
               <span class="badge badge-grey" style="font-size:0.67rem">${cur}</span>
-              ${emp.start_date ? `<span class="sc-emp-since">${isTerminated ? 'Started' : 'Since'} ${emp.start_date}</span>` : ''}
+              ${emp.start_date ? `<span class="sc-emp-since">${isTerminated ? 'Started' : 'Since'} ${emp.start_date}</span>` : `<span class="badge" style="background:#7f1d1d;color:#fca5a5;font-size:0.67rem;cursor:pointer" onclick="openEditEmployee(${emp.employee_id})">⚠ No start date — click to set</span>`}
             </div>
           </div>
           <div class="sc-annual">
