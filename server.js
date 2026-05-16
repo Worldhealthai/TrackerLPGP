@@ -555,6 +555,84 @@ app.get('/api/employee/day-off-requests', requireAuth, async (req, res) => {
   res.json(rows);
 });
 
+// Employee: own salary card data
+app.get('/api/employee/salary', requireAuth, async (req, res) => {
+  if (req.user.role !== 'employee') return res.status(403).json({ error: 'Employees only' });
+  try {
+    const empId = req.user.employee_id;
+    const year  = parseInt(req.query.year) || new Date().getFullYear();
+    const { rows: empRows } = await q('SELECT * FROM employees WHERE id = ?', [empId]);
+    if (!empRows[0]) return res.status(404).json({ error: 'Not found' });
+    const emp = empRows[0];
+
+    const { rows: payments } = await q(
+      'SELECT * FROM monthly_payments WHERE employee_id = ? AND payment_year = ? ORDER BY payment_month',
+      [empId, year]
+    );
+    const allowance   = DAY_OFF_ALLOWANCE[emp.employment_type] || 20;
+    const annualSal   = parseFloat(emp.annual_salary) || 0;
+    const dayCalc     = await calcExcessDeductions(empId, year, annualSal, allowance);
+    const startDateStr = emp.start_date ? emp.start_date.toISOString().slice(0,10) : null;
+    const startedThisYear = startDateStr && startDateStr.startsWith(String(year));
+    const isTerminated = !emp.active && !!emp.termination_date;
+
+    const earnedPay = isTerminated
+      ? calcEarnedPay(annualSal, startDateStr, emp.termination_date.toISOString().slice(0,10))
+      : (startedThisYear ? calcProRatedPay(annualSal, startDateStr) : null);
+
+    let firstMonthFull = null;
+    if (!isTerminated && startedThisYear && startDateStr) {
+      const [fY, fM] = startDateStr.split('-').map(Number);
+      const lastDay = new Date(fY, fM, 0).getDate();
+      firstMonthFull = calcEarnedPay(annualSal, startDateStr, `${fY}-${String(fM).padStart(2,'0')}-${String(lastDay).padStart(2,'0')}`);
+    }
+
+    let salaryTarget = annualSal;
+    if (isTerminated) {
+      salaryTarget = earnedPay?.total_expected ?? annualSal;
+    } else if (startedThisYear) {
+      const yearEnd = calcEarnedPay(annualSal, startDateStr, `${year}-12-31`);
+      salaryTarget = yearEnd?.total_expected ?? annualSal;
+    }
+
+    const ukPay = emp.employment_type === 'payroll' && annualSal > 0
+      ? calcUKNetPay(annualSal, parseFloat(emp.pension_rate) || 0)
+      : null;
+    const netFactor       = ukPay ? ukPay.net_annual / annualSal : 1;
+    const netSalaryTarget = parseFloat((salaryTarget * netFactor).toFixed(2));
+    const totalPaid       = payments.reduce((a, b) => a + parseFloat(b.amount), 0);
+    const netRemaining    = parseFloat((netSalaryTarget - totalPaid - dayCalc.excess_deduction).toFixed(2));
+    const pctPaid         = netSalaryTarget > 0 ? Math.min(100, Math.round((totalPaid / netSalaryTarget) * 100)) : 0;
+
+    res.json({
+      name:             emp.name,
+      employment_type:  emp.employment_type,
+      currency:         emp.currency || 'GBP',
+      annual_salary:    annualSal,
+      pension_rate:     parseFloat(emp.pension_rate) || 0,
+      paye_breakdown:   ukPay,
+      net_monthly:      ukPay ? ukPay.net_monthly : null,
+      salary_target:    netSalaryTarget,
+      start_date:       startDateStr,
+      is_terminated:    isTerminated,
+      pro_rated:        !isTerminated ? earnedPay : null,
+      first_month_full: firstMonthFull,
+      payments,
+      total_paid:       parseFloat(totalPaid.toFixed(2)),
+      total_days_off:   dayCalc.total_days_off,
+      allowance_days:   allowance,
+      excess_days:      dayCalc.excess_days,
+      excess_deduction: dayCalc.excess_deduction,
+      net_remaining:    netRemaining,
+      pct_paid:         pctPaid,
+      year
+    });
+  } catch (e) {
+    console.error('/api/employee/salary error:', e);
+    res.status(500).json({ error: e.message });
+  }
+});
+
 // ─── YEAR STATS (days-off allowance) ─────────────────────────────────────────
 
 app.get('/api/employees/:id/year-stats', requireAuth, async (req, res) => {
