@@ -1357,7 +1357,7 @@ app.get('/api/employee/portfolio', requireAuth, async (req, res) => {
   try {
     const empId = req.user.employee_id;
     if (!empId) return res.status(403).json({ error: 'Employee only' });
-    const rows = await q(
+    const { rows } = await q(
       'SELECT * FROM employee_portfolio_events WHERE employee_id = ? ORDER BY event_date DESC NULLS LAST, created_at DESC',
       [empId]
     );
@@ -1393,9 +1393,9 @@ app.delete('/api/employee/portfolio/:id', requireAuth, async (req, res) => {
 // Admin: get all employees with their portfolio events
 app.get('/api/admin/staff-portfolio', requireAuth, async (req, res) => {
   try {
-    const emps = await q('SELECT employee_id, name, role, department FROM employees WHERE active = 1 ORDER BY name');
-    const events = await q(
-      'SELECT e.*, emp.name AS employee_name FROM employee_portfolio_events e JOIN employees emp ON emp.employee_id = e.employee_id ORDER BY e.event_date DESC NULLS LAST, e.created_at DESC'
+    const { rows: emps } = await q('SELECT id AS employee_id, name, role, department FROM employees WHERE active = 1 ORDER BY name');
+    const { rows: events } = await q(
+      'SELECT e.*, emp.name AS employee_name FROM employee_portfolio_events e JOIN employees emp ON emp.id = e.employee_id ORDER BY e.event_date DESC NULLS LAST, e.created_at DESC'
     );
     res.json({ employees: emps, events });
   } catch (e) { res.status(500).json({ error: e.message }); }
