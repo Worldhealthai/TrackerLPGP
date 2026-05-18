@@ -1445,12 +1445,12 @@ app.get('/api/employee/upcoming', requireAuth, async (req, res) => {
     const future = new Date(today); future.setDate(future.getDate() + days);
     const futureStr = future.toISOString().slice(0, 10);
 
-    // Upcoming approved team day-offs (exclude self)
+    // Upcoming team days off from daily_records (source of truth for approved days off)
     const { rows: dayOffs } = await q(
-      `SELECT r.request_date::TEXT AS date, e.name AS employee_name, r.is_day_off
-       FROM day_off_requests r JOIN employees e ON e.id = r.employee_id
-       WHERE r.status = 'approved' AND r.request_date >= ? AND r.request_date <= ?
-       AND r.employee_id != ? ORDER BY r.request_date ASC`,
+      `SELECT r.record_date::TEXT AS date, e.name AS employee_name, r.is_day_off
+       FROM daily_records r JOIN employees e ON e.id = r.employee_id
+       WHERE r.is_day_off > 0 AND r.record_date >= ? AND r.record_date <= ?
+       AND r.employee_id != ? ORDER BY r.record_date ASC`,
       [todayStr, futureStr, req.user.employee_id || 0]
     );
 
