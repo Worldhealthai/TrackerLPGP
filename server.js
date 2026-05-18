@@ -11,17 +11,30 @@ const JWT_SECRET = process.env.JWT_SECRET || 'lpgp-tracker-jwt-2024';
 
 // Lazy init: retry on every request until it succeeds once, then skip forever.
 let dbInitialized = false;
+let dbMigrationsRun = false;
 let dbInitPromise = null; // serialise concurrent first-request inits
 
+async function runLateMigrations() {
+  // Idempotent migrations — safe to run on every warm start
+  await sql(`CREATE TABLE IF NOT EXISTS employee_portfolio_events (id SERIAL PRIMARY KEY, employee_id INTEGER NOT NULL, event_name TEXT NOT NULL, event_date DATE, notes TEXT NOT NULL DEFAULT '', added_by TEXT NOT NULL DEFAULT 'employee', allocated_by INT, created_at TIMESTAMPTZ NOT NULL DEFAULT NOW())`);
+  await sql(`ALTER TABLE day_off_requests ADD COLUMN IF NOT EXISTS reason TEXT`);
+  await sql(`ALTER TABLE calendar_reminders ADD COLUMN IF NOT EXISTS visible_to_staff BOOLEAN DEFAULT FALSE`);
+}
+
 async function ensureDb() {
-  if (dbInitialized) return;
-  // Only one concurrent init attempt at a time; reset on failure so next request can retry
-  if (!dbInitPromise) {
-    dbInitPromise = initDb()
-      .then(() => { dbInitialized = true; })
-      .catch(err => { dbInitPromise = null; throw err; });
+  if (!dbInitialized) {
+    // Only one concurrent init attempt at a time; reset on failure so next request can retry
+    if (!dbInitPromise) {
+      dbInitPromise = initDb()
+        .then(() => { dbInitialized = true; })
+        .catch(err => { dbInitPromise = null; throw err; });
+    }
+    await dbInitPromise;
   }
-  await dbInitPromise;
+  if (!dbMigrationsRun) {
+    await runLateMigrations();
+    dbMigrationsRun = true;
+  }
 }
 
 app.use(express.json());
@@ -1172,14 +1185,14 @@ app.get('/api/calendar-reminders', requireAuth, async (req, res) => {
 
 app.post('/api/calendar-reminders', requireAuth, async (req, res) => {
   try {
-    const { title, reminder_date, recurrence, category, amount, currency, notes } = req.body;
+    const { title, reminder_date, recurrence, category, amount, currency, notes, visible_to_staff } = req.body;
     if (!title || !reminder_date) return res.status(400).json({ error: 'title and reminder_date required' });
     const rec = ['none','monthly','yearly'].includes(recurrence) ? recurrence : 'none';
     const cat = ['rent','subscription','deposit','utility','other'].includes(category) ? category : 'other';
     const cur = ['GBP','AED'].includes(currency) ? currency : 'GBP';
     const { rows } = await q(
-      'INSERT INTO calendar_reminders (title, reminder_date, recurrence, category, amount, currency, notes, created_by) VALUES (?,?,?,?,?,?,?,?) RETURNING id',
-      [title, reminder_date, rec, cat, amount || null, cur, notes || '', req.admin.id]
+      'INSERT INTO calendar_reminders (title, reminder_date, recurrence, category, amount, currency, notes, created_by, visible_to_staff) VALUES (?,?,?,?,?,?,?,?,?) RETURNING id',
+      [title, reminder_date, rec, cat, amount || null, cur, notes || '', req.admin.id, visible_to_staff ? true : false]
     );
     res.json({ id: rows[0].id });
   } catch (e) { res.status(500).json({ error: e.message }); }
@@ -1420,6 +1433,57 @@ app.delete('/api/admin/staff-portfolio/:id', requireAuth, async (req, res) => {
   try {
     await q('DELETE FROM employee_portfolio_events WHERE id = ?', [req.params.id]);
     res.json({ ok: true });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// Employee: upcoming — team day-offs + staff-visible reminders
+app.get('/api/employee/upcoming', requireAuth, async (req, res) => {
+  try {
+    const days = parseInt(req.query.days) || 60;
+    const today = new Date();
+    const todayStr = today.toISOString().slice(0, 10);
+    const future = new Date(today); future.setDate(future.getDate() + days);
+    const futureStr = future.toISOString().slice(0, 10);
+
+    // Upcoming approved team day-offs (exclude self)
+    const { rows: dayOffs } = await q(
+      `SELECT r.request_date::TEXT AS date, e.name AS employee_name, r.is_day_off
+       FROM day_off_requests r JOIN employees e ON e.id = r.employee_id
+       WHERE r.status = 'approved' AND r.request_date >= ? AND r.request_date <= ?
+       AND r.employee_id != ? ORDER BY r.request_date ASC`,
+      [todayStr, futureStr, req.user.employee_id || 0]
+    );
+
+    // Staff-visible calendar reminders
+    const { rows: reminders } = await q(
+      `SELECT id, title, reminder_date::TEXT AS reminder_date, recurrence, category, amount, currency, notes
+       FROM calendar_reminders WHERE visible_to_staff = true ORDER BY reminder_date`
+    );
+    const upcoming = [];
+    reminders.forEach(r => {
+      const [, bM, bD] = r.reminder_date.split('-').map(Number);
+      for (let offset = 0; offset <= 1; offset++) {
+        const d = new Date(today); d.setMonth(d.getMonth() + offset);
+        const cY = d.getFullYear(), cM = d.getMonth() + 1;
+        if (r.recurrence === 'none') {
+          if (r.reminder_date >= todayStr && r.reminder_date <= futureStr)
+            upcoming.push({ ...r, virtual_date: r.reminder_date, type: 'reminder' });
+        } else if (r.recurrence === 'monthly') {
+          const dim = new Date(cY, cM, 0).getDate();
+          const vd = `${cY}-${String(cM).padStart(2,'0')}-${String(Math.min(bD,dim)).padStart(2,'0')}`;
+          if (vd >= todayStr && vd <= futureStr) upcoming.push({ ...r, virtual_date: vd, type: 'reminder' });
+        } else if (r.recurrence === 'yearly' && bM === cM) {
+          const dim = new Date(cY, cM, 0).getDate();
+          const vd = `${cY}-${String(cM).padStart(2,'0')}-${String(Math.min(bD,dim)).padStart(2,'0')}`;
+          if (vd >= todayStr && vd <= futureStr) upcoming.push({ ...r, virtual_date: vd, type: 'reminder' });
+        }
+      }
+    });
+
+    const seen = new Set();
+    const dedupedReminders = upcoming.filter(r => { const k=`${r.id}:${r.virtual_date}`; if(seen.has(k))return false; seen.add(k); return true; });
+
+    res.json({ dayOffs, reminders: dedupedReminders.sort((a,b)=>a.virtual_date.localeCompare(b.virtual_date)) });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
