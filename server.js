@@ -20,6 +20,26 @@ async function runLateMigrations() {
     `CREATE TABLE IF NOT EXISTS employee_reminders (id SERIAL PRIMARY KEY, employee_id INTEGER NOT NULL, title TEXT NOT NULL, reminder_date DATE, is_done BOOLEAN DEFAULT FALSE, created_at TIMESTAMPTZ DEFAULT NOW())`,
     `ALTER TABLE day_off_requests ADD COLUMN IF NOT EXISTS reason TEXT`,
     `ALTER TABLE calendar_reminders ADD COLUMN IF NOT EXISTS visible_to_staff BOOLEAN DEFAULT FALSE`,
+    `CREATE TABLE IF NOT EXISTS deal_tracker (
+      id SERIAL PRIMARY KEY,
+      month_label TEXT NOT NULL DEFAULT '',
+      company TEXT NOT NULL,
+      paid_inc_vat NUMERIC(12,2),
+      deal_amount NUMERIC(12,2),
+      tax_vat NUMERIC(12,2),
+      date_invoice_issued DATE,
+      date_paid DATE,
+      bank TEXT DEFAULT '',
+      invoice_number TEXT DEFAULT '',
+      notes TEXT DEFAULT '',
+      invoice_sent TEXT DEFAULT 'no',
+      signature_received TEXT DEFAULT 'no',
+      initials TEXT DEFAULT '',
+      row_color TEXT DEFAULT 'green',
+      sort_order INT DEFAULT 0,
+      created_by INT,
+      created_at TIMESTAMPTZ DEFAULT NOW()
+    )`,
   ];
   for (const step of steps) {
     try { await sql(step); } catch(e) { console.warn('Migration step skipped:', e.message); }
@@ -1534,6 +1554,61 @@ app.delete('/api/employee/reminders/:id', requireAuth, async (req, res) => {
   try {
     const empId = req.user.employee_id;
     await q('DELETE FROM employee_reminders WHERE id = ? AND employee_id = ?', [req.params.id, empId]);
+    res.json({ ok: true });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+// ─── DEAL TRACKER ─────────────────────────────────────────────────────────────
+app.get('/api/deal-tracker', requireAuth, async (req, res) => {
+  try {
+    await ensureDb();
+    const { rows } = await q('SELECT * FROM deal_tracker ORDER BY sort_order ASC, created_at ASC');
+    res.json(rows);
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+app.post('/api/deal-tracker', requireAuth, async (req, res) => {
+  try {
+    await ensureDb();
+    const { month_label='', company, paid_inc_vat=null, deal_amount=null, tax_vat=null,
+            date_invoice_issued=null, date_paid=null, bank='', invoice_number='', notes='',
+            invoice_sent='no', signature_received='no', initials='', row_color='green', sort_order=0 } = req.body;
+    if (!company) return res.status(400).json({ error: 'company required' });
+    const { rows } = await q(
+      `INSERT INTO deal_tracker (month_label,company,paid_inc_vat,deal_amount,tax_vat,date_invoice_issued,date_paid,bank,invoice_number,notes,invoice_sent,signature_received,initials,row_color,sort_order,created_by)
+       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) RETURNING *`,
+      [month_label,company,paid_inc_vat||null,deal_amount||null,tax_vat||null,
+       date_invoice_issued||null,date_paid||null,bank,invoice_number,notes,
+       invoice_sent,signature_received,initials,row_color,sort_order,req.user.id||null]
+    );
+    res.json(rows[0]);
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+app.put('/api/deal-tracker/:id', requireAuth, async (req, res) => {
+  try {
+    await ensureDb();
+    const { month_label, company, paid_inc_vat, deal_amount, tax_vat,
+            date_invoice_issued, date_paid, bank, invoice_number, notes,
+            invoice_sent, signature_received, initials, row_color, sort_order } = req.body;
+    const { rows } = await q(
+      `UPDATE deal_tracker SET month_label=?,company=?,paid_inc_vat=?,deal_amount=?,tax_vat=?,
+       date_invoice_issued=?,date_paid=?,bank=?,invoice_number=?,notes=?,
+       invoice_sent=?,signature_received=?,initials=?,row_color=?,sort_order=?
+       WHERE id=? RETURNING *`,
+      [month_label,company,paid_inc_vat||null,deal_amount||null,tax_vat||null,
+       date_invoice_issued||null,date_paid||null,bank,invoice_number,notes,
+       invoice_sent,signature_received,initials,row_color,sort_order||0,req.params.id]
+    );
+    if (!rows.length) return res.status(404).json({ error: 'not found' });
+    res.json(rows[0]);
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+app.delete('/api/deal-tracker/:id', requireAuth, async (req, res) => {
+  try {
+    await ensureDb();
+    await q('DELETE FROM deal_tracker WHERE id=?', [req.params.id]);
     res.json({ ok: true });
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
