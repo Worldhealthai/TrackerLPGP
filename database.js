@@ -278,12 +278,12 @@ async function runMigrations() {
 
   await sql(`CREATE TABLE IF NOT EXISTS employee_portfolio_events (
   id SERIAL PRIMARY KEY,
-  employee_id INTEGER NOT NULL REFERENCES employees(employee_id) ON DELETE CASCADE,
+  employee_id INTEGER NOT NULL,
   event_name TEXT NOT NULL,
   event_date DATE,
   notes TEXT NOT NULL DEFAULT '',
   added_by TEXT NOT NULL DEFAULT 'employee',
-  allocated_by INT REFERENCES admins(id) ON DELETE SET NULL,
+  allocated_by INT,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 )`);
 }
