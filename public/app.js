@@ -3830,17 +3830,21 @@ async function loadEmployeeCalendar() {
       if (!teamMap[d].find(n => n.full === name)) teamMap[d].push({ full: name, first: firstName });
     });
 
+    // Store data for clickable day detail popup
+    window._empCalMyMap   = myMap;
+    window._empCalTeamMap = teamMap;
+    window._empCalTodayStr = new Date().toLocaleDateString('en-CA');
+    const todayStr = window._empCalTodayStr;
+
     // Calendar grid
-    const firstDay   = new Date(empCalYear, empCalMonth - 1, 1);
+    const firstDay    = new Date(empCalYear, empCalMonth - 1, 1);
     const daysInMonth = new Date(empCalYear, empCalMonth, 0).getDate();
     let startDow = firstDay.getDay();
     startDow = startDow === 0 ? 6 : startDow - 1;
 
-    const todayStr = new Date().toLocaleDateString('en-CA');
-
-    let gridHtml = '<div style="display:grid;grid-template-columns:repeat(7,1fr);gap:4px;margin-bottom:6px">';
-    DAYS.forEach(day => { gridHtml += '<div style="text-align:center;font:600 10px/1 var(--font-mono);color:var(--muted);padding:4px 0">' + day + '</div>'; });
-    gridHtml += '</div><div style="display:grid;grid-template-columns:repeat(7,1fr);gap:5px">';
+    let gridHtml = '<div style="display:grid;grid-template-columns:repeat(7,1fr);gap:6px;margin-bottom:8px">';
+    DAYS.forEach(day => { gridHtml += '<div style="text-align:center;font:700 11px/1 var(--font-mono);color:var(--text-2);padding:6px 0;letter-spacing:.5px">' + day + '</div>'; });
+    gridHtml += '</div><div style="display:grid;grid-template-columns:repeat(7,1fr);gap:6px">';
 
     for (let i = 0; i < startDow; i++) gridHtml += '<div></div>';
 
@@ -3852,47 +3856,35 @@ async function loadEmployeeCalendar() {
       const isPast  = dateStr < todayStr;
       const status  = rec ? rec.status : null;
 
+      let border = isToday ? '2px solid var(--primary)' : '1px solid var(--border)';
       let bg = isPast ? 'var(--surface)' : 'var(--surface-2)';
-      let myLabel = '';
-      if (status === 'pending') {
-        bg = '#d9770620';
-        myLabel = '<div style="font:700 8px/1 var(--font-mono);color:#fb923c;margin-top:3px">PENDING</div>';
-      } else if (status === 'approved') {
-        bg = '#6ee7d420';
-        myLabel = '<div style="font:700 8px/1 var(--font-mono);color:var(--primary);margin-top:3px">APPROVED</div>';
-      } else if (status === 'declined') {
-        bg = '#ef444418';
-        myLabel = '<div style="font:700 8px/1 var(--font-mono);color:#f87171;margin-top:3px">DECLINED</div>' +
-          (rec.decline_reason ? '<div style="font:500 7px/1.2 var(--font-sans);color:#f87171;margin-top:2px;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="' + esc(rec.decline_reason) + '">' + esc(rec.decline_reason.slice(0,12)) + (rec.decline_reason.length > 12 ? '…' : '') + '</div>' : '');
-      }
+      let statusBar = '';
+      if (status === 'pending')  { bg = '#d9770618'; border = '1px solid #fb923c55'; statusBar = '<div style="font:700 9px/1 var(--font-mono);color:#fb923c;margin-top:4px;letter-spacing:.5px;width:100%;text-align:center">PENDING</div>'; }
+      else if (status === 'approved') { bg = '#6ee7d418'; border = '1px solid #6ee7b455'; statusBar = '<div style="font:700 9px/1 var(--font-mono);color:var(--primary);margin-top:4px;letter-spacing:.5px;width:100%;text-align:center">MY DAY OFF</div>'; }
+      else if (status === 'declined') { bg = '#ef444412'; border = '1px solid #f8717155'; statusBar = '<div style="font:700 9px/1 var(--font-mono);color:#f87171;margin-top:4px;letter-spacing:.5px;width:100%;text-align:center">DECLINED</div>'; }
 
       let teamHtml = '';
       if (team.length) {
-        teamHtml = team.slice(0,2).map(n => {
+        teamHtml = team.slice(0, 3).map(n => {
           const label = n.first || n;
-          return '<div style="font:600 7px/1.2 var(--font-mono);background:#7c3aed33;color:#a78bfa;border-radius:3px;padding:2px 4px;margin-top:2px;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="' + esc(n.full||n) + '">' + esc(label) + '</div>';
+          return '<div style="font:600 9px/1.3 var(--font-mono);background:#7c3aed30;color:#c4b5fd;border-radius:4px;padding:2px 5px;margin-top:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%">' + esc(label) + '</div>';
         }).join('');
-        if (team.length > 2) teamHtml += '<div style="font:600 7px/1 var(--font-mono);color:var(--muted);margin-top:2px">+' + (team.length-2) + ' more</div>';
+        if (team.length > 3) teamHtml += '<div style="font:600 9px/1 var(--font-mono);color:var(--muted);margin-top:2px">+' + (team.length-3) + ' more</div>';
       }
 
-      const clickable  = !isPast && !rec;
-      const cancelable = rec && status === 'pending';
-      const declineReason = rec && status === 'declined' && rec.decline_reason ? rec.decline_reason : '';
-      const interactive = clickable || cancelable || !!declineReason;
       gridHtml +=
-        '<div style="background:' + bg + ';border:' + (isToday ? '2px solid var(--primary)' : '1px solid var(--border)') + ';border-radius:6px;padding:6px 4px 4px;text-align:center;min-height:54px;cursor:' + (interactive?'pointer':'default') + ';display:flex;flex-direction:column;align-items:center"' +
-        (clickable    ? ' onclick="openEmpDayOffModalDate(\'' + dateStr + '\')"' : '') +
-        (cancelable   ? ' title="Click to cancel this request" onclick="cancelEmpDayOff(\'' + dateStr + '\')"' : '') +
-        (declineReason ? ' onclick="showEmpDeclineReason(\'' + esc(declineReason).replace(/'/g, '\\\'') + '\')"' : '') + '>' +
-          '<div style="font:' + (isToday?'800':'600') + ' 13px/1 var(--font-mono);color:' + (isToday?'var(--primary)':isPast?'var(--muted)':'var(--text)') + '">' + d + '</div>' +
-          myLabel + teamHtml +
+        '<div style="background:' + bg + ';border:' + border + ';border-radius:8px;padding:8px 6px 6px;min-height:72px;cursor:pointer;display:flex;flex-direction:column;align-items:center;transition:opacity .15s" ' +
+        'onmouseenter="this.style.opacity='.85'" onmouseleave="this.style.opacity='1'" ' +
+        'onclick="empDayClick('' + dateStr + '')">' +
+          '<div style="font:' + (isToday?'800':'700') + ' 15px/1 var(--font-mono);color:' + (isToday?'var(--primary)':isPast?'var(--dim)':'var(--text)') + ';width:100%;text-align:center">' + d + '</div>' +
+          statusBar + teamHtml +
         '</div>';
     }
     gridHtml += '</div>' +
-      '<div style="display:flex;gap:12px;margin-top:10px;font:500 10px/1 var(--font-mono);color:var(--muted)">' +
-        '<span><span style="display:inline-block;width:9px;height:9px;background:#d9770620;border:1px solid #fb923c55;border-radius:2px;margin-right:3px;vertical-align:middle"></span>Pending</span>' +
-        '<span><span style="display:inline-block;width:9px;height:9px;background:#6ee7d420;border:1px solid var(--primary);border-radius:2px;margin-right:3px;vertical-align:middle"></span>Approved</span>' +
-        '<span><span style="display:inline-block;width:9px;height:9px;background:#7c3aed33;border-radius:2px;margin-right:3px;vertical-align:middle"></span>Team off</span>' +
+      '<div style="display:flex;gap:16px;flex-wrap:wrap;margin-top:12px;font:500 11px/1 var(--font-mono);color:var(--muted)">' +
+        '<span><span style="display:inline-block;width:10px;height:10px;background:#d9770618;border:1px solid #fb923c55;border-radius:3px;margin-right:4px;vertical-align:middle"></span>Pending</span>' +
+        '<span><span style="display:inline-block;width:10px;height:10px;background:#6ee7d418;border:1px solid #6ee7b455;border-radius:3px;margin-right:4px;vertical-align:middle"></span>My day off</span>' +
+        '<span><span style="display:inline-block;width:10px;height:10px;background:#7c3aed30;border-radius:3px;margin-right:4px;vertical-align:middle"></span>Team off</span>' +
       '</div>';
 
     // Upcoming panel: team day-offs + staff-visible reminders
@@ -3936,7 +3928,7 @@ async function loadEmployeeCalendar() {
           '<div class="card-header"><span class="card-title">Team Calendar</span>' +
             '<span style="font:700 11px/1 var(--font-mono);color:var(--muted)">' + myRequests.length + ' request' + (myRequests.length!==1?'s':'') + ' this month</span></div>' +
           '<div style="padding:16px">' + gridHtml + '</div>' +
-          '<div style="padding:0 16px 12px;font:500 11px/1 var(--font-mono);color:var(--muted)">Click a future date to request · Click PENDING to cancel</div>' +
+          '<div style="padding:0 16px 12px;font:500 11px/1 var(--font-mono);color:var(--muted)">Click any date to see details or request a day off</div>' +
         '</div>' +
         '<div class="card"><div class="card-header"><span class="card-title">What\'s Coming Up</span><span style="font:700 11px/1 var(--font-mono);color:var(--muted)">NEXT 60D</span></div>' +
           '<div style="padding:4px 16px 12px">' + (remHtml || '<div style="color:var(--muted);font-size:0.82rem;padding:12px 0">No upcoming team events or days off</div>') + '</div>' +
@@ -3946,6 +3938,88 @@ async function loadEmployeeCalendar() {
   } catch(e) {
     container.innerHTML = '<div class="alert alert-error">Failed to load calendar: ' + e.message + '</div>';
   }
+}
+
+function empDayClick(dateStr) {
+  const myMap   = window._empCalMyMap || {};
+  const teamMap = window._empCalTeamMap || {};
+  const todayStr = window._empCalTodayStr || new Date().toLocaleDateString('en-CA');
+  const rec   = myMap[dateStr];
+  const team  = teamMap[dateStr] || [];
+  const isPast = dateStr < todayStr;
+  const status = rec ? rec.status : null;
+
+  // Format date nicely
+  const dt = new Date(dateStr + 'T12:00:00');
+  const dateLabel = dt.toLocaleDateString('en-GB', { weekday:'long', day:'numeric', month:'long', year:'numeric' });
+
+  // Build modal content
+  let body = '';
+
+  // My status section
+  if (rec) {
+    const statusColor = status === 'approved' ? 'var(--primary)' : status === 'pending' ? '#fb923c' : '#f87171';
+    const statusLabel = status === 'approved' ? 'Day off approved' : status === 'pending' ? 'Request pending' : 'Request declined';
+    const typeLabel = parseFloat(rec.is_day_off) === 0.5 ? 'Half day' : 'Full day';
+    body += '<div style="background:' + (status==='approved'?'#6ee7d410':status==='pending'?'#d9770610':'#ef444410') + ';border:1px solid ' + statusColor + '33;border-radius:8px;padding:12px 14px;margin-bottom:14px">' +
+      '<div style="font:700 11px/1 var(--font-mono);color:' + statusColor + ';letter-spacing:.5px;margin-bottom:6px">YOUR REQUEST</div>' +
+      '<div style="font:600 13px/1 var(--font-sans);color:var(--text)">' + statusLabel + ' · ' + typeLabel + '</div>' +
+      (rec.reason ? '<div style="font:500 11px/1.4 var(--font-sans);color:var(--muted);margin-top:6px">Reason: ' + esc(rec.reason) + '</div>' : '') +
+      (status === 'declined' && rec.decline_reason ? '<div style="font:500 11px/1.4 var(--font-sans);color:#f87171;margin-top:6px">Declined: ' + esc(rec.decline_reason) + '</div>' : '') +
+    '</div>';
+  }
+
+  // Team members off
+  if (team.length) {
+    body += '<div style="font:700 11px/1 var(--font-mono);color:var(--muted);letter-spacing:.5px;margin-bottom:8px">TEAM DAYS OFF</div>';
+    body += team.map(n => {
+      const name = n.full || n;
+      const initials = name.split(' ').map(w=>w[0]).join('').slice(0,2).toUpperCase();
+      return '<div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--border)">' +
+        '<div style="width:32px;height:32px;border-radius:50%;background:#7c3aed33;color:#c4b5fd;font:700 12px/32px var(--font-mono);text-align:center;flex-shrink:0">' + initials + '</div>' +
+        '<div style="font:600 13px/1 var(--font-sans);color:var(--text)">' + esc(name) + '</div>' +
+      '</div>';
+    }).join('');
+    body += '<div style="height:8px"></div>';
+  }
+
+  // Actions
+  let actions = '';
+  if (!isPast && !rec) {
+    actions = '<button class="btn btn-primary" style="width:100%;margin-top:4px" onclick="closeEmpDayModal();openEmpDayOffModalDate('' + dateStr + '')">+ Request Day Off</button>';
+  } else if (status === 'pending') {
+    actions = '<button class="btn btn-danger" style="width:100%;margin-top:4px" onclick="closeEmpDayModal();cancelEmpDayOff('' + dateStr + '')">Cancel My Request</button>';
+  }
+
+  if (!rec && !team.length) {
+    body = '<div style="text-align:center;padding:20px 0;color:var(--muted);font:500 13px/1.5 var(--font-mono)">Nothing booked on this day yet.</div>';
+  }
+
+  // Show modal
+  let modal = document.getElementById('empDayDetailModal');
+  if (!modal) {
+    modal = document.createElement('div');
+    modal.id = 'empDayDetailModal';
+    modal.className = 'modal-overlay';
+    modal.addEventListener('click', e => { if (e.target === modal) closeEmpDayModal(); });
+    document.body.appendChild(modal);
+  }
+  modal.innerHTML =
+    '<div class="modal" style="max-width:400px">' +
+      '<div class="modal-header">' +
+        '<div>' +
+          '<div style="font:700 15px/1 var(--font-sans);color:var(--text)">' + dateLabel + '</div>' +
+        '</div>' +
+        '<button class="modal-close" onclick="closeEmpDayModal()">×</button>' +
+      '</div>' +
+      '<div style="padding:20px">' + body + actions + '</div>' +
+    '</div>';
+  modal.style.display = 'flex';
+}
+
+function closeEmpDayModal() {
+  const m = document.getElementById('empDayDetailModal');
+  if (m) m.style.display = 'none';
 }
 
 function empCalPrev() { empCalMonth--; if (empCalMonth < 1) { empCalMonth = 12; empCalYear--; } loadEmployeeCalendar(); }
