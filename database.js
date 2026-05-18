@@ -262,10 +262,12 @@ async function runMigrations() {
   is_day_off NUMERIC(3,1) NOT NULL DEFAULT 1,
   status TEXT NOT NULL DEFAULT 'pending',
   decline_reason TEXT,
+  reason TEXT,
   created_at TIMESTAMP DEFAULT NOW(),
   reviewed_at TIMESTAMP,
   reviewed_by TEXT
 )`);
+  await sql(`ALTER TABLE day_off_requests ADD COLUMN IF NOT EXISTS reason TEXT`);
 
   await sql(`CREATE TABLE IF NOT EXISTS emp_notifications (
   id SERIAL PRIMARY KEY,
