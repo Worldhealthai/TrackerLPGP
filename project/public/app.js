@@ -3474,9 +3474,11 @@ async function loadEmployeeDashboard(user) {
 }
 
 // ─── DEAL TRACKER ─────────────────────────────────────────────────────────────
-let _dealData = [];
+let _dealData      = [];
 let _dealFromMonth = '';
 let _dealToMonth   = '';
+let _dealSearch    = '';
+let _dealYear      = '';
 
 async function loadDealTracker() {
   const page = document.getElementById('page-deals');
@@ -3509,15 +3511,26 @@ function renderDealTracker() {
   const allActive = _dealData.filter(r => r.status !== 'cancelled');
   const cancelled = _dealData.filter(r => r.status === 'cancelled');
 
-  // Apply month filter on date_invoice_issued
+  // Apply filters
   const active = allActive.filter(r => {
-    if (!_dealFromMonth && !_dealToMonth) return true;
-    const m = r.date_invoice_issued ? String(r.date_invoice_issued).slice(0,7) : null;
-    if (!m) return false;
-    if (_dealFromMonth && m < _dealFromMonth) return false;
-    if (_dealToMonth   && m > _dealToMonth)   return false;
+    // Text search
+    if (_dealSearch) {
+      const q = _dealSearch.toLowerCase();
+      const hay = ((r.company||'') + ' ' + (r.invoice_number||'') + ' ' + (r.bank||'') + ' ' + (r.notes||'')).toLowerCase();
+      if (!hay.includes(q)) return false;
+    }
+    // Date range filter
+    if (_dealFromMonth || _dealToMonth) {
+      const m = r.date_invoice_issued ? String(r.date_invoice_issued).slice(0,7) : null;
+      if (!m) return false;
+      if (_dealFromMonth && m < _dealFromMonth) return false;
+      if (_dealToMonth   && m > _dealToMonth)   return false;
+    }
     return true;
   });
+
+  // Collect years present in data for the year dropdown
+  const yearsInData = [...new Set(allActive.map(r => r.date_invoice_issued ? String(r.date_invoice_issued).slice(0,4) : null).filter(Boolean))].sort();
 
   // Totals (active filtered only)
   const totalPaid  = active.reduce((s,r) => s + (parseFloat(r.paid_inc_vat)||0), 0);
@@ -3598,17 +3611,47 @@ function renderDealTracker() {
       '</div>' +
     '</div>' +
 
-    // Date filter bar
-    '<div style="padding:0 24px 14px;display:flex;align-items:center;gap:10px;flex-wrap:wrap">' +
-      '<span style="font:600 11px/1 var(--font-mono);color:var(--muted);text-transform:uppercase;letter-spacing:.5px">Filter by invoice date:</span>' +
-      '<input type="month" id="dealFromMonth" value="' + _dealFromMonth + '" onchange="_dealFromMonth=this.value;renderDealTracker()" class="form-control" style="width:150px;font-size:12px;padding:6px 8px">' +
-      '<span style="font:500 11px/1 var(--font-mono);color:var(--muted)">to</span>' +
-      '<input type="month" id="dealToMonth" value="' + _dealToMonth + '" onchange="_dealToMonth=this.value;renderDealTracker()" class="form-control" style="width:150px;font-size:12px;padding:6px 8px">' +
-      (_dealFromMonth || _dealToMonth
-        ? '<button class="btn btn-ghost btn-sm" onclick="_dealFromMonth=\'\';_dealToMonth=\'\';renderDealTracker()">✕ Clear</button>' +
-          '<span style="font:600 11px/1 var(--font-mono);color:var(--primary);margin-left:4px">' + active.length + ' of ' + allActive.length + ' deals shown</span>'
-        : '') +
-    '</div>' +
+    // Filter bar
+    (function(){
+      const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+      const monthOpts = (selected, placeholder) =>
+        '<option value="">' + placeholder + '</option>' +
+        MONTHS.map((m,i) => { const v = String(i+1).padStart(2,'0'); return '<option value="' + v + '"' + (selected===v?' selected':'') + '>' + m + '</option>'; }).join('');
+      const yearOpts = yearsInData.map(y => '<option value="' + y + '"' + (_dealYear===y?' selected':'') + '>' + y + '</option>').join('');
+
+      const fromMo = _dealFromMonth ? _dealFromMonth.slice(5,7) : '';
+      const toMo   = _dealToMonth   ? _dealToMonth.slice(5,7)   : '';
+      const isFiltered = _dealFromMonth || _dealToMonth || _dealSearch;
+
+      return '<div style="padding:0 24px 14px">' +
+        '<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:12px 14px;background:var(--surface);border:1px solid var(--border);border-radius:10px">' +
+          // Text search
+          '<input id="dealSearchInput" class="form-control" style="width:180px;font-size:12px;padding:6px 10px" placeholder="Search company, invoice…" value="' + esc(_dealSearch) + '" oninput="_dealSearch=this.value;renderDealTracker()">' +
+          '<div style="width:1px;height:24px;background:var(--border);margin:0 4px"></div>' +
+          // Year
+          '<select class="form-control" style="width:90px;font-size:12px;padding:6px 8px" onchange="dealSetYear(this.value)"><option value="">All years</option>' + yearOpts + '</select>' +
+          // Quick quarters
+          '<div style="display:flex;gap:4px">' +
+            ['Q1','Q2','Q3','Q4'].map((q,i) => {
+              const fm = _dealYear + '-' + String(i*3+1).padStart(2,'0');
+              const tm = _dealYear + '-' + String(i*3+3).padStart(2,'0');
+              const active2 = _dealFromMonth === (_dealYear ? fm : String(new Date().getFullYear())+'-'+String(i*3+1).padStart(2,'0'));
+              return '<button onclick="dealSetQuarter(' + (i+1) + ')" style="padding:5px 10px;font:700 11px/1 var(--font-mono);border-radius:6px;border:1px solid var(--border);background:' + (_dealFromMonth && _dealFromMonth.slice(5,7)===String(i*3+1).padStart(2,'0') ? 'var(--primary)' : 'var(--surface)') + ';color:' + (_dealFromMonth && _dealFromMonth.slice(5,7)===String(i*3+1).padStart(2,'0') ? '#fff' : 'var(--text)') + ';cursor:pointer">' + q + '</button>';
+            }).join('') +
+          '</div>' +
+          '<div style="width:1px;height:24px;background:var(--border);margin:0 4px"></div>' +
+          // Custom from/to month
+          '<span style="font:600 10px/1 var(--font-mono);color:var(--muted)">FROM</span>' +
+          '<select class="form-control" style="width:80px;font-size:12px;padding:6px 8px" onchange="dealSetFromMonth(this.value)">' + monthOpts(fromMo,'Month') + '</select>' +
+          '<span style="font:600 10px/1 var(--font-mono);color:var(--muted)">TO</span>' +
+          '<select class="form-control" style="width:80px;font-size:12px;padding:6px 8px" onchange="dealSetToMonth(this.value)">' + monthOpts(toMo,'Month') + '</select>' +
+          (isFiltered
+            ? '<button class="btn btn-ghost btn-sm" onclick="dealClearFilters()" style="color:var(--negative)">✕ Clear</button>' +
+              '<span style="font:600 11px/1 var(--font-mono);color:var(--primary)">' + active.length + ' / ' + allActive.length + ' deals</span>'
+            : '') +
+        '</div>' +
+      '</div>';
+    })()+
 
     // Table
     '<div style="padding:0 24px 32px">' +
@@ -3673,6 +3716,37 @@ function renderDealTracker() {
         '</details>' +
       '</div>'
     : '') ;
+}
+
+function dealSetYear(y) {
+  _dealYear = y;
+  // Reset month range to cover the whole year
+  if (y) { _dealFromMonth = y + '-01'; _dealToMonth = y + '-12'; }
+  else    { _dealFromMonth = ''; _dealToMonth = ''; }
+  renderDealTracker();
+}
+function dealSetQuarter(q) {
+  const y = _dealYear || String(new Date().getFullYear());
+  _dealYear      = y;
+  _dealFromMonth = y + '-' + String((q-1)*3+1).padStart(2,'0');
+  _dealToMonth   = y + '-' + String(q*3).padStart(2,'0');
+  renderDealTracker();
+}
+function dealSetFromMonth(mo) {
+  const y = _dealYear || String(new Date().getFullYear());
+  _dealYear      = y;
+  _dealFromMonth = mo ? y + '-' + mo : '';
+  renderDealTracker();
+}
+function dealSetToMonth(mo) {
+  const y = _dealYear || String(new Date().getFullYear());
+  _dealYear      = y;
+  _dealToMonth   = mo ? y + '-' + mo : '';
+  renderDealTracker();
+}
+function dealClearFilters() {
+  _dealFromMonth = ''; _dealToMonth = ''; _dealSearch = ''; _dealYear = '';
+  renderDealTracker();
 }
 
 function openDealModal(id) {
