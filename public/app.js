@@ -3780,14 +3780,17 @@ async function toggleDealFlag(id, event) {
   event.stopPropagation();
   const deal = _dealData.find(d => d.id === id);
   if (!deal) return;
+  const payload = Object.assign({}, deal, { is_flagged: !deal.is_flagged });
   try {
-    const res = await fetch('/api/deal-tracker/' + id + '/flag', {
-      method: 'PATCH',
+    const res  = await fetch('/api/deal-tracker/' + id, {
+      method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ is_flagged: !deal.is_flagged })
+      body: JSON.stringify(payload)
     });
-    const updated = await res.json();
-    if (!res.ok) throw new Error(updated.error || 'Failed');
+    const text = await res.text();
+    let updated;
+    try { updated = JSON.parse(text); } catch(e) { throw new Error('Server returned: ' + text.slice(0,120)); }
+    if (!res.ok) throw new Error(updated.error || 'Save failed');
     const idx = _dealData.findIndex(d => d.id === id);
     if (idx !== -1) _dealData[idx] = updated;
     renderDealTracker();
