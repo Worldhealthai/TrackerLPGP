@@ -826,6 +826,7 @@ body.login-body { overflow: auto; height: auto; }
 }
 
 .badge-blue   { background: var(--info-soft);     color: var(--info);     border-color: rgba(126,182,255,0.2); }
+.badge-teal   { background: var(--accent-soft);   color: var(--accent);   border-color: var(--accent-line); }
 .badge-yellow { background: var(--warning-soft);  color: var(--warning);  border-color: rgba(245,184,96,0.2); }
 .badge-red    { background: var(--negative-soft); color: var(--negative); border-color: rgba(240,107,115,0.2); }
 .badge-green  { background: var(--positive-soft); color: var(--positive); border-color: rgba(95,211,150,0.2); }
