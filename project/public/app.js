@@ -3540,6 +3540,7 @@ function renderDealTracker() {
   page.innerHTML =
     '<div style="padding:20px 24px 0;display:flex;align-items:center;gap:12px;flex-wrap:wrap">' +
       '<h2 style="font:700 20px/1 var(--font-sans);color:var(--text);flex:1">Deal Tracker</h2>' +
+      '<button class="btn btn-ghost btn-sm" onclick="openDealImport()" style="gap:6px"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg> Import Excel / CSV</button>' +
       '<button class="btn btn-primary btn-sm" onclick="openDealModal(null)">+ Add Deal</button>' +
     '</div>' +
 
@@ -3732,6 +3733,181 @@ async function deleteDeal(id) {
     renderDealTracker();
     showToast('Deal deleted', 'success');
   } catch(e) { showToast('Error: ' + e.message, 'error'); }
+}
+
+// ─── DEAL IMPORT ──────────────────────────────────────────────────────────────
+function openDealImport() {
+  let existing = document.getElementById('dealImportModal');
+  if (existing) existing.remove();
+  const html =
+    '<div class="modal-overlay active" id="dealImportModal" onclick="if(event.target===this)closeDealImport()">' +
+    '<div class="modal" style="max-width:560px;width:95vw">' +
+    '<div class="modal-header"><h2>Import from Excel / CSV</h2><button class="modal-close" onclick="closeDealImport()">✕</button></div>' +
+    '<div style="padding:20px">' +
+      '<p style="font:500 13px/1.6 var(--font-sans);color:var(--muted);margin-bottom:16px">Select your Excel (.xlsx) or CSV file. Columns are matched automatically by header name.</p>' +
+      '<div style="border:2px dashed var(--border);border-radius:10px;padding:36px;text-align:center;cursor:pointer;transition:border-color .2s" id="dealDropZone" onclick="document.getElementById(\'dealImportFile\').click()" ondragover="event.preventDefault();this.style.borderColor=\'var(--primary)\'" ondragleave="this.style.borderColor=\'\'" ondrop="event.preventDefault();this.style.borderColor=\'\';processDealImportFile({files:event.dataTransfer.files})">' +
+        '<div style="font-size:36px;margin-bottom:8px">📂</div>' +
+        '<div style="font:600 13px/1 var(--font-sans);color:var(--text)">Click to choose file or drag &amp; drop</div>' +
+        '<div style="font:500 11px/1 var(--font-mono);color:var(--muted);margin-top:6px">.xlsx · .xls · .csv</div>' +
+      '</div>' +
+      '<input type="file" id="dealImportFile" accept=".xlsx,.xls,.csv" style="display:none" onchange="processDealImportFile(this)">' +
+      '<div id="dealImportPreview" style="margin-top:16px"></div>' +
+    '</div></div></div>';
+  document.body.insertAdjacentHTML('beforeend', html);
+}
+
+function closeDealImport() {
+  const m = document.getElementById('dealImportModal');
+  if (m) m.remove();
+}
+
+async function processDealImportFile(input) {
+  const file = (input.files||[])[0];
+  if (!file) return;
+  const preview = document.getElementById('dealImportPreview');
+  preview.innerHTML = '<div style="text-align:center;padding:16px;color:var(--muted);font:500 12px/1 var(--font-mono)">Parsing file…</div>';
+
+  // Lazy-load SheetJS
+  if (!window.XLSX) {
+    await new Promise((resolve, reject) => {
+      const s = document.createElement('script');
+      s.src = 'https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js';
+      s.onload = resolve; s.onerror = reject;
+      document.head.appendChild(s);
+    });
+  }
+
+  const reader = new FileReader();
+  reader.onload = e => {
+    try {
+      const wb = window.XLSX.read(e.target.result, { type: 'array', cellDates: true });
+      const ws = wb.Sheets[wb.SheetNames[0]];
+      const raw = window.XLSX.utils.sheet_to_json(ws, { raw: false, defval: '' });
+      const mapped = raw.map(mapDealImportRow).filter(r => r.company && !['total','remaining'].includes((r.company+'').toLowerCase().trim()));
+      showDealImportPreview(mapped);
+    } catch(err) {
+      preview.innerHTML = '<div class="alert alert-error">Could not parse file: ' + esc(err.message) + '</div>';
+    }
+  };
+  reader.readAsArrayBuffer(file);
+}
+
+function mapDealImportRow(row) {
+  const find = (...keys) => {
+    for (const k of keys) {
+      const match = Object.keys(row).find(rk => rk.toLowerCase().replace(/[^a-z0-9]/g,'') === k.toLowerCase().replace(/[^a-z0-9]/g,''));
+      if (match !== undefined) return row[match];
+    }
+    return '';
+  };
+  const parseAmt = v => {
+    if (v == null || v === '') return null;
+    const n = parseFloat(String(v).replace(/[£$€,\s]/g,''));
+    return isNaN(n) ? null : n;
+  };
+  const parseDate = v => {
+    if (!v) return null;
+    if (v instanceof Date) return isNaN(v)?null:v.toISOString().slice(0,10);
+    const s = String(v).trim();
+    if (!s) return null;
+    // DD/MM/YY or DD/MM/YYYY
+    const m1 = s.match(/^(\d{1,2})[\/\-\.](\d{1,2})[\/\-\.](\d{2,4})$/);
+    if (m1) {
+      const [, d, mo, y] = m1;
+      const year = y.length === 2 ? '20' + y : y;
+      const dt = new Date(year + '-' + mo.padStart(2,'0') + '-' + d.padStart(2,'0'));
+      if (!isNaN(dt)) return dt.toISOString().slice(0,10);
+    }
+    const dt = new Date(s);
+    return isNaN(dt) ? null : dt.toISOString().slice(0,10);
+  };
+  const normSent = v => {
+    const s = String(v||'').toLowerCase().trim();
+    if (s.includes('pdf')) return 'yes-pdf';
+    if (s === 'yes' || s === 'y') return 'yes';
+    return 'no';
+  };
+  const normSig = v => {
+    const s = String(v||'').toLowerCase().trim();
+    return (s === 'yes' || s === 'y') ? 'yes' : 'no';
+  };
+  return {
+    month_label:         String(find('month','month label') || ''),
+    company:             String(find('company') || ''),
+    paid_inc_vat:        parseAmt(find('paidincvat','paid inc vat','paid','paid inc. vat')),
+    deal_amount:         parseAmt(find('deal','deal amount','dealamount')),
+    tax_vat:             parseAmt(find('taxvat','tax/vat','tax vat','tax','vat')),
+    date_invoice_issued: parseDate(find('dateinvoiceissued','date invoice issued','invoice date','invoicedate')),
+    date_paid:           parseDate(find('datepaid','date paid','paiddate')),
+    bank:                String(find('bari','bank','payment via','paymentvia','payment method') || ''),
+    invoice_number:      String(find('invoicenumber','invoice number','invoice no','invoice#') || ''),
+    notes:               String(find('notes','note') || ''),
+    invoice_sent:        normSent(find('invoice&agreementsent','invoiceagreementsent','invoice sent','invoicesent','sent')),
+    signature_received:  normSig(find('signaturereceived','signature received','signature','signed')),
+    initials:            String(find('initials','initial') || ''),
+    row_color:           'green',
+  };
+}
+
+function showDealImportPreview(rows) {
+  const preview = document.getElementById('dealImportPreview');
+  if (!rows.length) {
+    preview.innerHTML = '<div class="alert alert-error">No valid rows found. Make sure your file has a "Company" column header.</div>';
+    return;
+  }
+  window._dealImportRows = rows;
+  const fmtA = v => v != null ? '£' + parseFloat(v).toLocaleString('en-GB',{minimumFractionDigits:2}) : '—';
+  const sample = rows.slice(0,6);
+  const tableRows = sample.map(r =>
+    '<tr>' +
+    '<td style="padding:6px 8px;border-bottom:1px solid var(--border)">' + esc(r.month_label) + '</td>' +
+    '<td style="padding:6px 8px;border-bottom:1px solid var(--border);font-weight:600">' + esc(r.company) + '</td>' +
+    '<td style="padding:6px 8px;border-bottom:1px solid var(--border)">' + fmtA(r.paid_inc_vat) + '</td>' +
+    '<td style="padding:6px 8px;border-bottom:1px solid var(--border)">' + fmtA(r.deal_amount) + '</td>' +
+    '<td style="padding:6px 8px;border-bottom:1px solid var(--border);color:var(--muted)">' + esc(r.bank) + '</td>' +
+    '</tr>'
+  ).join('');
+  preview.innerHTML =
+    '<div style="margin-bottom:10px;padding:10px 14px;background:rgba(34,197,94,0.1);border-radius:8px;font:600 12px/1 var(--font-mono);color:var(--positive)">' +
+      rows.length + ' rows ready to import' + (rows.length > 6 ? ' (showing first 6 below)' : '') +
+    '</div>' +
+    '<div style="overflow-x:auto;border-radius:8px;border:1px solid var(--border);margin-bottom:14px">' +
+    '<table style="width:100%;border-collapse:collapse;font:500 11px/1 var(--font-mono)">' +
+    '<thead><tr style="background:var(--surface)">' +
+      '<th style="padding:8px;text-align:left;border-bottom:2px solid var(--border)">Month</th>' +
+      '<th style="padding:8px;text-align:left;border-bottom:2px solid var(--border)">Company</th>' +
+      '<th style="padding:8px;text-align:left;border-bottom:2px solid var(--border)">Paid</th>' +
+      '<th style="padding:8px;text-align:left;border-bottom:2px solid var(--border)">Deal</th>' +
+      '<th style="padding:8px;text-align:left;border-bottom:2px solid var(--border)">Bank</th>' +
+    '</tr></thead>' +
+    '<tbody>' + tableRows + '</tbody>' +
+    '</table></div>' +
+    '<div style="display:flex;gap:10px;justify-content:flex-end">' +
+      '<button class="btn btn-ghost btn-sm" onclick="closeDealImport()">Cancel</button>' +
+      '<button class="btn btn-primary btn-sm" onclick="confirmDealImport()">Import ' + rows.length + ' rows</button>' +
+    '</div>';
+}
+
+async function confirmDealImport() {
+  const rows = window._dealImportRows || [];
+  if (!rows.length) return;
+  const btn = document.querySelector('#dealImportModal .btn-primary');
+  if (btn) { btn.disabled = true; btn.textContent = 'Importing…'; }
+  try {
+    const res = await fetch('/api/deal-tracker/bulk', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ deals: rows })
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Import failed');
+    closeDealImport();
+    await loadDealTracker();
+    showToast('Imported ' + (data.count || rows.length) + ' deals successfully', 'success');
+  } catch(e) {
+    showToast('Import failed: ' + e.message, 'error');
+    if (btn) { btn.disabled = false; btn.textContent = 'Import ' + rows.length + ' rows'; }
+  }
 }
 
 // ─── EMPLOYEE REMINDERS ───────────────────────────────────────────────────────
