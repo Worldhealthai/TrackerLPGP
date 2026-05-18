@@ -2516,6 +2516,7 @@ function renderDayOffRequestsBanner(pending) {
       '<div style="flex:1">' +
         '<div style="font:600 13px/1 var(--font-sans);color:var(--text)">' + esc(r.employee_name) + '</div>' +
         '<div style="font:500 11px/1 var(--font-mono);color:var(--muted);margin-top:3px">' + typeLabel + (r.department ? ' · ' + esc(r.department) : '') + '</div>' +
+        (r.reason ? '<div style="font:500 11px/1.4 var(--font-sans);color:var(--text-2);margin-top:4px;padding:4px 8px;background:var(--surface);border-radius:4px;border-left:2px solid var(--warning)">' + esc(r.reason) + '</div>' : '') +
       '</div>' +
       '<div style="display:flex;gap:6px">' +
         '<button class="btn btn-primary btn-sm" onclick="approveLeave(' + r.id + ')">Approve</button>' +
@@ -3785,6 +3786,7 @@ async function loadEmployeeCalendar() {
           '<div class="form-group"><label>Date</label><input type="date" id="empDayOffDate"></div>' +
           '<div class="form-group"><label>Type</label>' +
             '<select id="empDayOffType"><option value="1">Full Day</option><option value="0.5">Half Day</option></select></div>' +
+          '<div class="form-group"><label>Reason <span style="color:var(--muted);font-weight:400">(required)</span></label><textarea id="empDayOffReason" class="form-control" rows="3" placeholder="e.g. Medical appointment, personal matter..."></textarea></div>' +
           '<button class="btn btn-primary" style="width:100%" onclick="submitEmpDayOff()">Submit Request</button>' +
         '</div>' +
       '</div>';
@@ -3819,8 +3821,9 @@ async function loadEmployeeCalendar() {
       const d = (r.record_date || '').slice(0,10);
       if (!d.startsWith(monthPrefix)) return;
       if (!teamMap[d]) teamMap[d] = [];
-      const name = r.name || ('Emp#' + r.employee_id);
-      if (!teamMap[d].includes(name)) teamMap[d].push(name);
+      const name = r.employee_name || r.name || ('Emp#' + r.employee_id);
+      const firstName = name.split(' ')[0];
+      if (!teamMap[d].find(n => n.full === name)) teamMap[d].push({ full: name, first: firstName });
     });
 
     // Calendar grid
@@ -3862,10 +3865,10 @@ async function loadEmployeeCalendar() {
       let teamHtml = '';
       if (team.length) {
         teamHtml = team.slice(0,2).map(n => {
-          const init = n.split(' ').map(w => w[0]).join('').slice(0,2).toUpperCase();
-          return '<div style="font:700 7px/1 var(--font-mono);background:#7c3aed33;color:#a78bfa;border-radius:3px;padding:2px 3px;margin-top:2px">' + init + '</div>';
+          const label = n.first || n;
+          return '<div style="font:600 7px/1.2 var(--font-mono);background:#7c3aed33;color:#a78bfa;border-radius:3px;padding:2px 4px;margin-top:2px;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="' + esc(n.full||n) + '">' + esc(label) + '</div>';
         }).join('');
-        if (team.length > 2) teamHtml += '<div style="font:600 7px/1 var(--font-mono);color:var(--muted);margin-top:2px">+' + (team.length-2) + '</div>';
+        if (team.length > 2) teamHtml += '<div style="font:600 7px/1 var(--font-mono);color:var(--muted);margin-top:2px">+' + (team.length-2) + ' more</div>';
       }
 
       const clickable  = !isPast && !rec;
@@ -3954,18 +3957,22 @@ function showEmpDeclineReason(reason) {
 
 function openEmpDayOffModal() {
   document.getElementById('empDayOffDate').value = new Date().toISOString().slice(0,10);
+  document.getElementById('empDayOffReason').value = '';
   openModal('empDayOffModal');
 }
 function openEmpDayOffModalDate(date) {
   document.getElementById('empDayOffDate').value = date;
+  document.getElementById('empDayOffReason').value = '';
   openModal('empDayOffModal');
 }
 
 async function submitEmpDayOff() {
   const date = document.getElementById('empDayOffDate').value;
   const is_day_off = document.getElementById('empDayOffType').value;
+  const reason = (document.getElementById('empDayOffReason').value || '').trim();
   if (!date) return showToast('Please select a date', 'error');
-  const res = await fetch('/api/employee/day-off', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ date, is_day_off }) });
+  if (!reason) return showToast('Please add a reason for your request', 'error');
+  const res = await fetch('/api/employee/day-off', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ date, is_day_off, reason }) });
   const data = await res.json();
   if (res.ok) { closeModal('empDayOffModal'); showToast('Day off submitted!', 'success'); loadEmployeeCalendar(); }
   else showToast(data.error || 'Failed', 'error');
