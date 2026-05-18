@@ -3873,9 +3873,8 @@ async function loadEmployeeCalendar() {
       }
 
       gridHtml +=
-        '<div style="background:' + bg + ';border:' + border + ';border-radius:8px;padding:8px 6px 6px;min-height:72px;cursor:pointer;display:flex;flex-direction:column;align-items:center;transition:opacity .15s" ' +
-        'onmouseenter="this.style.opacity='.85'" onmouseleave="this.style.opacity='1'" ' +
-        'onclick="empDayClick('' + dateStr + '')">' +
+        '<div class="emp-cal-day" style="background:' + bg + ';border:' + border + ';border-radius:8px;padding:8px 6px 6px;min-height:72px;cursor:pointer;display:flex;flex-direction:column;align-items:center"'
+        + ' onclick="empDayClick(\'' + dateStr + '\')">' +
           '<div style="font:' + (isToday?'800':'700') + ' 15px/1 var(--font-mono);color:' + (isToday?'var(--primary)':isPast?'var(--dim)':'var(--text)') + ';width:100%;text-align:center">' + d + '</div>' +
           statusBar + teamHtml +
         '</div>';
@@ -3986,9 +3985,9 @@ function empDayClick(dateStr) {
   // Actions
   let actions = '';
   if (!isPast && !rec) {
-    actions = '<button class="btn btn-primary" style="width:100%;margin-top:4px" onclick="closeEmpDayModal();openEmpDayOffModalDate('' + dateStr + '')">+ Request Day Off</button>';
+    actions = `<button class="btn btn-primary" style="width:100%;margin-top:4px" onclick="closeEmpDayModal();openEmpDayOffModalDate('${dateStr}')">+ Request Day Off</button>`;
   } else if (status === 'pending') {
-    actions = '<button class="btn btn-danger" style="width:100%;margin-top:4px" onclick="closeEmpDayModal();cancelEmpDayOff('' + dateStr + '')">Cancel My Request</button>';
+    actions = `<button class="btn btn-danger" style="width:100%;margin-top:4px" onclick="closeEmpDayModal();cancelEmpDayOff('${dateStr}')">Cancel My Request</button>`;
   }
 
   if (!rec && !team.length) {
