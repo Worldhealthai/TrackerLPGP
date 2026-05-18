@@ -1616,6 +1616,15 @@ app.delete('/api/deal-tracker/:id', requireAuth, async (req, res) => {
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
 
+app.post('/api/deal-tracker/auto-colour', requireAuth, async (req, res) => {
+  try {
+    await ensureDb();
+    const { rows: paid } = await q(`UPDATE deal_tracker SET row_color='green' WHERE (paid_inc_vat IS NOT NULL AND paid_inc_vat > 0) AND row_color='none' RETURNING id`);
+    const { rows: unpaid } = await q(`UPDATE deal_tracker SET row_color='none' WHERE (paid_inc_vat IS NULL OR paid_inc_vat = 0) AND row_color='green' RETURNING id`);
+    res.json({ ok: true, updated: paid.length + unpaid.length });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
 app.post('/api/deal-tracker/bulk', requireAuth, async (req, res) => {
   try {
     await ensureDb();
