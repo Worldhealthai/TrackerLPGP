@@ -3475,6 +3475,8 @@ async function loadEmployeeDashboard(user) {
 
 // ─── DEAL TRACKER ─────────────────────────────────────────────────────────────
 let _dealData = [];
+let _dealFromMonth = '';
+let _dealToMonth   = '';
 
 async function loadDealTracker() {
   const page = document.getElementById('page-deals');
@@ -3504,10 +3506,20 @@ function renderDealTracker() {
   const fmtAmt = v => (v == null || v === '') ? '' : '£' + parseFloat(v).toLocaleString('en-GB', {minimumFractionDigits:2, maximumFractionDigits:2});
   const fmtDate = d => { if (!d) return ''; const dt = new Date(String(d).slice(0,10)+'T12:00:00'); return isNaN(dt)?'':dt.toLocaleDateString('en-GB',{day:'2-digit',month:'2-digit',year:'2-digit'}); };
 
-  const active    = _dealData.filter(r => r.status !== 'cancelled');
+  const allActive = _dealData.filter(r => r.status !== 'cancelled');
   const cancelled = _dealData.filter(r => r.status === 'cancelled');
 
-  // Totals (active only)
+  // Apply month filter on date_invoice_issued
+  const active = allActive.filter(r => {
+    if (!_dealFromMonth && !_dealToMonth) return true;
+    const m = r.date_invoice_issued ? String(r.date_invoice_issued).slice(0,7) : null;
+    if (!m) return false;
+    if (_dealFromMonth && m < _dealFromMonth) return false;
+    if (_dealToMonth   && m > _dealToMonth)   return false;
+    return true;
+  });
+
+  // Totals (active filtered only)
   const totalPaid  = active.reduce((s,r) => s + (parseFloat(r.paid_inc_vat)||0), 0);
   const totalDeal  = active.reduce((s,r) => s + (parseFloat(r.deal_amount)||0), 0);
   const totalVat   = active.reduce((s,r) => s + (parseFloat(r.tax_vat)||0), 0);
@@ -3536,7 +3548,9 @@ function renderDealTracker() {
       '<div style="font:500 11px/1 var(--font-mono);color:var(--muted)">' + esc(fmtDate(r.date_invoice_issued)) + '</div>',
       '<div style="font:600 11px/1 var(--font-mono);color:' + (r.date_paid?'var(--positive)':'var(--muted)') + '">' + esc(fmtDate(r.date_paid)) + '</div>',
       '<div style="font:500 11px/1 var(--font-mono);color:var(--muted)">' + esc(r.bank||'') + '</div>',
-      '<div style="font:500 10px/1.3 var(--font-mono);color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + esc(r.invoice_number||'') + '</div>',
+      (r.invoice_number
+        ? '<div onclick="openInvoiceModal(' + r.id + ',event)" style="font:500 10px/1.3 var(--font-mono);color:var(--primary);text-decoration:underline;text-underline-offset:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;cursor:pointer" title="Click to manage invoice documents">' + esc(r.invoice_number) + ' 📎</div>'
+        : '<div onclick="openInvoiceModal(' + r.id + ',event)" style="font:500 10px/1.3 var(--font-mono);color:var(--dim);cursor:pointer" title="Click to upload invoice documents">+ upload</div>'),
       '<div style="font:500 11px/1.4 var(--font-sans);color:var(--text);overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical">' + esc(r.notes||'') + '</div>',
       '<div style="font:600 10px/1 var(--font-mono);color:' + (r.invoice_sent&&r.invoice_sent!=='no'?'var(--positive)':'var(--muted)') + '">' + esc(r.invoice_sent==='no'?'—':r.invoice_sent) + '</div>',
       '<div style="font:600 10px/1 var(--font-mono);color:' + (r.signature_received==='yes'?'var(--positive)':'var(--muted)') + '">' + esc(r.signature_received==='yes'?'yes':'—') + '</div>',
@@ -3579,6 +3593,18 @@ function renderDealTracker() {
         '<div style="font:600 9px/1 var(--font-mono);color:var(--muted);letter-spacing:.5px;text-transform:uppercase;margin-bottom:6px">Remaining</div>' +
         '<div style="font:700 18px/1 var(--font-sans);color:' + (remaining > 0 ? 'var(--negative)' : 'var(--positive)') + '">' + fmtTotal(remaining) + '</div>' +
       '</div>' +
+    '</div>' +
+
+    // Date filter bar
+    '<div style="padding:0 24px 14px;display:flex;align-items:center;gap:10px;flex-wrap:wrap">' +
+      '<span style="font:600 11px/1 var(--font-mono);color:var(--muted);text-transform:uppercase;letter-spacing:.5px">Filter by invoice date:</span>' +
+      '<input type="month" id="dealFromMonth" value="' + _dealFromMonth + '" onchange="_dealFromMonth=this.value;renderDealTracker()" class="form-control" style="width:150px;font-size:12px;padding:6px 8px">' +
+      '<span style="font:500 11px/1 var(--font-mono);color:var(--muted)">to</span>' +
+      '<input type="month" id="dealToMonth" value="' + _dealToMonth + '" onchange="_dealToMonth=this.value;renderDealTracker()" class="form-control" style="width:150px;font-size:12px;padding:6px 8px">' +
+      (_dealFromMonth || _dealToMonth
+        ? '<button class="btn btn-ghost btn-sm" onclick="_dealFromMonth=\'\';_dealToMonth=\'\';renderDealTracker()">✕ Clear</button>' +
+          '<span style="font:600 11px/1 var(--font-mono);color:var(--primary);margin-left:4px">' + active.length + ' of ' + allActive.length + ' deals shown</span>'
+        : '') +
     '</div>' +
 
     // Table
@@ -3827,6 +3853,133 @@ async function toggleDealFlag(id, event) {
     const idx = _dealData.findIndex(d => d.id === id);
     if (idx !== -1) _dealData[idx] = updated;
     renderDealTracker();
+  } catch(e) { showToast('Error: ' + e.message, 'error'); }
+}
+
+// ─── INVOICE DOCUMENTS ────────────────────────────────────────────────────────
+async function openInvoiceModal(dealId, event) {
+  if (event) event.stopPropagation();
+  const deal = _dealData.find(d => d.id === dealId);
+  let existing = document.getElementById('invoiceDocModal');
+  if (existing) existing.remove();
+
+  const html =
+    '<div class="modal-overlay active" id="invoiceDocModal" onclick="if(event.target===this)closeInvoiceModal()">' +
+    '<div class="modal" style="max-width:520px;width:95vw">' +
+    '<div class="modal-header">' +
+      '<div>' +
+        '<h2 style="margin:0">Invoice Documents</h2>' +
+        (deal && deal.invoice_number ? '<div style="font:500 11px/1 var(--font-mono);color:var(--muted);margin-top:4px">' + esc(deal.invoice_number) + '</div>' : '') +
+      '</div>' +
+      '<button class="modal-close" onclick="closeInvoiceModal()">✕</button>' +
+    '</div>' +
+    '<div style="padding:20px">' +
+      '<div id="invoiceDocList"><div style="text-align:center;padding:20px;color:var(--muted);font:500 12px/1 var(--font-mono)">Loading…</div></div>' +
+      '<div style="margin-top:18px;padding-top:18px;border-top:1px solid var(--border)">' +
+        '<div style="font:600 11px/1 var(--font-mono);color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:10px">Upload</div>' +
+        '<div style="display:flex;gap:10px;flex-wrap:wrap">' +
+          '<label style="flex:1;min-width:140px;display:flex;align-items:center;justify-content:center;gap:8px;padding:12px;border:2px dashed var(--border);border-radius:8px;cursor:pointer;font:600 12px/1 var(--font-sans);color:var(--text);transition:border-color .2s" onmouseenter="this.style.borderColor=\'var(--primary)\'" onmouseleave="this.style.borderColor=\'\'">' +
+            '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>' +
+            'Upload PDF' +
+            '<input type="file" accept=".pdf,application/pdf" style="display:none" onchange="uploadInvoiceFile(' + dealId + ',this,\'pdf\')">' +
+          '</label>' +
+          '<label style="flex:1;min-width:140px;display:flex;align-items:center;justify-content:center;gap:8px;padding:12px;border:2px dashed var(--border);border-radius:8px;cursor:pointer;font:600 12px/1 var(--font-sans);color:var(--text);transition:border-color .2s" onmouseenter="this.style.borderColor=\'var(--primary)\'" onmouseleave="this.style.borderColor=\'\'">' +
+            '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>' +
+            'Upload Word Doc' +
+            '<input type="file" accept=".doc,.docx,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document" style="display:none" onchange="uploadInvoiceFile(' + dealId + ',this,\'word\')">' +
+          '</label>' +
+        '</div>' +
+      '</div>' +
+    '</div>' +
+    '</div></div>';
+
+  document.body.insertAdjacentHTML('beforeend', html);
+  loadInvoiceFiles(dealId);
+}
+
+function closeInvoiceModal() {
+  const m = document.getElementById('invoiceDocModal');
+  if (m) m.remove();
+}
+
+async function loadInvoiceFiles(dealId) {
+  const list = document.getElementById('invoiceDocList');
+  if (!list) return;
+  try {
+    const res  = await fetch('/api/deal-tracker/' + dealId + '/invoices');
+    const docs = res.ok ? await res.json() : [];
+    if (!docs.length) {
+      list.innerHTML = '<div style="text-align:center;padding:20px;color:var(--muted);font:500 12px/1.5 var(--font-mono)">No documents uploaded yet.</div>';
+      return;
+    }
+    const fmtSize = b => b < 1024 ? b + ' B' : b < 1048576 ? (b/1024).toFixed(0) + ' KB' : (b/1048576).toFixed(1) + ' MB';
+    const icon = t => t === 'pdf'
+      ? '<div style="width:32px;height:32px;background:rgba(239,68,68,0.12);border-radius:6px;display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:14px">📄</div>'
+      : '<div style="width:32px;height:32px;background:rgba(59,130,246,0.12);border-radius:6px;display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:14px">📝</div>';
+    list.innerHTML = docs.map(d =>
+      '<div style="display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid var(--border)">' +
+        icon(d.file_type) +
+        '<div style="flex:1;min-width:0">' +
+          '<div style="font:600 12px/1 var(--font-sans);color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + esc(d.file_name) + '</div>' +
+          '<div style="font:500 10px/1 var(--font-mono);color:var(--muted);margin-top:3px">' + fmtSize(d.file_size||0) + ' · ' + d.file_type.toUpperCase() + '</div>' +
+        '</div>' +
+        '<button onclick="downloadInvoiceFile(' + d.id + ',\'' + esc(d.file_name) + '\',\'' + d.file_type + '\')" style="background:none;border:1px solid var(--border);border-radius:6px;padding:5px 10px;cursor:pointer;font:600 11px/1 var(--font-mono);color:var(--text)">↓ Download</button>' +
+        '<button onclick="deleteInvoiceFile(' + d.id + ',' + dealId + ')" style="background:none;border:none;color:var(--dim);cursor:pointer;font-size:16px;padding:4px">×</button>' +
+      '</div>'
+    ).join('');
+  } catch(e) {
+    list.innerHTML = '<div style="color:var(--negative);font:500 12px/1 var(--font-mono);padding:10px">Failed to load: ' + esc(e.message) + '</div>';
+  }
+}
+
+async function uploadInvoiceFile(dealId, input, fileType) {
+  const file = (input.files||[])[0];
+  if (!file) return;
+  const MAX = 10 * 1024 * 1024;
+  if (file.size > MAX) { showToast('File too large (max 10 MB)', 'error'); return; }
+  const list = document.getElementById('invoiceDocList');
+  if (list) list.innerHTML = '<div style="text-align:center;padding:20px;color:var(--muted);font:500 12px/1 var(--font-mono)">Uploading…</div>';
+  try {
+    const base64 = await new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = e => resolve(e.target.result.split(',')[1]);
+      reader.onerror = reject;
+      reader.readAsDataURL(file);
+    });
+    const res = await fetch('/api/deal-tracker/' + dealId + '/invoices', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ file_name: file.name, file_type: fileType, file_data: base64, file_size: file.size })
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Upload failed');
+    showToast('Uploaded: ' + file.name, 'success');
+    loadInvoiceFiles(dealId);
+  } catch(e) { showToast('Upload failed: ' + e.message, 'error'); if (list) loadInvoiceFiles(dealId); }
+  input.value = '';
+}
+
+async function downloadInvoiceFile(id, fileName, fileType) {
+  try {
+    const res  = await fetch('/api/deal-invoices/' + id + '/download');
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Download failed');
+    const mimeMap = { pdf: 'application/pdf', word: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' };
+    const mime = mimeMap[fileType] || 'application/octet-stream';
+    const link = document.createElement('a');
+    link.href = 'data:' + mime + ';base64,' + data.file_data;
+    link.download = data.file_name || fileName;
+    document.body.appendChild(link); link.click(); document.body.removeChild(link);
+  } catch(e) { showToast('Download failed: ' + e.message, 'error'); }
+}
+
+async function deleteInvoiceFile(id, dealId) {
+  if (!confirm('Delete this document?')) return;
+  try {
+    const res = await fetch('/api/deal-invoices/' + id, { method: 'DELETE' });
+    if (!res.ok) throw new Error('Delete failed');
+    showToast('Document deleted', 'success');
+    loadInvoiceFiles(dealId);
   } catch(e) { showToast('Error: ' + e.message, 'error'); }
 }
 
