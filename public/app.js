@@ -115,13 +115,14 @@ function navigate(page) {
   document.getElementById('page-' + page).classList.add('active');
   document.querySelector(`.nav-item[data-page="${page}"]`)?.classList.add('active');
   document.querySelector(`.bottom-nav-item[data-page="${page}"]`)?.classList.add('active');
-  const titles = { dashboard:'Dashboard', tracking:'Daily Tracking', salary:'Salary Tracker', employees:'Employees', reports:'Reports', calendar:'Calendar', admins:'Admin Users', hotels:'Hotel Expenses' };
+  const titles = { dashboard:'Dashboard', tracking:'Daily Tracking', salary:'Salary Tracker', employees:'Employees', reports:'Reports', calendar:'Calendar', admins:'Admin Users', hotels:'Hotel Expenses', portfolio:'Staff Portfolio' };
   document.getElementById('pageTitle').textContent = titles[page] || page;
   if (page === 'employees') loadEmpTable();
   if (page === 'admins') loadAdmins();
   if (page === 'calendar') loadCalendar();
   if (page === 'salary') { loadSalaryPage(); renderSalaryReminderPanel(); }
   if (page === 'hotels') loadHotelExpenses();
+  if (page === 'portfolio') loadAdminPortfolio();
 }
 
 // ─── EMPLOYEES ───────────────────────────────────────────────────────────────
@@ -3458,70 +3459,296 @@ async function loadEmployeeDashboard(user) {
   }
 }
 
+// ─── ADMIN STAFF PORTFOLIO ────────────────────────────────────────────────────
+let _adminPortfolioData = null;
+let _adminPortfolioEmpFilter = '';
+
+async function loadAdminPortfolio() {
+  const page = document.getElementById('page-portfolio');
+  if (!page) return;
+  page.innerHTML = '<div class="skeleton" style="height:400px;border-radius:16px;margin:24px"></div>';
+  try {
+    const res = await fetch('/api/admin/staff-portfolio');
+    _adminPortfolioData = res.ok ? await res.json() : { employees: [], events: [] };
+    renderAdminPortfolioPage();
+  } catch(e) {
+    page.innerHTML = '<div style="padding:24px"><div class="alert alert-error">Failed to load staff portfolio: ' + e.message + '</div></div>';
+  }
+}
+
+function renderAdminPortfolioPage() {
+  const page = document.getElementById('page-portfolio');
+  if (!page || !_adminPortfolioData) return;
+  const { employees, events } = _adminPortfolioData;
+
+  // Group events by employee
+  const byEmp = {};
+  employees.forEach(e => { byEmp[e.employee_id] = { emp: e, events: [] }; });
+  events.forEach(ev => {
+    if (byEmp[ev.employee_id]) byEmp[ev.employee_id].events.push(ev);
+  });
+
+  const filtered = _adminPortfolioEmpFilter
+    ? Object.values(byEmp).filter(g => g.emp.employee_id == _adminPortfolioEmpFilter)
+    : Object.values(byEmp);
+
+  const empOptions = employees.map(e =>
+    `<option value="${e.employee_id}" ${e.employee_id==_adminPortfolioEmpFilter?'selected':''}>${esc(e.name)}</option>`
+  ).join('');
+
+  const empCards = filtered.map(({ emp, events: evts }) => {
+    const sorted = [...evts].sort((a,b) => {
+      if (!a.event_date && !b.event_date) return 0;
+      if (!a.event_date) return 1;
+      if (!b.event_date) return -1;
+      return new Date(b.event_date) - new Date(a.event_date);
+    });
+
+    const evtRows = sorted.map(ev => {
+      const dateStr = ev.event_date ? new Date(ev.event_date).toLocaleDateString('en-GB',{day:'numeric',month:'short',year:'numeric'}) : '—';
+      const badgeColor = ev.added_by === 'admin' ? '#f59e0b' : 'var(--positive)';
+      const badgeLabel = ev.added_by === 'admin' ? 'Allocated' : 'Self-added';
+      return `<div style="display:flex;align-items:center;gap:12px;padding:10px 0;border-bottom:1px solid var(--border)">
+        <div style="flex:1;min-width:0">
+          <div style="font:600 13px/1 var(--font-sans);color:var(--text)">${esc(ev.event_name)}</div>
+          <div style="font:500 11px/1 var(--font-mono);color:var(--muted);margin-top:3px">${dateStr}</div>
+          ${ev.notes ? `<div style="font:500 11px/1.4 var(--font-mono);color:var(--text-2);margin-top:4px">${esc(ev.notes)}</div>` : ''}
+        </div>
+        <span style="font:700 9px/1 var(--font-mono);color:${badgeColor};padding:3px 8px;border:1px solid ${badgeColor};border-radius:20px;flex-shrink:0">${badgeLabel}</span>
+        <button class="btn btn-danger btn-sm" onclick="adminDeletePortfolioEvent(${ev.id})" style="flex-shrink:0">×</button>
+      </div>`;
+    }).join('');
+
+    return `<div class="card" style="margin-bottom:16px">
+      <div style="padding:16px 20px 12px;display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid var(--border)">
+        <div>
+          <div style="font:700 15px/1 var(--font-sans);color:var(--text)">${esc(emp.name)}</div>
+          <div style="font:500 11px/1 var(--font-mono);color:var(--muted);margin-top:4px">${esc(emp.role||'')}${emp.department?' · '+esc(emp.department):''} · ${sorted.length} event${sorted.length!==1?'s':''}</div>
+        </div>
+        <button class="btn btn-primary btn-sm" onclick="openAllocateEvent(${emp.employee_id}, '${esc(emp.name)}')">+ Allocate Event</button>
+      </div>
+      <div style="padding:4px 20px 12px">
+        ${evtRows || '<div style="padding:16px 0;color:var(--muted);font:500 12px/1 var(--font-mono)">No events logged yet</div>'}
+      </div>
+    </div>`;
+  }).join('');
+
+  page.innerHTML = `
+    <div style="padding:24px">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px">
+        <div>
+          <h2 style="font:700 20px/1 var(--font-sans);color:var(--text);margin:0">Staff Portfolio</h2>
+          <div style="font:500 11px/1 var(--font-mono);color:var(--muted);margin-top:6px">${events.length} event${events.length!==1?'s':''} across ${employees.length} staff</div>
+        </div>
+        <div style="display:flex;gap:10px;align-items:center">
+          <select onchange="adminPortfolioFilter(this.value)" style="background:var(--surface-2);border:1px solid var(--border);color:var(--text);border-radius:8px;padding:6px 12px;font:500 12px/1 var(--font-mono)">
+            <option value="">All Staff</option>
+            ${empOptions}
+          </select>
+        </div>
+      </div>
+      ${empCards || '<div style="text-align:center;padding:40px;color:var(--muted);font:500 13px/1 var(--font-mono)">No staff found.</div>'}
+    </div>
+    <!-- Allocate Event Modal -->
+    <div id="allocateModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:1000;align-items:center;justify-content:center">
+      <div style="background:var(--surface-2);border:1px solid var(--border);border-radius:16px;padding:28px;width:100%;max-width:440px;margin:16px">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px">
+          <h3 id="allocateModalTitle" style="font:700 16px/1 var(--font-sans);color:var(--text);margin:0">Allocate Event</h3>
+          <button onclick="closeAllocateModal()" style="background:none;border:none;color:var(--muted);font-size:18px;cursor:pointer;padding:0">✕</button>
+        </div>
+        <input type="hidden" id="allocateEmpId">
+        <div class="form-group" style="margin-bottom:14px">
+          <label class="form-label">Event Name *</label>
+          <input id="allocEventName" class="form-control" type="text" placeholder="e.g. CFO NYC 2026">
+        </div>
+        <div class="form-group" style="margin-bottom:14px">
+          <label class="form-label">Event Date</label>
+          <input id="allocEventDate" class="form-control" type="date">
+        </div>
+        <div class="form-group" style="margin-bottom:20px">
+          <label class="form-label">Notes (optional)</label>
+          <textarea id="allocNotes" class="form-control" rows="3" placeholder="Any additional details..."></textarea>
+        </div>
+        <div style="display:flex;gap:10px;justify-content:flex-end">
+          <button class="btn btn-ghost" onclick="closeAllocateModal()">Cancel</button>
+          <button class="btn btn-primary" onclick="saveAllocateEvent()">Allocate</button>
+        </div>
+      </div>
+    </div>`;
+}
+
+function adminPortfolioFilter(val) {
+  _adminPortfolioEmpFilter = val;
+  renderAdminPortfolioPage();
+}
+
+function openAllocateEvent(empId, empName) {
+  document.getElementById('allocateEmpId').value = empId;
+  document.getElementById('allocateModalTitle').textContent = 'Allocate Event — ' + empName;
+  document.getElementById('allocEventName').value = '';
+  document.getElementById('allocEventDate').value = '';
+  document.getElementById('allocNotes').value = '';
+  document.getElementById('allocateModal').style.display = 'flex';
+}
+
+function closeAllocateModal() {
+  document.getElementById('allocateModal').style.display = 'none';
+}
+
+async function saveAllocateEvent() {
+  const empId = document.getElementById('allocateEmpId').value;
+  const name  = document.getElementById('allocEventName').value.trim();
+  const date  = document.getElementById('allocEventDate').value;
+  const notes = document.getElementById('allocNotes').value.trim();
+  if (!name) { alert('Please enter an event name'); return; }
+  const res = await fetch('/api/admin/staff-portfolio', {
+    method: 'POST',
+    headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({ employee_id: parseInt(empId), event_name: name, event_date: date || null, notes })
+  });
+  if (res.ok) {
+    closeAllocateModal();
+    await loadAdminPortfolio();
+  } else {
+    const err = await res.json();
+    alert('Error: ' + (err.error || 'Failed to allocate'));
+  }
+}
+
+async function adminDeletePortfolioEvent(id) {
+  if (!confirm('Remove this event from the portfolio?')) return;
+  const res = await fetch('/api/admin/staff-portfolio/' + id, { method: 'DELETE' });
+  if (res.ok) await loadAdminPortfolio();
+}
+
+let _portfolioEvents = [];
+let _portfolioYear   = new Date().getFullYear();
+
 async function loadEmployeePortfolio() {
   const page = document.getElementById('page-portfolio');
   if (!page) return;
   page.innerHTML = '<div class="skeleton" style="height:300px;border-radius:16px;margin:24px"></div>';
-
   try {
-    const res = await fetch('/api/hotel-expenses');
-    const events = res.ok ? await res.json() : [];
-    const STATUS_COLOR = { paid: 'var(--positive)', partial: '#f59e0b', pending: 'var(--muted)' };
-    const STATUS_LABEL = { paid: 'Paid', partial: 'Partial', pending: 'Pending' };
-    const sortedEvents = [...events].sort((a, b) => (b.id - a.id));
-
-    const cards = sortedEvents.map(r => {
-      const sc = STATUS_COLOR[r.status] || 'var(--muted)';
-      const sl = STATUS_LABEL[r.status] || r.status;
-      const avSym  = r.av_currency === 'GBP' ? '£' : r.av_currency === 'USD' ? '$' : (r.av_currency || '') + ' ';
-      const paidSym = r.paid_currency === 'GBP' ? '£' : r.paid_currency === 'USD' ? '$' : (r.paid_currency || '') + ' ';
-      const rows = [
-        r.hotel     ? ['Hotel',       esc(r.hotel)]     : null,
-        r.cost      ? ['Room cost',   esc(r.cost)]      : null,
-        r.av_amount != null ? ['AV', avSym + parseFloat(r.av_amount).toLocaleString('en-GB') + (r.av_billing === 'included' ? ' (incl.)' : '')] : null,
-        r.paid_amount != null ? ['Paid so far', paidSym + parseFloat(r.paid_amount).toLocaleString('en-GB')] : null,
-        r.staff_hotel != null ? ['Staff hotel', parseFloat(r.staff_hotel).toLocaleString('en-GB')] : null,
-        r.flights    != null ? ['Flights',   parseFloat(r.flights).toLocaleString('en-GB')]    : null,
-        r.printing   != null ? ['Printing',  parseFloat(r.printing).toLocaleString('en-GB')]   : null,
-      ].filter(Boolean);
-
-      return '<div class="card" style="margin-bottom:12px">' +
-        '<div style="padding:16px 20px 12px;display:flex;justify-content:space-between;align-items:flex-start">' +
-          '<div>' +
-            '<div style="font:700 15px/1 var(--font-sans);color:var(--text)">' + esc(r.event_name) + '</div>' +
-            (r.hotel ? '<div style="font:500 11px/1 var(--font-mono);color:var(--muted);margin-top:4px">' + esc(r.hotel) + '</div>' : '') +
-          '</div>' +
-          '<span style="font:700 10px/1 var(--font-mono);color:' + sc + ';padding:4px 10px;border:1px solid ' + sc + ';border-radius:20px;opacity:.85">' + sl.toUpperCase() + '</span>' +
-        '</div>' +
-        (rows.length
-          ? '<div style="padding:0 20px 12px;display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:8px">' +
-              rows.map(([lbl, val]) =>
-                '<div style="background:#12172a;border-radius:8px;padding:8px 12px">' +
-                  '<div style="font:600 9px/1 var(--font-mono);text-transform:uppercase;letter-spacing:1px;color:var(--muted);margin-bottom:4px">' + lbl + '</div>' +
-                  '<div style="font:600 12px/1 var(--font-mono);color:var(--text)">' + val + '</div>' +
-                '</div>'
-              ).join('') +
-            '</div>'
-          : '') +
-        (r.notes
-          ? '<div style="padding:10px 20px 14px;font:500 11px/1.5 var(--font-mono);color:var(--muted);border-top:1px solid var(--border)">' + esc(r.notes) + '</div>'
-          : '') +
-      '</div>';
-    }).join('');
-
-    page.innerHTML =
-      '<div style="padding:24px">' +
-        '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px">' +
-          '<div>' +
-            '<h2 style="font:700 20px/1 var(--font-sans);color:var(--text);margin:0">My Portfolio</h2>' +
-            '<div style="font:500 11px/1 var(--font-mono);color:var(--muted);margin-top:6px">' + sortedEvents.length + ' events</div>' +
-          '</div>' +
-        '</div>' +
-        (cards || '<div style="color:var(--muted);font:500 12px/1 var(--font-mono);padding:20px 0">No events yet.</div>') +
-      '</div>';
+    const res = await fetch('/api/employee/portfolio');
+    _portfolioEvents = res.ok ? await res.json() : [];
+    renderPortfolioPage();
   } catch(e) {
     page.innerHTML = '<div style="padding:24px"><div class="alert alert-error">Failed to load portfolio: ' + e.message + '</div></div>';
   }
+}
+
+function renderPortfolioPage() {
+  const page = document.getElementById('page-portfolio');
+  if (!page) return;
+
+  const years = [...new Set(_portfolioEvents.map(e => e.event_date ? new Date(e.event_date).getFullYear() : null).filter(Boolean))].sort((a,b) => b-a);
+  const curYear = new Date().getFullYear();
+  if (!years.includes(curYear)) years.unshift(curYear);
+  if (!years.includes(_portfolioYear)) _portfolioYear = years[0] || curYear;
+
+  const filtered = _portfolioEvents.filter(e => {
+    if (!e.event_date) return false;
+    return new Date(e.event_date).getFullYear() === _portfolioYear;
+  });
+  const undated  = _portfolioYear === curYear ? _portfolioEvents.filter(e => !e.event_date) : [];
+
+  const yearTabs = years.map(y =>
+    `<button onclick="portfolioSetYear(${y})" style="padding:6px 16px;border-radius:20px;border:1px solid ${y===_portfolioYear?'var(--accent)':'var(--border)'};background:${y===_portfolioYear?'var(--accent)':'transparent'};color:${y===_portfolioYear?'#fff':'var(--muted)'};font:600 12px/1 var(--font-mono);cursor:pointer">${y}</button>`
+  ).join('');
+
+  const evtCard = (r) => {
+    const dateStr = r.event_date ? new Date(r.event_date).toLocaleDateString('en-GB',{day:'numeric',month:'short',year:'numeric'}) : 'No date';
+    const byAdmin = r.added_by === 'admin';
+    return `<div class="card" style="margin-bottom:10px;padding:16px 20px;display:flex;align-items:center;gap:16px">
+      <div style="flex:1;min-width:0">
+        <div style="font:700 14px/1 var(--font-sans);color:var(--text)">${esc(r.event_name)}</div>
+        <div style="font:500 11px/1.5 var(--font-mono);color:var(--muted);margin-top:4px">${dateStr}${byAdmin?' · <span style="color:#f59e0b">allocated by admin</span>':''}</div>
+        ${r.notes ? `<div style="font:500 11px/1.4 var(--font-mono);color:var(--text-2);margin-top:6px;border-top:1px solid var(--border);padding-top:6px">${esc(r.notes)}</div>` : ''}
+      </div>
+      ${!byAdmin ? `<button class="btn btn-ghost btn-sm" onclick="deletePortfolioEvent(${r.id})" style="color:var(--danger);flex-shrink:0">×</button>` : ''}
+    </div>`;
+  };
+
+  const allCards = [...filtered, ...undated].map(evtCard).join('');
+
+  page.innerHTML = `
+    <div style="padding:24px">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px">
+        <div>
+          <h2 style="font:700 20px/1 var(--font-sans);color:var(--text);margin:0">My Portfolio</h2>
+          <div style="font:500 11px/1 var(--font-mono);color:var(--muted);margin-top:6px">${_portfolioEvents.length} event${_portfolioEvents.length!==1?'s':''} total</div>
+        </div>
+        <button class="btn btn-primary" onclick="openAddPortfolioEvent()">+ Add Event</button>
+      </div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:20px">${yearTabs}</div>
+      ${allCards || `<div style="text-align:center;padding:40px 20px;color:var(--muted);font:500 12px/1.6 var(--font-mono)">No events in ${_portfolioYear}.<br>Click <strong>+ Add Event</strong> to log one.</div>`}
+    </div>
+    <!-- Add Event Modal -->
+    <div id="portfolioModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:1000;align-items:center;justify-content:center">
+      <div style="background:var(--surface-2);border:1px solid var(--border);border-radius:16px;padding:28px;width:100%;max-width:440px;margin:16px">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px">
+          <h3 style="font:700 16px/1 var(--font-sans);color:var(--text);margin:0">Add Portfolio Event</h3>
+          <button onclick="closePortfolioModal()" style="background:none;border:none;color:var(--muted);font-size:18px;cursor:pointer;padding:0">✕</button>
+        </div>
+        <div class="form-group" style="margin-bottom:14px">
+          <label class="form-label">Event Name *</label>
+          <input id="pfEventName" class="form-control" type="text" placeholder="e.g. CFO NYC 2026">
+        </div>
+        <div class="form-group" style="margin-bottom:14px">
+          <label class="form-label">Event Date</label>
+          <input id="pfEventDate" class="form-control" type="date">
+        </div>
+        <div class="form-group" style="margin-bottom:20px">
+          <label class="form-label">Notes (optional)</label>
+          <textarea id="pfNotes" class="form-control" rows="3" placeholder="Any additional details..."></textarea>
+        </div>
+        <div style="display:flex;gap:10px;justify-content:flex-end">
+          <button class="btn btn-ghost" onclick="closePortfolioModal()">Cancel</button>
+          <button class="btn btn-primary" onclick="savePortfolioEvent()">Save Event</button>
+        </div>
+      </div>
+    </div>`;
+}
+
+function portfolioSetYear(y) {
+  _portfolioYear = y;
+  renderPortfolioPage();
+}
+
+function openAddPortfolioEvent() {
+  document.getElementById('pfEventName').value = '';
+  document.getElementById('pfEventDate').value = '';
+  document.getElementById('pfNotes').value = '';
+  document.getElementById('portfolioModal').style.display = 'flex';
+}
+
+function closePortfolioModal() {
+  document.getElementById('portfolioModal').style.display = 'none';
+}
+
+async function savePortfolioEvent() {
+  const name  = document.getElementById('pfEventName').value.trim();
+  const date  = document.getElementById('pfEventDate').value;
+  const notes = document.getElementById('pfNotes').value.trim();
+  if (!name) { alert('Please enter an event name'); return; }
+  const res = await fetch('/api/employee/portfolio', {
+    method: 'POST',
+    headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({ event_name: name, event_date: date || null, notes })
+  });
+  if (res.ok) {
+    closePortfolioModal();
+    await loadEmployeePortfolio();
+  } else {
+    const err = await res.json();
+    alert('Error: ' + (err.error || 'Failed to save'));
+  }
+}
+
+async function deletePortfolioEvent(id) {
+  if (!confirm('Remove this event from your portfolio?')) return;
+  const res = await fetch('/api/employee/portfolio/' + id, { method: 'DELETE' });
+  if (res.ok) await loadEmployeePortfolio();
 }
 
 let empCalYear  = new Date().getFullYear();
