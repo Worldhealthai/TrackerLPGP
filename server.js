@@ -15,10 +15,14 @@ let dbMigrationsRun = false;
 let dbInitPromise = null; // serialise concurrent first-request inits
 
 async function runLateMigrations() {
-  // Idempotent migrations — safe to run on every warm start
-  await sql(`CREATE TABLE IF NOT EXISTS employee_portfolio_events (id SERIAL PRIMARY KEY, employee_id INTEGER NOT NULL, event_name TEXT NOT NULL, event_date DATE, notes TEXT NOT NULL DEFAULT '', added_by TEXT NOT NULL DEFAULT 'employee', allocated_by INT, created_at TIMESTAMPTZ NOT NULL DEFAULT NOW())`);
-  await sql(`ALTER TABLE day_off_requests ADD COLUMN IF NOT EXISTS reason TEXT`);
-  await sql(`ALTER TABLE calendar_reminders ADD COLUMN IF NOT EXISTS visible_to_staff BOOLEAN DEFAULT FALSE`);
+  const steps = [
+    `CREATE TABLE IF NOT EXISTS employee_portfolio_events (id SERIAL PRIMARY KEY, employee_id INTEGER NOT NULL, event_name TEXT NOT NULL, event_date DATE, notes TEXT NOT NULL DEFAULT '', added_by TEXT NOT NULL DEFAULT 'employee', allocated_by INT, created_at TIMESTAMPTZ NOT NULL DEFAULT NOW())`,
+    `ALTER TABLE day_off_requests ADD COLUMN IF NOT EXISTS reason TEXT`,
+    `ALTER TABLE calendar_reminders ADD COLUMN IF NOT EXISTS visible_to_staff BOOLEAN DEFAULT FALSE`,
+  ];
+  for (const step of steps) {
+    try { await sql(step); } catch(e) { console.warn('Migration step skipped:', e.message); }
+  }
 }
 
 async function ensureDb() {
@@ -32,8 +36,8 @@ async function ensureDb() {
     await dbInitPromise;
   }
   if (!dbMigrationsRun) {
-    await runLateMigrations();
-    dbMigrationsRun = true;
+    dbMigrationsRun = true; // set before running so a failure never blocks the API
+    runLateMigrations().catch(e => console.warn('Late migrations failed:', e.message));
   }
 }
 
