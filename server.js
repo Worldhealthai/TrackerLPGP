@@ -17,6 +17,7 @@ let dbInitPromise = null; // serialise concurrent first-request inits
 async function runLateMigrations() {
   const steps = [
     `CREATE TABLE IF NOT EXISTS employee_portfolio_events (id SERIAL PRIMARY KEY, employee_id INTEGER NOT NULL, event_name TEXT NOT NULL, event_date DATE, notes TEXT NOT NULL DEFAULT '', added_by TEXT NOT NULL DEFAULT 'employee', allocated_by INT, created_at TIMESTAMPTZ NOT NULL DEFAULT NOW())`,
+    `CREATE TABLE IF NOT EXISTS employee_reminders (id SERIAL PRIMARY KEY, employee_id INTEGER NOT NULL, title TEXT NOT NULL, reminder_date DATE, is_done BOOLEAN DEFAULT FALSE, created_at TIMESTAMPTZ DEFAULT NOW())`,
     `ALTER TABLE day_off_requests ADD COLUMN IF NOT EXISTS reason TEXT`,
     `ALTER TABLE calendar_reminders ADD COLUMN IF NOT EXISTS visible_to_staff BOOLEAN DEFAULT FALSE`,
   ];
@@ -1412,9 +1413,11 @@ app.delete('/api/employee/portfolio/:id', requireAuth, async (req, res) => {
 app.get('/api/admin/staff-portfolio', requireAuth, async (req, res) => {
   try {
     const { rows: emps } = await q('SELECT id AS employee_id, name, role, department FROM employees WHERE active = 1 ORDER BY name');
-    const { rows: events } = await q(
-      'SELECT e.*, emp.name AS employee_name FROM employee_portfolio_events e JOIN employees emp ON emp.id = e.employee_id ORDER BY e.event_date DESC NULLS LAST, e.created_at DESC'
-    );
+    let events = [];
+    try {
+      const { rows } = await q('SELECT e.*, emp.name AS employee_name FROM employee_portfolio_events e JOIN employees emp ON emp.id = e.employee_id ORDER BY e.event_date DESC NULLS LAST, e.created_at DESC');
+      events = rows;
+    } catch(tableErr) { /* table may not exist yet */ }
     res.json({ employees: emps, events });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
@@ -1489,6 +1492,50 @@ app.get('/api/employee/upcoming', requireAuth, async (req, res) => {
 
     res.json({ dayOffs, reminders: dedupedReminders.sort((a,b)=>a.virtual_date.localeCompare(b.virtual_date)) });
   } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+
+// ─── EMPLOYEE PERSONAL REMINDERS ─────────────────────────────────────────────
+app.get('/api/employee/reminders', requireAuth, async (req, res) => {
+  try {
+    const empId = req.user.employee_id;
+    if (!empId) return res.status(403).json({ error: 'Employee only' });
+    const { rows } = await q(
+      'SELECT * FROM employee_reminders WHERE employee_id = ? ORDER BY reminder_date NULLS LAST, created_at DESC',
+      [empId]
+    );
+    res.json(rows);
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+app.post('/api/employee/reminders', requireAuth, async (req, res) => {
+  try {
+    const empId = req.user.employee_id;
+    if (!empId) return res.status(403).json({ error: 'Employee only' });
+    const { title, reminder_date } = req.body;
+    if (!title) return res.status(400).json({ error: 'title required' });
+    await q(
+      'INSERT INTO employee_reminders (employee_id, title, reminder_date) VALUES (?,?,?)',
+      [empId, title.trim(), reminder_date || null]
+    );
+    res.json({ ok: true });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+app.patch('/api/employee/reminders/:id/done', requireAuth, async (req, res) => {
+  try {
+    const empId = req.user.employee_id;
+    await q('UPDATE employee_reminders SET is_done = NOT is_done WHERE id = ? AND employee_id = ?', [req.params.id, empId]);
+    res.json({ ok: true });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+app.delete('/api/employee/reminders/:id', requireAuth, async (req, res) => {
+  try {
+    const empId = req.user.employee_id;
+    await q('DELETE FROM employee_reminders WHERE id = ? AND employee_id = ?', [req.params.id, empId]);
+    res.json({ ok: true });
+  } catch(e) { res.status(500).json({ error: e.message }); }
 });
 
 // ─── GLOBAL ERROR HANDLER ────────────────────────────────────────────────────
