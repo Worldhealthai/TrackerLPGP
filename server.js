@@ -1350,6 +1350,78 @@ app.delete('/api/hotel-expenses/:id', requireAuth, async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+// ─── EMPLOYEE PORTFOLIO EVENTS ───────────────────────────────────────────────
+
+// Employee: get own portfolio events
+app.get('/api/employee/portfolio', requireAuth, async (req, res) => {
+  try {
+    const empId = req.user.employee_id;
+    if (!empId) return res.status(403).json({ error: 'Employee only' });
+    const rows = await q(
+      'SELECT * FROM employee_portfolio_events WHERE employee_id = ? ORDER BY event_date DESC NULLS LAST, created_at DESC',
+      [empId]
+    );
+    res.json(rows);
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// Employee: add own portfolio event
+app.post('/api/employee/portfolio', requireAuth, async (req, res) => {
+  try {
+    const empId = req.user.employee_id;
+    if (!empId) return res.status(403).json({ error: 'Employee only' });
+    const { event_name, event_date, notes } = req.body;
+    if (!event_name) return res.status(400).json({ error: 'event_name required' });
+    await q(
+      'INSERT INTO employee_portfolio_events (employee_id, event_name, event_date, notes, added_by) VALUES (?,?,?,?,?)',
+      [empId, event_name.trim(), event_date || null, (notes || '').trim(), 'employee']
+    );
+    res.json({ ok: true });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// Employee: delete own portfolio event
+app.delete('/api/employee/portfolio/:id', requireAuth, async (req, res) => {
+  try {
+    const empId = req.user.employee_id;
+    if (!empId) return res.status(403).json({ error: 'Employee only' });
+    await q('DELETE FROM employee_portfolio_events WHERE id = ? AND employee_id = ?', [req.params.id, empId]);
+    res.json({ ok: true });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// Admin: get all employees with their portfolio events
+app.get('/api/admin/staff-portfolio', requireAuth, async (req, res) => {
+  try {
+    const emps = await q('SELECT employee_id, name, role, department FROM employees WHERE active = 1 ORDER BY name');
+    const events = await q(
+      'SELECT e.*, emp.name AS employee_name FROM employee_portfolio_events e JOIN employees emp ON emp.employee_id = e.employee_id ORDER BY e.event_date DESC NULLS LAST, e.created_at DESC'
+    );
+    res.json({ employees: emps, events });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// Admin: allocate/add event to an employee
+app.post('/api/admin/staff-portfolio', requireAuth, async (req, res) => {
+  try {
+    const { employee_id, event_name, event_date, notes } = req.body;
+    if (!employee_id || !event_name) return res.status(400).json({ error: 'employee_id and event_name required' });
+    await q(
+      'INSERT INTO employee_portfolio_events (employee_id, event_name, event_date, notes, added_by, allocated_by) VALUES (?,?,?,?,?,?)',
+      [employee_id, event_name.trim(), event_date || null, (notes || '').trim(), 'admin', req.user.id || null]
+    );
+    res.json({ ok: true });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// Admin: delete any portfolio event
+app.delete('/api/admin/staff-portfolio/:id', requireAuth, async (req, res) => {
+  try {
+    await q('DELETE FROM employee_portfolio_events WHERE id = ?', [req.params.id]);
+    res.json({ ok: true });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 // ─── GLOBAL ERROR HANDLER ────────────────────────────────────────────────────
 // Catches any unhandled async errors thrown in routes (e.g. DB failures)
 // eslint-disable-next-line no-unused-vars
