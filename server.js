@@ -36,10 +36,12 @@ async function runLateMigrations() {
       signature_received TEXT DEFAULT 'no',
       initials TEXT DEFAULT '',
       row_color TEXT DEFAULT 'green',
+      status TEXT DEFAULT 'active',
       sort_order INT DEFAULT 0,
       created_by INT,
       created_at TIMESTAMPTZ DEFAULT NOW()
     )`,
+    `ALTER TABLE deal_tracker ADD COLUMN IF NOT EXISTS status TEXT DEFAULT 'active'`,
   ];
   for (const step of steps) {
     try { await sql(step); } catch(e) { console.warn('Migration step skipped:', e.message); }
@@ -1572,14 +1574,14 @@ app.post('/api/deal-tracker', requireAuth, async (req, res) => {
     await ensureDb();
     const { month_label='', company, paid_inc_vat=null, deal_amount=null, tax_vat=null,
             date_invoice_issued=null, date_paid=null, bank='', invoice_number='', notes='',
-            invoice_sent='no', signature_received='no', initials='', row_color='green', sort_order=0 } = req.body;
+            invoice_sent='no', signature_received='no', initials='', row_color='green', status='active', sort_order=0 } = req.body;
     if (!company) return res.status(400).json({ error: 'company required' });
     const { rows } = await q(
-      `INSERT INTO deal_tracker (month_label,company,paid_inc_vat,deal_amount,tax_vat,date_invoice_issued,date_paid,bank,invoice_number,notes,invoice_sent,signature_received,initials,row_color,sort_order,created_by)
-       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) RETURNING *`,
+      `INSERT INTO deal_tracker (month_label,company,paid_inc_vat,deal_amount,tax_vat,date_invoice_issued,date_paid,bank,invoice_number,notes,invoice_sent,signature_received,initials,row_color,status,sort_order,created_by)
+       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) RETURNING *`,
       [month_label,company,paid_inc_vat||null,deal_amount||null,tax_vat||null,
        date_invoice_issued||null,date_paid||null,bank,invoice_number,notes,
-       invoice_sent,signature_received,initials,row_color,sort_order,req.user.id||null]
+       invoice_sent,signature_received,initials,row_color,status,sort_order,req.user.id||null]
     );
     res.json(rows[0]);
   } catch(e) { res.status(500).json({ error: e.message }); }
@@ -1590,15 +1592,15 @@ app.put('/api/deal-tracker/:id', requireAuth, async (req, res) => {
     await ensureDb();
     const { month_label, company, paid_inc_vat, deal_amount, tax_vat,
             date_invoice_issued, date_paid, bank, invoice_number, notes,
-            invoice_sent, signature_received, initials, row_color, sort_order } = req.body;
+            invoice_sent, signature_received, initials, row_color, status, sort_order } = req.body;
     const { rows } = await q(
       `UPDATE deal_tracker SET month_label=?,company=?,paid_inc_vat=?,deal_amount=?,tax_vat=?,
        date_invoice_issued=?,date_paid=?,bank=?,invoice_number=?,notes=?,
-       invoice_sent=?,signature_received=?,initials=?,row_color=?,sort_order=?
+       invoice_sent=?,signature_received=?,initials=?,row_color=?,status=?,sort_order=?
        WHERE id=? RETURNING *`,
       [month_label,company,paid_inc_vat||null,deal_amount||null,tax_vat||null,
        date_invoice_issued||null,date_paid||null,bank,invoice_number,notes,
-       invoice_sent,signature_received,initials,row_color,sort_order||0,req.params.id]
+       invoice_sent,signature_received,initials,row_color,status||'active',sort_order||0,req.params.id]
     );
     if (!rows.length) return res.status(404).json({ error: 'not found' });
     res.json(rows[0]);
