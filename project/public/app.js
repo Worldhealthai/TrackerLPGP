@@ -3502,7 +3502,7 @@ function renderDealTracker() {
   };
 
   const fmtAmt = v => (v == null || v === '') ? '' : '£' + parseFloat(v).toLocaleString('en-GB', {minimumFractionDigits:2, maximumFractionDigits:2});
-  const fmtDate = d => { if (!d) return ''; const dt = new Date(d+'T12:00:00'); return dt.toLocaleDateString('en-GB',{day:'2-digit',month:'2-digit',year:'2-digit'}); };
+  const fmtDate = d => { if (!d) return ''; const dt = new Date(String(d).slice(0,10)+'T12:00:00'); return isNaN(dt)?'':dt.toLocaleDateString('en-GB',{day:'2-digit',month:'2-digit',year:'2-digit'}); };
 
   const active    = _dealData.filter(r => r.status !== 'cancelled');
   const cancelled = _dealData.filter(r => r.status === 'cancelled');
