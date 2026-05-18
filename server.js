@@ -1593,15 +1593,15 @@ app.put('/api/deal-tracker/:id', requireAuth, async (req, res) => {
     await ensureDb();
     const { month_label, company, paid_inc_vat, deal_amount, tax_vat,
             date_invoice_issued, date_paid, bank, invoice_number, notes,
-            invoice_sent, signature_received, initials, row_color, status, sort_order } = req.body;
+            invoice_sent, signature_received, initials, row_color, status, is_flagged, sort_order } = req.body;
     const { rows } = await q(
       `UPDATE deal_tracker SET month_label=?,company=?,paid_inc_vat=?,deal_amount=?,tax_vat=?,
        date_invoice_issued=?,date_paid=?,bank=?,invoice_number=?,notes=?,
-       invoice_sent=?,signature_received=?,initials=?,row_color=?,status=?,sort_order=?
+       invoice_sent=?,signature_received=?,initials=?,row_color=?,status=?,is_flagged=?,sort_order=?
        WHERE id=? RETURNING *`,
       [month_label,company,paid_inc_vat||null,deal_amount||null,tax_vat||null,
        date_invoice_issued||null,date_paid||null,bank,invoice_number,notes,
-       invoice_sent,signature_received,initials,row_color,status||'active',sort_order||0,req.params.id]
+       invoice_sent,signature_received,initials,row_color,status||'active',is_flagged?true:false,sort_order||0,req.params.id]
     );
     if (!rows.length) return res.status(404).json({ error: 'not found' });
     res.json(rows[0]);
@@ -1613,16 +1613,6 @@ app.delete('/api/deal-tracker/:id', requireAuth, async (req, res) => {
     await ensureDb();
     await q('DELETE FROM deal_tracker WHERE id=?', [req.params.id]);
     res.json({ ok: true });
-  } catch(e) { res.status(500).json({ error: e.message }); }
-});
-
-app.patch('/api/deal-tracker/:id/flag', requireAuth, async (req, res) => {
-  try {
-    await ensureDb();
-    const { is_flagged } = req.body;
-    const { rows } = await q('UPDATE deal_tracker SET is_flagged=? WHERE id=? RETURNING *', [!!is_flagged, req.params.id]);
-    if (!rows.length) return res.status(404).json({ error: 'not found' });
-    res.json(rows[0]);
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
 
