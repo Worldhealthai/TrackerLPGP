@@ -3630,15 +3630,17 @@ function renderDealTracker() {
           '<div style="width:1px;height:24px;background:var(--border);margin:0 4px"></div>' +
           // Year
           '<select class="form-control" style="width:90px;font-size:12px;padding:6px 8px" onchange="dealSetYear(this.value)"><option value="">All years</option>' + yearOpts + '</select>' +
-          // Quick quarters
-          '<div style="display:flex;gap:4px">' +
-            ['Q1','Q2','Q3','Q4'].map((q,i) => {
-              const fm = _dealYear + '-' + String(i*3+1).padStart(2,'0');
-              const tm = _dealYear + '-' + String(i*3+3).padStart(2,'0');
-              const active2 = _dealFromMonth === (_dealYear ? fm : String(new Date().getFullYear())+'-'+String(i*3+1).padStart(2,'0'));
-              return '<button onclick="dealSetQuarter(' + (i+1) + ')" style="padding:5px 10px;font:700 11px/1 var(--font-mono);border-radius:6px;border:1px solid var(--border);background:' + (_dealFromMonth && _dealFromMonth.slice(5,7)===String(i*3+1).padStart(2,'0') ? 'var(--primary)' : 'var(--surface)') + ';color:' + (_dealFromMonth && _dealFromMonth.slice(5,7)===String(i*3+1).padStart(2,'0') ? '#fff' : 'var(--text)') + ';cursor:pointer">' + q + '</button>';
-            }).join('') +
-          '</div>' +
+          // Quick quarters (fiscal: Q1=Nov-Jan, Q2=Feb-Apr, Q3=May-Jul, Q4=Aug-Oct)
+          (function(){
+            const aq = _activeQuarter();
+            const qLabels = ['Q1 Nov–Jan','Q2 Feb–Apr','Q3 May–Jul','Q4 Aug–Oct'];
+            return '<div style="display:flex;gap:4px">' +
+              qLabels.map((lbl,i) => {
+                const isActive = aq === i+1;
+                return '<button onclick="dealSetQuarter(' + (i+1) + ')" title="' + lbl + '" style="padding:5px 10px;font:700 11px/1 var(--font-mono);border-radius:6px;border:1px solid var(--border);background:' + (isActive?'var(--primary)':'var(--surface)') + ';color:' + (isActive?'#fff':'var(--text)') + ';cursor:pointer;white-space:nowrap">' + lbl + '</button>';
+              }).join('') +
+            '</div>';
+          })()+
           '<div style="width:1px;height:24px;background:var(--border);margin:0 4px"></div>' +
           // Custom from/to month
           '<span style="font:600 10px/1 var(--font-mono);color:var(--muted)">FROM</span>' +
@@ -3720,17 +3722,28 @@ function renderDealTracker() {
 
 function dealSetYear(y) {
   _dealYear = y;
-  // Reset month range to cover the whole year
-  if (y) { _dealFromMonth = y + '-01'; _dealToMonth = y + '-12'; }
+  if (y) { _dealFromMonth = (parseInt(y)-1) + '-11'; _dealToMonth = y + '-10'; }
   else    { _dealFromMonth = ''; _dealToMonth = ''; }
   renderDealTracker();
 }
+// Fiscal quarters: Q1=Nov-Jan, Q2=Feb-Apr, Q3=May-Jul, Q4=Aug-Oct
 function dealSetQuarter(q) {
-  const y = _dealYear || String(new Date().getFullYear());
-  _dealYear      = y;
-  _dealFromMonth = y + '-' + String((q-1)*3+1).padStart(2,'0');
-  _dealToMonth   = y + '-' + String(q*3).padStart(2,'0');
+  const y = parseInt(_dealYear || String(new Date().getFullYear()));
+  _dealYear = String(y);
+  if      (q === 1) { _dealFromMonth = (y-1) + '-11'; _dealToMonth = y + '-01'; }
+  else if (q === 2) { _dealFromMonth = y + '-02';      _dealToMonth = y + '-04'; }
+  else if (q === 3) { _dealFromMonth = y + '-05';      _dealToMonth = y + '-07'; }
+  else              { _dealFromMonth = y + '-08';      _dealToMonth = y + '-10'; }
   renderDealTracker();
+}
+function _activeQuarter() {
+  if (!_dealFromMonth || !_dealToMonth) return 0;
+  const y = parseInt(_dealYear || _dealFromMonth.slice(0,4));
+  if (_dealFromMonth === (y-1)+'-11' && _dealToMonth === y+'-01') return 1;
+  if (_dealFromMonth === y+'-02'     && _dealToMonth === y+'-04') return 2;
+  if (_dealFromMonth === y+'-05'     && _dealToMonth === y+'-07') return 3;
+  if (_dealFromMonth === y+'-08'     && _dealToMonth === y+'-10') return 4;
+  return 0;
 }
 function dealSetFromMonth(mo) {
   const y = _dealYear || String(new Date().getFullYear());
