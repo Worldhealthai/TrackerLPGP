@@ -3539,26 +3539,29 @@ function renderDealTracker() {
       '<div style="width:36px;min-width:36px;border-right:1px solid var(--border);flex-shrink:0;display:flex;align-items:center;justify-content:center">' +
         '<button onclick="toggleDealFlag(' + r.id + ',event)" title="' + (flagged?'Remove flag':'Flag row') + '" style="background:none;border:none;cursor:pointer;padding:4px;font-size:15px;line-height:1;color:' + (flagged?'#facc15':'var(--dim)') + ';transition:color .15s">⚑</button>' +
       '</div>';
-    const cols = [
-      '<div style="font:600 11px/1.3 var(--font-mono);color:var(--muted)">' + esc(r.month_label||'') + '</div>',
-      '<div style="font:600 13px/1.3 var(--font-sans);color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + esc(r.company) + '</div>',
-      '<div style="font:700 12px/1 var(--font-mono);color:var(--text)">' + esc(fmtAmt(r.paid_inc_vat)) + '</div>',
-      '<div style="font:600 12px/1 var(--font-mono);color:var(--muted)">' + esc(fmtAmt(r.deal_amount)) + '</div>',
-      '<div style="font:500 11px/1 var(--font-mono);color:var(--muted)">' + esc(fmtAmt(r.tax_vat)) + '</div>',
-      '<div style="font:500 11px/1 var(--font-mono);color:var(--muted)">' + esc(fmtDate(r.date_invoice_issued)) + '</div>',
-      '<div style="font:600 11px/1 var(--font-mono);color:' + (r.date_paid?'var(--positive)':'var(--muted)') + '">' + esc(fmtDate(r.date_paid)) + '</div>',
-      '<div style="font:500 11px/1 var(--font-mono);color:var(--muted)">' + esc(r.bank||'') + '</div>',
-      (r.invoice_number
-        ? '<div onclick="openInvoiceModal(' + r.id + ',event)" style="font:500 10px/1.3 var(--font-mono);color:var(--primary);text-decoration:underline;text-underline-offset:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;cursor:pointer" title="Click to manage invoice documents">' + esc(r.invoice_number) + ' 📎</div>'
-        : '<div onclick="openInvoiceModal(' + r.id + ',event)" style="font:500 10px/1.3 var(--font-mono);color:var(--dim);cursor:pointer" title="Click to upload invoice documents">+ upload</div>'),
-      '<div style="font:500 11px/1.4 var(--font-sans);color:var(--text);overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical">' + esc(r.notes||'') + '</div>',
-      '<div style="font:600 10px/1 var(--font-mono);color:' + (r.invoice_sent&&r.invoice_sent!=='no'?'var(--positive)':'var(--muted)') + '">' + esc(r.invoice_sent==='no'?'—':r.invoice_sent) + '</div>',
-      '<div style="font:600 10px/1 var(--font-mono);color:' + (r.signature_received==='yes'?'var(--positive)':'var(--muted)') + '">' + esc(r.signature_received==='yes'?'yes':'—') + '</div>',
-      '<div style="font:700 11px/1 var(--font-mono);color:var(--text)">' + esc(r.initials||'') + '</div>',
-    ];
-    return '<div onclick="openDealModal(' + r.id + ')" style="display:flex;align-items:stretch;border-bottom:1px solid var(--border);background:' + c.bg + ';border-left:3px solid ' + c.dot + ';cursor:pointer;transition:filter .15s" onmouseenter="this.style.filter=\'brightness(1.08)\'" onmouseleave="this.style.filter=\'\'">'+
+
+    const mkCell = (w, content, onclick, cursor) =>
+      '<div onclick="' + onclick + '" style="width:' + w + ';min-width:' + w + ';padding:10px;border-right:1px solid var(--border);flex-shrink:0;display:flex;align-items:center;cursor:' + (cursor||'text') + '">' + content + '</div>';
+    const ie = field => 'startDealInlineEdit(' + r.id + ',\'' + field + '\',event)';
+
+    return '<div style="display:flex;align-items:stretch;border-bottom:1px solid var(--border);background:' + c.bg + ';border-left:3px solid ' + c.dot + ';transition:filter .15s" onmouseenter="this.style.filter=\'brightness(1.08)\'" onmouseleave="this.style.filter=\'\'">' +
       flagBtn +
-      cols.map((col,i) => '<div style="width:' + colW[i] + ';min-width:' + colW[i] + ';padding:10px 10px;border-right:1px solid var(--border);flex-shrink:0;display:flex;align-items:center">' + col + '</div>').join('') +
+      mkCell(colW[0],  '<span style="font:600 11px/1.3 var(--font-mono);color:var(--muted)">' + esc(r.month_label||'') + '</span>', ie('month_label')) +
+      mkCell(colW[1],  '<span style="font:600 13px/1.3 var(--font-sans);color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:block">' + esc(r.company) + '</span>', 'openDealModal(' + r.id + ')', 'pointer') +
+      mkCell(colW[2],  '<span style="font:700 12px/1 var(--font-mono);color:var(--text)">' + esc(fmtAmt(r.paid_inc_vat)) + '</span>', ie('paid_inc_vat')) +
+      mkCell(colW[3],  '<span style="font:600 12px/1 var(--font-mono);color:var(--muted)">' + esc(fmtAmt(r.deal_amount)) + '</span>', ie('deal_amount')) +
+      mkCell(colW[4],  '<span style="font:500 11px/1 var(--font-mono);color:var(--muted)">' + esc(fmtAmt(r.tax_vat)) + '</span>', ie('tax_vat')) +
+      mkCell(colW[5],  '<span style="font:500 11px/1 var(--font-mono);color:var(--muted)">' + esc(fmtDate(r.date_invoice_issued)) + '</span>', ie('date_invoice_issued')) +
+      mkCell(colW[6],  '<span style="font:600 11px/1 var(--font-mono);color:' + (r.date_paid?'var(--positive)':'var(--muted)') + '">' + esc(fmtDate(r.date_paid)) + '</span>', ie('date_paid')) +
+      mkCell(colW[7],  '<span style="font:500 11px/1 var(--font-mono);color:var(--muted)">' + esc(r.bank||'') + '</span>', ie('bank')) +
+      mkCell(colW[8],  r.invoice_number
+        ? '<span style="font:500 10px/1.3 var(--font-mono);color:var(--primary);text-decoration:underline;text-underline-offset:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:block">' + esc(r.invoice_number) + ' 📎</span>'
+        : '<span style="font:500 10px/1.3 var(--font-mono);color:var(--dim)">+ upload</span>',
+        'openInvoiceModal(' + r.id + ',event)', 'pointer') +
+      mkCell(colW[9],  '<span style="font:500 11px/1.4 var(--font-sans);color:var(--text);overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical">' + esc(r.notes||'') + '</span>', ie('notes')) +
+      mkCell(colW[10], '<span style="font:600 10px/1 var(--font-mono);color:' + (r.invoice_sent&&r.invoice_sent!=='no'?'var(--positive)':'var(--muted)') + '">' + esc(r.invoice_sent==='no'?'—':r.invoice_sent) + '</span>', ie('invoice_sent'), 'pointer') +
+      mkCell(colW[11], '<span style="font:600 10px/1 var(--font-mono);color:' + (r.signature_received==='yes'?'var(--positive)':'var(--muted)') + '">' + esc(r.signature_received==='yes'?'yes':'—') + '</span>', ie('signature_received'), 'pointer') +
+      mkCell(colW[12], '<span style="font:700 11px/1 var(--font-mono);color:var(--text)">' + esc(r.initials||'') + '</span>', ie('initials')) +
     '</div>';
   }).join('');
 
@@ -3854,6 +3857,88 @@ async function toggleDealFlag(id, event) {
     if (idx !== -1) _dealData[idx] = updated;
     renderDealTracker();
   } catch(e) { showToast('Error: ' + e.message, 'error'); }
+}
+
+function startDealInlineEdit(id, field, event) {
+  event.stopPropagation();
+  const deal = _dealData.find(d => d.id === id);
+  if (!deal) return;
+  const cell = event.currentTarget;
+  const origHtml = cell.innerHTML;
+
+  const iBase = 'width:100%;background:transparent;border:none;border-bottom:2px solid var(--primary);outline:none;color:var(--text);padding:2px 0;font:inherit';
+  const numFields  = ['paid_inc_vat','deal_amount','tax_vat'];
+  const dateFields = ['date_invoice_issued','date_paid'];
+
+  let inp;
+  if (numFields.includes(field)) {
+    inp = document.createElement('input');
+    inp.type = 'number'; inp.step = '0.01';
+    inp.value = deal[field] != null ? parseFloat(deal[field]) : '';
+    inp.style.cssText = iBase + ';font:700 12px/1 var(--font-mono)';
+  } else if (dateFields.includes(field)) {
+    inp = document.createElement('input');
+    inp.type = 'date';
+    inp.value = deal[field] ? String(deal[field]).slice(0,10) : '';
+    inp.style.cssText = iBase + ';font:500 11px/1 var(--font-mono)';
+  } else if (field === 'invoice_sent') {
+    inp = document.createElement('select');
+    inp.style.cssText = iBase + ';font:600 10px/1 var(--font-mono)';
+    [['no','No'],['yes','Yes'],['yes-pdf','Yes (PDF)']].forEach(([v,l]) => {
+      const o = document.createElement('option'); o.value = v; o.textContent = l;
+      if (deal[field] === v) o.selected = true;
+      inp.appendChild(o);
+    });
+  } else if (field === 'signature_received') {
+    inp = document.createElement('select');
+    inp.style.cssText = iBase + ';font:600 10px/1 var(--font-mono)';
+    [['no','No'],['yes','Yes']].forEach(([v,l]) => {
+      const o = document.createElement('option'); o.value = v; o.textContent = l;
+      if (deal[field] === v) o.selected = true;
+      inp.appendChild(o);
+    });
+  } else {
+    inp = document.createElement('input');
+    inp.type = 'text';
+    inp.value = deal[field] || '';
+    inp.style.cssText = iBase + ';font:500 12px/1 var(--font-mono)';
+  }
+  inp.style.width = '100%';
+
+  cell.innerHTML = '';
+  cell.appendChild(inp);
+  inp.focus();
+  if (inp.select && inp.type !== 'date') inp.select();
+
+  let done = false;
+  const save = async () => {
+    if (done) return; done = true;
+    let val = inp.value;
+    if (numFields.includes(field))  val = val === '' ? null : parseFloat(val);
+    if (dateFields.includes(field)) val = val === '' ? null : val;
+    const payload = Object.assign({}, deal, { [field]: val });
+    try {
+      const res  = await fetch('/api/deal-tracker/' + id, { method:'PUT', headers:{'Content-Type':'application/json'}, body:JSON.stringify(payload) });
+      const text = await res.text();
+      let updated; try { updated = JSON.parse(text); } catch(e) { throw new Error(text.slice(0,120)); }
+      if (!res.ok) throw new Error(updated.error || 'Save failed');
+      const idx = _dealData.findIndex(d => d.id === id);
+      if (idx !== -1) _dealData[idx] = updated;
+      renderDealTracker();
+    } catch(e) { showToast('Error: ' + e.message, 'error'); cell.innerHTML = origHtml; }
+  };
+  const cancel = () => { done = true; cell.innerHTML = origHtml; };
+
+  if (inp.tagName === 'SELECT') {
+    inp.addEventListener('change', () => { inp.blur(); });
+    inp.addEventListener('blur', save);
+  } else {
+    inp.addEventListener('blur', save);
+    inp.addEventListener('keydown', e => {
+      if (e.key === 'Enter')  { e.preventDefault(); inp.blur(); }
+      if (e.key === 'Escape') { cancel(); }
+    });
+  }
 }
 
 // ─── INVOICE DOCUMENTS ────────────────────────────────────────────────────────
