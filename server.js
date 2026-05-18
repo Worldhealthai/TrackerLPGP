@@ -476,7 +476,8 @@ app.post('/api/employee/day-off', requireAuth, async (req, res) => {
   // Check for duplicate
   const { rows: existing } = await q('SELECT id FROM day_off_requests WHERE employee_id = ? AND request_date = ? AND status != ?', [req.user.employee_id, date, 'declined']);
   if (existing.length) return res.status(409).json({ error: 'A request already exists for this date' });
-  await q('INSERT INTO day_off_requests (employee_id, request_date, is_day_off) VALUES (?, ?, ?)', [req.user.employee_id, date, val]);
+  const reason = (req.body.reason || '').trim();
+  await q('INSERT INTO day_off_requests (employee_id, request_date, is_day_off, reason) VALUES (?, ?, ?, ?)', [req.user.employee_id, date, val, reason]);
   res.json({ success: true, status: 'pending' });
 });
 
