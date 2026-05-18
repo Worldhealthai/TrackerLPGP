@@ -3590,13 +3590,35 @@ function renderDealTracker() {
             // Rows
             (rowsHtml || '<div style="padding:40px;text-align:center;color:var(--muted);font:500 13px/1 var(--font-mono)">No deals yet. Click "+ Add Deal" to get started.</div>') +
             // Totals
-            (rowsHtml ? '<div style="display:flex;align-items:stretch;border-top:2px solid var(--border);background:rgba(250,204,21,0.08)">' +
-              '<div style="width:80px;min-width:80px;padding:10px;border-right:1px solid var(--border);flex-shrink:0"><div style="font:800 11px/1 var(--font-mono);color:var(--warning)">TOTAL</div></div>' +
-              '<div style="width:200px;min-width:200px;padding:10px;border-right:1px solid var(--border);flex-shrink:0"></div>' +
-              '<div style="width:110px;min-width:110px;padding:10px;border-right:1px solid var(--border);flex-shrink:0"><div style="font:800 12px/1 var(--font-mono);color:var(--text)">' + fmtTotal(totalPaid) + '</div></div>' +
-              '<div style="width:110px;min-width:110px;padding:10px;border-right:1px solid var(--border);flex-shrink:0"><div style="font:800 12px/1 var(--font-mono);color:var(--text)">' + fmtTotal(totalDeal) + '</div></div>' +
-              '<div style="width:90px;min-width:90px;padding:10px;border-right:1px solid var(--border);flex-shrink:0"><div style="font:800 12px/1 var(--font-mono);color:var(--text)">' + fmtTotal(totalVat) + '</div></div>' +
-              '<div style="flex:1;padding:10px;display:flex;align-items:center;gap:12px"><div style="font:600 11px/1 var(--font-mono);color:var(--muted)">Remaining:</div><div style="font:800 14px/1 var(--font-mono);color:' + (remaining>0?'var(--negative)':'var(--positive)') + '">' + fmtTotal(remaining) + '</div></div>' +
+            (rowsHtml ? '<div style="display:flex;align-items:stretch;border-top:2px solid var(--border);background:rgba(250,204,21,0.06)">' +
+              // flag spacer
+              '<div style="width:36px;min-width:36px;border-right:1px solid var(--border);flex-shrink:0"></div>' +
+              // TOTAL label in Month col
+              '<div style="width:80px;min-width:80px;padding:10px 10px;border-right:1px solid var(--border);flex-shrink:0;display:flex;align-items:center"><span style="font:800 11px/1 var(--font-mono);color:var(--warning);letter-spacing:.5px">TOTAL</span></div>' +
+              // Company col empty
+              '<div style="width:200px;min-width:200px;border-right:1px solid var(--border);flex-shrink:0"></div>' +
+              // Paid inc VAT
+              '<div style="width:110px;min-width:110px;padding:8px 10px;border-right:1px solid var(--border);flex-shrink:0">' +
+                '<div style="font:600 8px/1 var(--font-mono);color:var(--muted);letter-spacing:.6px;text-transform:uppercase;margin-bottom:5px">Paid Amount</div>' +
+                '<div style="font:800 12px/1 var(--font-mono);color:var(--text)">' + fmtTotal(totalPaid) + '</div>' +
+              '</div>' +
+              // Deal Amount
+              '<div style="width:110px;min-width:110px;padding:8px 10px;border-right:1px solid var(--border);flex-shrink:0">' +
+                '<div style="font:600 8px/1 var(--font-mono);color:var(--muted);letter-spacing:.6px;text-transform:uppercase;margin-bottom:5px">Deal Amount</div>' +
+                '<div style="font:800 12px/1 var(--font-mono);color:var(--text)">' + fmtTotal(totalDeal) + '</div>' +
+              '</div>' +
+              // VAT
+              '<div style="width:90px;min-width:90px;padding:8px 10px;border-right:1px solid var(--border);flex-shrink:0">' +
+                '<div style="font:600 8px/1 var(--font-mono);color:var(--muted);letter-spacing:.6px;text-transform:uppercase;margin-bottom:5px">VAT Amount</div>' +
+                '<div style="font:800 12px/1 var(--font-mono);color:var(--text)">' + fmtTotal(totalVat) + '</div>' +
+              '</div>' +
+              // Remaining spans the rest
+              '<div style="flex:1;padding:8px 16px;display:flex;align-items:center">' +
+                '<div>' +
+                  '<div style="font:600 8px/1 var(--font-mono);color:var(--muted);letter-spacing:.6px;text-transform:uppercase;margin-bottom:5px">Remaining</div>' +
+                  '<div style="font:800 15px/1 var(--font-mono);color:' + (remaining>0?'var(--negative)':'var(--positive)') + '">' + fmtTotal(remaining) + '</div>' +
+                '</div>' +
+              '</div>' +
             '</div>' : '') +
           '</div>' +
         '</div>' +
