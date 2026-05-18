@@ -2857,6 +2857,7 @@ function openCalReminderModal(dateStr = null) {
   document.getElementById('crAmount').value   = '';
   document.getElementById('crCurrency').value = 'GBP';
   document.getElementById('crNotes').value    = '';
+  document.getElementById('crVisibleToStaff').checked = false;
   openModal('calReminderModal');
 }
 
@@ -2873,7 +2874,7 @@ async function saveCalReminder() {
   const res = await fetch('/api/calendar-reminders', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ title, category, reminder_date: reminderDate, recurrence, amount: amount || null, currency, notes })
+    body: JSON.stringify({ title, category, reminder_date: reminderDate, recurrence, amount: amount || null, currency, notes, visible_to_staff: document.getElementById('crVisibleToStaff').checked })
   });
   if (!res.ok) { const e = await res.json(); return showToast(e.error || 'Save failed', 'error'); }
   closeModal('calReminderModal');
@@ -3642,10 +3643,11 @@ function renderPortfolioPage() {
   const page = document.getElementById('page-portfolio');
   if (!page) return;
 
-  const years = [...new Set(_portfolioEvents.map(e => e.event_date ? new Date(e.event_date).getFullYear() : null).filter(Boolean))].sort((a,b) => b-a);
+  const eventYears = new Set(_portfolioEvents.map(e => e.event_date ? new Date(e.event_date).getFullYear() : null).filter(Boolean));
   const curYear = new Date().getFullYear();
-  if (!years.includes(curYear)) years.unshift(curYear);
-  if (!years.includes(_portfolioYear)) _portfolioYear = years[0] || curYear;
+  [2025, 2026, 2027, 2028].forEach(y => eventYears.add(y));
+  const years = [...eventYears].sort((a,b) => b-a);
+  if (!years.includes(_portfolioYear)) _portfolioYear = curYear;
 
   const filtered = _portfolioEvents.filter(e => {
     if (!e.event_date) return false;
@@ -3800,11 +3802,13 @@ async function loadEmployeeCalendar() {
     const [requestsRes, teamRes, upcomingRes] = await Promise.all([
       fetch('/api/employee/day-off-requests'),
       fetch('/api/calendar?year=' + empCalYear + '&month=' + empCalMonth),
-      fetch('/api/calendar-reminders/upcoming?days=60')
+      fetch('/api/employee/upcoming?days=60')
     ]);
     const allRequests = requestsRes.ok ? await requestsRes.json() : [];
     const teamRecords = teamRes.ok    ? await teamRes.json()     : [];
-    const upcoming    = upcomingRes.ok? await upcomingRes.json() : [];
+    const upcomingData = upcomingRes.ok ? await upcomingRes.json() : { dayOffs: [], reminders: [] };
+    const upcomingDayOffs = upcomingData.dayOffs || [];
+    const upcomingReminders = upcomingData.reminders || [];
 
     // Own requests this month: date → request
     const monthPrefix = empCalYear + '-' + String(empCalMonth).padStart(2,'0');
@@ -3891,11 +3895,24 @@ async function loadEmployeeCalendar() {
         '<span><span style="display:inline-block;width:9px;height:9px;background:#7c3aed33;border-radius:2px;margin-right:3px;vertical-align:middle"></span>Team off</span>' +
       '</div>';
 
-    // Upcoming reminders
+    // Upcoming panel: team day-offs + staff-visible reminders
     const MONS = ['JAN','FEB','MAR','APR','MAY','JUN','JUL','AUG','SEP','OCT','NOV','DEC'];
-    const remHtml = upcoming.filter(r => (r.virtual_date||'').slice(0,10) >= todayStr).slice(0,5).map(r => {
+
+    const dayOffItems = upcomingDayOffs.slice(0, 8).map(r => {
+      const rd = new Date(r.date);
+      const label = parseFloat(r.is_day_off) === 0.5 ? 'Half day' : 'Day off';
+      return '<div style="display:flex;gap:12px;padding:10px 0;border-bottom:1px solid var(--border);align-items:center">' +
+        '<div style="width:36px;min-width:36px;text-align:center;background:#7c3aed22;border:1px solid #7c3aed44;border-radius:7px;padding:5px 0">' +
+          '<div style="font:800 13px/1 var(--font-mono);color:#a78bfa">' + rd.getUTCDate() + '</div>' +
+          '<div style="font:600 9px/1 var(--font-mono);color:#a78bfa;margin-top:3px">' + MONS[rd.getUTCMonth()] + '</div>' +
+        '</div>' +
+        '<div style="flex:1"><div style="font:600 12px/1 var(--font-sans);color:var(--text)">' + esc(r.employee_name) + '</div>' +
+          '<div style="font:600 10px/1 var(--font-mono);color:var(--muted);margin-top:3px">' + label.toUpperCase() + '</div></div>' +
+      '</div>';
+    }).join('');
+
+    const remItems = upcomingReminders.slice(0, 5).map(r => {
       const rd = new Date(r.virtual_date);
-      const sym = r.currency === 'GBP' ? '£' : r.currency === 'USD' ? '$' : (r.currency+' ');
       return '<div style="display:flex;gap:12px;padding:10px 0;border-bottom:1px solid var(--border);align-items:center">' +
         '<div style="width:36px;min-width:36px;text-align:center;background:#1a1f2e;border:1px solid var(--border);border-radius:7px;padding:5px 0">' +
           '<div style="font:800 13px/1 var(--font-mono);color:var(--text)">' + rd.getUTCDate() + '</div>' +
@@ -3903,9 +3920,10 @@ async function loadEmployeeCalendar() {
         '</div>' +
         '<div style="flex:1"><div style="font:600 12px/1 var(--font-sans);color:var(--text)">' + esc(r.title) + '</div>' +
           '<div style="font:600 10px/1 var(--font-mono);color:var(--muted);margin-top:3px">' + (r.category||'').toUpperCase() + '</div></div>' +
-        (r.amount ? '<div style="font:700 12px/1 var(--font-mono);color:var(--text)">' + sym + parseFloat(r.amount).toLocaleString('en-GB',{maximumFractionDigits:0}) + '</div>' : '') +
       '</div>';
     }).join('');
+
+    const remHtml = dayOffItems + remItems;
 
     container.innerHTML =
       '<div style="display:flex;gap:12px;align-items:center;margin-bottom:16px">' +
@@ -3920,8 +3938,8 @@ async function loadEmployeeCalendar() {
           '<div style="padding:16px">' + gridHtml + '</div>' +
           '<div style="padding:0 16px 12px;font:500 11px/1 var(--font-mono);color:var(--muted)">Click a future date to request · Click PENDING to cancel</div>' +
         '</div>' +
-        '<div class="card"><div class="card-header"><span class="card-title">Upcoming</span><span style="font:700 11px/1 var(--font-mono);color:var(--muted)">NEXT 60D</span></div>' +
-          '<div style="padding:4px 16px 12px">' + (remHtml || '<div style="color:var(--muted);font-size:0.82rem;padding:12px 0">No upcoming reminders</div>') + '</div>' +
+        '<div class="card"><div class="card-header"><span class="card-title">What\'s Coming Up</span><span style="font:700 11px/1 var(--font-mono);color:var(--muted)">NEXT 60D</span></div>' +
+          '<div style="padding:4px 16px 12px">' + (remHtml || '<div style="color:var(--muted);font-size:0.82rem;padding:12px 0">No upcoming team events or days off</div>') + '</div>' +
         '</div>' +
       '</div>';
 
