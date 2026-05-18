@@ -115,7 +115,7 @@ function navigate(page) {
   document.getElementById('page-' + page).classList.add('active');
   document.querySelector(`.nav-item[data-page="${page}"]`)?.classList.add('active');
   document.querySelector(`.bottom-nav-item[data-page="${page}"]`)?.classList.add('active');
-  const titles = { dashboard:'Dashboard', tracking:'Daily Tracking', salary:'Salary Tracker', employees:'Employees', reports:'Reports', calendar:'Calendar', admins:'Admin Users', hotels:'Hotel Expenses', portfolio:'Staff Portfolio' };
+  const titles = { dashboard:'Dashboard', tracking:'Daily Tracking', salary:'Salary Tracker', employees:'Employees', reports:'Reports', calendar:'Calendar', admins:'Admin Users', hotels:'Hotel Expenses', portfolio:'Staff Portfolio', deals:'Deal Tracker' };
   document.getElementById('pageTitle').textContent = titles[page] || page;
   if (page === 'employees') loadEmpTable();
   if (page === 'admins') loadAdmins();
@@ -123,6 +123,7 @@ function navigate(page) {
   if (page === 'salary') { loadSalaryPage(); renderSalaryReminderPanel(); }
   if (page === 'hotels') loadHotelExpenses();
   if (page === 'portfolio') loadAdminPortfolio();
+  if (page === 'deals') loadDealTracker();
 }
 
 // ─── EMPLOYEES ───────────────────────────────────────────────────────────────
@@ -3470,6 +3471,267 @@ async function loadEmployeeDashboard(user) {
   } catch(e) {
     el.innerHTML = '<div class="alert alert-error">Failed to load profile: ' + e.message + '</div>';
   }
+}
+
+// ─── DEAL TRACKER ─────────────────────────────────────────────────────────────
+let _dealData = [];
+
+async function loadDealTracker() {
+  const page = document.getElementById('page-deals');
+  if (!page) return;
+  page.innerHTML = '<div class="skeleton" style="height:500px;border-radius:16px;margin:24px"></div>';
+  try {
+    const res = await fetch('/api/deal-tracker');
+    _dealData = res.ok ? await res.json() : [];
+    renderDealTracker();
+  } catch(e) {
+    page.innerHTML = '<div style="padding:24px"><div class="alert alert-error">Failed to load deals: ' + e.message + '</div></div>';
+  }
+}
+
+function renderDealTracker() {
+  const page = document.getElementById('page-deals');
+  if (!page) return;
+
+  const ROW_COLORS = {
+    green:  { bg: 'rgba(34,197,94,0.12)',  border: 'rgba(34,197,94,0.35)',  dot: '#22c55e' },
+    orange: { bg: 'rgba(251,146,60,0.14)', border: 'rgba(251,146,60,0.4)',  dot: '#fb923c' },
+    red:    { bg: 'rgba(239,68,68,0.14)',  border: 'rgba(239,68,68,0.4)',   dot: '#ef4444' },
+    none:   { bg: 'transparent',           border: 'transparent',           dot: 'var(--border)' },
+  };
+
+  const fmtAmt = v => (v == null || v === '') ? '' : '£' + parseFloat(v).toLocaleString('en-GB', {minimumFractionDigits:2, maximumFractionDigits:2});
+  const fmtDate = d => { if (!d) return ''; const dt = new Date(d+'T12:00:00'); return dt.toLocaleDateString('en-GB',{day:'2-digit',month:'2-digit',year:'2-digit'}); };
+
+  // Totals
+  const totalPaid  = _dealData.reduce((s,r) => s + (parseFloat(r.paid_inc_vat)||0), 0);
+  const totalDeal  = _dealData.reduce((s,r) => s + (parseFloat(r.deal_amount)||0), 0);
+  const totalVat   = _dealData.reduce((s,r) => s + (parseFloat(r.tax_vat)||0), 0);
+  const remaining  = totalDeal - totalPaid;
+
+  const colW = ['80px','200px','110px','110px','90px','90px','90px','90px','160px','200px','90px','80px','55px'];
+  const colH = ['Month','Company','Paid inc VAT','Deal','Tax/VAT','Invoice Date','Date Paid','Bank','Invoice Number','Notes','Sent','Signed','Init'];
+  const headerCols = colH.map((h,i) => '<div style="width:' + colW[i] + ';min-width:' + colW[i] + ';padding:8px 10px;font:700 10px/1 var(--font-mono);color:var(--muted);letter-spacing:.5px;text-transform:uppercase;border-right:1px solid var(--border);flex-shrink:0">' + h + '</div>').join('');
+
+  const rowsHtml = _dealData.map(r => {
+    const c = ROW_COLORS[r.row_color] || ROW_COLORS.none;
+    const cols = [
+      '<div style="font:600 11px/1.3 var(--font-mono);color:var(--muted)">' + esc(r.month_label||'') + '</div>',
+      '<div style="font:600 13px/1.3 var(--font-sans);color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + esc(r.company) + '</div>',
+      '<div style="font:700 12px/1 var(--font-mono);color:var(--text)">' + esc(fmtAmt(r.paid_inc_vat)) + '</div>',
+      '<div style="font:600 12px/1 var(--font-mono);color:var(--muted)">' + esc(fmtAmt(r.deal_amount)) + '</div>',
+      '<div style="font:500 11px/1 var(--font-mono);color:var(--muted)">' + esc(fmtAmt(r.tax_vat)) + '</div>',
+      '<div style="font:500 11px/1 var(--font-mono);color:var(--muted)">' + esc(fmtDate(r.date_invoice_issued)) + '</div>',
+      '<div style="font:600 11px/1 var(--font-mono);color:' + (r.date_paid?'var(--positive)':'var(--muted)') + '">' + esc(fmtDate(r.date_paid)) + '</div>',
+      '<div style="font:500 11px/1 var(--font-mono);color:var(--muted)">' + esc(r.bank||'') + '</div>',
+      '<div style="font:500 10px/1.3 var(--font-mono);color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + esc(r.invoice_number||'') + '</div>',
+      '<div style="font:500 11px/1.4 var(--font-sans);color:var(--text);overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical">' + esc(r.notes||'') + '</div>',
+      '<div style="font:600 10px/1 var(--font-mono);color:' + (r.invoice_sent&&r.invoice_sent!=='no'?'var(--positive)':'var(--muted)') + '">' + esc(r.invoice_sent==='no'?'—':r.invoice_sent) + '</div>',
+      '<div style="font:600 10px/1 var(--font-mono);color:' + (r.signature_received==='yes'?'var(--positive)':'var(--muted)') + '">' + esc(r.signature_received==='yes'?'yes':'—') + '</div>',
+      '<div style="font:700 11px/1 var(--font-mono);color:var(--text)">' + esc(r.initials||'') + '</div>',
+    ];
+    return '<div onclick="openDealModal(' + r.id + ')" style="display:flex;align-items:stretch;border-bottom:1px solid var(--border);background:' + c.bg + ';border-left:3px solid ' + c.dot + ';cursor:pointer;transition:filter .15s" onmouseenter="this.style.filter=\'brightness(1.08)\'" onmouseleave="this.style.filter=\'\'">'+
+      cols.map((col,i) => '<div style="width:' + colW[i] + ';min-width:' + colW[i] + ';padding:10px 10px;border-right:1px solid var(--border);flex-shrink:0;display:flex;align-items:center">' + col + '</div>').join('') +
+    '</div>';
+  }).join('');
+
+  const fmtTotal = v => '£' + v.toLocaleString('en-GB',{minimumFractionDigits:2,maximumFractionDigits:2});
+
+  page.innerHTML =
+    '<div style="padding:20px 24px 0;display:flex;align-items:center;gap:12px;flex-wrap:wrap">' +
+      '<h2 style="font:700 20px/1 var(--font-sans);color:var(--text);flex:1">Deal Tracker</h2>' +
+      '<button class="btn btn-primary btn-sm" onclick="openDealModal(null)">+ Add Deal</button>' +
+    '</div>' +
+
+    // Summary cards
+    '<div style="padding:16px 24px;display:flex;gap:12px;flex-wrap:wrap">' +
+      '<div style="flex:1;min-width:140px;background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:14px 16px">' +
+        '<div style="font:600 9px/1 var(--font-mono);color:var(--muted);letter-spacing:.5px;text-transform:uppercase;margin-bottom:6px">Total Paid</div>' +
+        '<div style="font:700 18px/1 var(--font-sans);color:var(--positive)">' + fmtTotal(totalPaid) + '</div>' +
+      '</div>' +
+      '<div style="flex:1;min-width:140px;background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:14px 16px">' +
+        '<div style="font:600 9px/1 var(--font-mono);color:var(--muted);letter-spacing:.5px;text-transform:uppercase;margin-bottom:6px">Total Deal Value</div>' +
+        '<div style="font:700 18px/1 var(--font-sans);color:var(--text)">' + fmtTotal(totalDeal) + '</div>' +
+      '</div>' +
+      '<div style="flex:1;min-width:140px;background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:14px 16px">' +
+        '<div style="font:600 9px/1 var(--font-mono);color:var(--muted);letter-spacing:.5px;text-transform:uppercase;margin-bottom:6px">Tax / VAT</div>' +
+        '<div style="font:700 18px/1 var(--font-sans);color:var(--text)">' + fmtTotal(totalVat) + '</div>' +
+      '</div>' +
+      '<div style="flex:1;min-width:140px;background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:14px 16px">' +
+        '<div style="font:600 9px/1 var(--font-mono);color:var(--muted);letter-spacing:.5px;text-transform:uppercase;margin-bottom:6px">Remaining</div>' +
+        '<div style="font:700 18px/1 var(--font-sans);color:' + (remaining > 0 ? 'var(--negative)' : 'var(--positive)') + '">' + fmtTotal(remaining) + '</div>' +
+      '</div>' +
+    '</div>' +
+
+    // Table
+    '<div style="padding:0 24px 32px">' +
+      '<div style="border:1px solid var(--border);border-radius:12px;overflow:hidden">' +
+        '<div style="overflow-x:auto">' +
+          '<div style="min-width:1400px">' +
+            // Header
+            '<div style="display:flex;background:var(--surface-2,var(--surface));border-bottom:2px solid var(--border)">' + headerCols + '</div>' +
+            // Rows
+            (rowsHtml || '<div style="padding:40px;text-align:center;color:var(--muted);font:500 13px/1 var(--font-mono)">No deals yet. Click "+ Add Deal" to get started.</div>') +
+            // Totals
+            (rowsHtml ? '<div style="display:flex;align-items:stretch;border-top:2px solid var(--border);background:rgba(250,204,21,0.08)">' +
+              '<div style="width:80px;min-width:80px;padding:10px;border-right:1px solid var(--border);flex-shrink:0"><div style="font:800 11px/1 var(--font-mono);color:var(--warning)">TOTAL</div></div>' +
+              '<div style="width:200px;min-width:200px;padding:10px;border-right:1px solid var(--border);flex-shrink:0"></div>' +
+              '<div style="width:110px;min-width:110px;padding:10px;border-right:1px solid var(--border);flex-shrink:0"><div style="font:800 12px/1 var(--font-mono);color:var(--text)">' + fmtTotal(totalPaid) + '</div></div>' +
+              '<div style="width:110px;min-width:110px;padding:10px;border-right:1px solid var(--border);flex-shrink:0"><div style="font:800 12px/1 var(--font-mono);color:var(--text)">' + fmtTotal(totalDeal) + '</div></div>' +
+              '<div style="width:90px;min-width:90px;padding:10px;border-right:1px solid var(--border);flex-shrink:0"><div style="font:800 12px/1 var(--font-mono);color:var(--text)">' + fmtTotal(totalVat) + '</div></div>' +
+              '<div style="flex:1;padding:10px;display:flex;align-items:center;gap:12px"><div style="font:600 11px/1 var(--font-mono);color:var(--muted)">Remaining:</div><div style="font:800 14px/1 var(--font-mono);color:' + (remaining>0?'var(--negative)':'var(--positive)') + '">' + fmtTotal(remaining) + '</div></div>' +
+            '</div>' : '') +
+          '</div>' +
+        '</div>' +
+      '</div>' +
+    '</div>';
+}
+
+function openDealModal(id) {
+  const deal = id ? _dealData.find(d => d.id === id) : null;
+  const v = k => deal ? (deal[k] != null ? deal[k] : '') : '';
+  const fmtDateInput = d => { if (!d) return ''; return String(d).slice(0,10); };
+
+  const colorOpts = [
+    { val:'green',  label:'Green (paid/complete)' },
+    { val:'orange', label:'Orange (attention)' },
+    { val:'red',    label:'Red (overdue/problem)' },
+    { val:'none',   label:'No colour' },
+  ];
+  const colorSel = colorOpts.map(o => '<option value="' + o.val + '"' + (v('row_color')===o.val||(!v('row_color')&&o.val==='green')?' selected':'') + '>' + o.label + '</option>').join('');
+  const sentOpts = ['no','yes','yes-pdf'].map(o => '<option value="' + o + '"' + (v('invoice_sent')===o?' selected':'') + '>' + (o==='no'?'No':o==='yes'?'Yes':'Yes (PDF)') + '</option>').join('');
+  const sigOpts  = ['no','yes'].map(o => '<option value="' + o + '"' + (v('signature_received')===o?' selected':'') + '>' + (o==='no'?'No':'Yes') + '</option>').join('');
+
+  const html =
+    '<div class="modal-overlay active" id="dealModal" onclick="if(event.target===this)closeDealModal()">' +
+    '<div class="modal" style="max-width:680px;width:95vw">' +
+    '<div class="modal-header">' +
+      '<h2>' + (deal ? 'Edit Deal' : 'Add Deal') + '</h2>' +
+      '<button class="modal-close" onclick="closeDealModal()">✕</button>' +
+    '</div>' +
+    '<div style="padding:20px;display:grid;grid-template-columns:1fr 1fr;gap:14px">' +
+      '<div class="form-group" style="grid-column:1/-1">' +
+        '<label class="form-label">Company *</label>' +
+        '<input id="dlCompany" class="form-control" value="' + esc(v('company')) + '" placeholder="Company name">' +
+      '</div>' +
+      '<div class="form-group">' +
+        '<label class="form-label">Month Label</label>' +
+        '<input id="dlMonth" class="form-control" value="' + esc(v('month_label')) + '" placeholder="e.g. 26-Jan">' +
+      '</div>' +
+      '<div class="form-group">' +
+        '<label class="form-label">Row Colour</label>' +
+        '<select id="dlColor" class="form-control">' + colorSel + '</select>' +
+      '</div>' +
+      '<div class="form-group">' +
+        '<label class="form-label">Deal Amount (£)</label>' +
+        '<input id="dlDeal" class="form-control" type="number" step="0.01" value="' + esc(v('deal_amount')) + '" placeholder="0.00">' +
+      '</div>' +
+      '<div class="form-group">' +
+        '<label class="form-label">Paid inc VAT (£)</label>' +
+        '<input id="dlPaid" class="form-control" type="number" step="0.01" value="' + esc(v('paid_inc_vat')) + '" placeholder="0.00">' +
+      '</div>' +
+      '<div class="form-group">' +
+        '<label class="form-label">Tax / VAT (£)</label>' +
+        '<input id="dlVat" class="form-control" type="number" step="0.01" value="' + esc(v('tax_vat')) + '" placeholder="0.00">' +
+      '</div>' +
+      '<div class="form-group">' +
+        '<label class="form-label">Invoice Date</label>' +
+        '<input id="dlInvDate" class="form-control" type="date" value="' + esc(fmtDateInput(v('date_invoice_issued'))) + '">' +
+      '</div>' +
+      '<div class="form-group">' +
+        '<label class="form-label">Date Paid</label>' +
+        '<input id="dlPaidDate" class="form-control" type="date" value="' + esc(fmtDateInput(v('date_paid'))) + '">' +
+      '</div>' +
+      '<div class="form-group">' +
+        '<label class="form-label">Bank / Payment via</label>' +
+        '<input id="dlBank" class="form-control" value="' + esc(v('bank')) + '" placeholder="HSBC / Stripe / etc.">' +
+      '</div>' +
+      '<div class="form-group">' +
+        '<label class="form-label">Invoice Number</label>' +
+        '<input id="dlInvNum" class="form-control" value="' + esc(v('invoice_number')) + '" placeholder="LPGPCONNECTCOMLTD…">' +
+      '</div>' +
+      '<div class="form-group">' +
+        '<label class="form-label">Invoice &amp; Agreement Sent</label>' +
+        '<select id="dlSent" class="form-control">' + sentOpts + '</select>' +
+      '</div>' +
+      '<div class="form-group">' +
+        '<label class="form-label">Signature Received</label>' +
+        '<select id="dlSig" class="form-control">' + sigOpts + '</select>' +
+      '</div>' +
+      '<div class="form-group">' +
+        '<label class="form-label">Initials</label>' +
+        '<input id="dlInitials" class="form-control" value="' + esc(v('initials')) + '" placeholder="MR / CS">' +
+      '</div>' +
+      '<div class="form-group" style="grid-column:1/-1">' +
+        '<label class="form-label">Notes</label>' +
+        '<textarea id="dlNotes" class="form-control" rows="3" placeholder="Any notes…">' + esc(v('notes')) + '</textarea>' +
+      '</div>' +
+    '</div>' +
+    '<div style="padding:0 20px 20px;display:flex;gap:10px;justify-content:flex-end">' +
+      (deal ? '<button class="btn btn-ghost btn-sm" style="color:var(--negative)" onclick="deleteDeal(' + id + ')">Delete</button><span style="flex:1"></span>' : '') +
+      '<button class="btn btn-ghost btn-sm" onclick="closeDealModal()">Cancel</button>' +
+      '<button class="btn btn-primary btn-sm" onclick="saveDeal(' + (id||'null') + ')">Save</button>' +
+    '</div>' +
+    '</div></div>';
+
+  let existing = document.getElementById('dealModal');
+  if (existing) existing.remove();
+  document.body.insertAdjacentHTML('beforeend', html);
+  document.getElementById('dlCompany').focus();
+}
+
+function closeDealModal() {
+  const m = document.getElementById('dealModal');
+  if (m) m.remove();
+}
+
+async function saveDeal(id) {
+  const company = document.getElementById('dlCompany').value.trim();
+  if (!company) { showToast('Company name is required', 'error'); return; }
+  const payload = {
+    company,
+    month_label:        document.getElementById('dlMonth').value.trim(),
+    row_color:          document.getElementById('dlColor').value,
+    deal_amount:        document.getElementById('dlDeal').value || null,
+    paid_inc_vat:       document.getElementById('dlPaid').value || null,
+    tax_vat:            document.getElementById('dlVat').value || null,
+    date_invoice_issued:document.getElementById('dlInvDate').value || null,
+    date_paid:          document.getElementById('dlPaidDate').value || null,
+    bank:               document.getElementById('dlBank').value.trim(),
+    invoice_number:     document.getElementById('dlInvNum').value.trim(),
+    invoice_sent:       document.getElementById('dlSent').value,
+    signature_received: document.getElementById('dlSig').value,
+    initials:           document.getElementById('dlInitials').value.trim(),
+    notes:              document.getElementById('dlNotes').value.trim(),
+  };
+  try {
+    const url  = id ? '/api/deal-tracker/' + id : '/api/deal-tracker';
+    const meth = id ? 'PUT' : 'POST';
+    const res  = await fetch(url, { method: meth, headers: { 'Content-Type':'application/json' }, body: JSON.stringify(payload) });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Save failed');
+    if (id) {
+      const idx = _dealData.findIndex(d => d.id === id);
+      if (idx !== -1) _dealData[idx] = data; else _dealData.push(data);
+    } else {
+      _dealData.push(data);
+    }
+    closeDealModal();
+    renderDealTracker();
+    showToast(id ? 'Deal updated' : 'Deal added', 'success');
+  } catch(e) { showToast('Error: ' + e.message, 'error'); }
+}
+
+async function deleteDeal(id) {
+  if (!confirm('Delete this deal?')) return;
+  try {
+    const res = await fetch('/api/deal-tracker/' + id, { method: 'DELETE' });
+    if (!res.ok) throw new Error('Delete failed');
+    _dealData = _dealData.filter(d => d.id !== id);
+    closeDealModal();
+    renderDealTracker();
+    showToast('Deal deleted', 'success');
+  } catch(e) { showToast('Error: ' + e.message, 'error'); }
 }
 
 // ─── EMPLOYEE REMINDERS ───────────────────────────────────────────────────────
