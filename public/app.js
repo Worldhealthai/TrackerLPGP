@@ -3019,11 +3019,12 @@ function renderHotelTable() {
     const flStr   = r.flights    != null ? `${fmtHotelNum(r.flights)}` : '—';
     const prStr   = r.printing   != null ? `${fmtHotelNum(r.printing)}` : '—';
     const hasNotes = !!(r.notes && r.notes.trim());
-    const chevron = hasNotes ? '<span id="hotel-chev-'+r.id+'" style="font-size:10px;color:var(--muted);margin-left:4px;transition:transform .2s;display:inline-block">›</span>' : '';
-    const detailRow = hasNotes
-      ? `<tr id="hotel-detail-${r.id}" style="display:none"><td colspan="10" style="padding:0 20px 14px 20px;background:#0d1220;border-bottom:1px solid var(--border)"><div style="font:600 9px/1 var(--font-mono);text-transform:uppercase;letter-spacing:1px;color:var(--muted);margin-bottom:6px">Notes</div><div style="font:500 12px/1.5 var(--font-mono);color:var(--text)">${esc(r.notes)}</div></td></tr>`
-      : '';
-    return `<tr class="${rowClass}" style="${hasNotes ? 'cursor:pointer' : ''}" onclick="${hasNotes ? 'toggleHotelDetail('+r.id+')' : ''}">
+    const chevron = '<span id="hotel-chev-'+r.id+'" style="font-size:10px;color:var(--muted);margin-left:4px;transition:transform .2s;display:inline-block">›</span>';
+    const notesContent = hasNotes
+      ? `<div style="font:600 9px/1 var(--font-mono);text-transform:uppercase;letter-spacing:1px;color:var(--muted);margin-bottom:6px">Notes</div><div style="font:500 12px/1.5 var(--font-mono);color:var(--text)">${esc(r.notes)}</div>`
+      : `<div style="font:500 12px/1.5 var(--font-mono);color:var(--dim);font-style:italic">No notes added</div>`;
+    const detailRow = `<tr id="hotel-detail-${r.id}" style="display:none"><td colspan="10" style="padding:0 20px 14px 20px;background:#0d1220;border-bottom:1px solid var(--border)">${notesContent}</td></tr>`;
+    return `<tr class="${rowClass}" style="cursor:pointer" onclick="toggleHotelDetail(${r.id})">
       <td><strong>${esc(r.event_name)}</strong>${chevron}</td>
       <td style="font-size:0.82rem">${esc(r.hotel||'—')}</td>
       <td style="font-size:0.82rem;color:var(--text-2)">${esc(r.cost||'—')}</td>
