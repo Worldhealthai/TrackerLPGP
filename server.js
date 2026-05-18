@@ -43,6 +43,16 @@ async function runLateMigrations() {
     )`,
     `ALTER TABLE deal_tracker ADD COLUMN IF NOT EXISTS status TEXT DEFAULT 'active'`,
     `ALTER TABLE deal_tracker ADD COLUMN IF NOT EXISTS is_flagged BOOLEAN DEFAULT FALSE`,
+    `CREATE TABLE IF NOT EXISTS deal_invoices (
+      id SERIAL PRIMARY KEY,
+      deal_id INT NOT NULL,
+      file_type TEXT NOT NULL,
+      file_name TEXT NOT NULL,
+      file_data TEXT NOT NULL,
+      file_size INT DEFAULT 0,
+      created_by INT,
+      created_at TIMESTAMPTZ DEFAULT NOW()
+    )`,
   ];
   for (const step of steps) {
     try { await sql(step); } catch(e) { console.warn('Migration step skipped:', e.message); }
@@ -1645,6 +1655,49 @@ app.post('/api/deal-tracker/bulk', requireAuth, async (req, res) => {
       count++;
     }
     res.json({ ok: true, count });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+// ─── DEAL INVOICES ────────────────────────────────────────────────────────────
+app.get('/api/deal-tracker/:id/invoices', requireAuth, async (req, res) => {
+  try {
+    await ensureDb();
+    const { rows } = await q(
+      'SELECT id, deal_id, file_type, file_name, file_size, created_at FROM deal_invoices WHERE deal_id=? ORDER BY created_at DESC',
+      [req.params.id]
+    );
+    res.json(rows);
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+app.post('/api/deal-tracker/:id/invoices', requireAuth, async (req, res) => {
+  try {
+    await ensureDb();
+    const { file_name, file_type, file_data, file_size } = req.body;
+    if (!file_data) return res.status(400).json({ error: 'No file data' });
+    if ((file_size || 0) > 10 * 1024 * 1024) return res.status(400).json({ error: 'File too large (max 10 MB)' });
+    const { rows } = await q(
+      'INSERT INTO deal_invoices (deal_id,file_type,file_name,file_data,file_size,created_by) VALUES (?,?,?,?,?,?) RETURNING id,deal_id,file_type,file_name,file_size,created_at',
+      [req.params.id, file_type, file_name, file_data, file_size || 0, req.user.id || null]
+    );
+    res.json(rows[0]);
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+app.get('/api/deal-invoices/:id/download', requireAuth, async (req, res) => {
+  try {
+    await ensureDb();
+    const { rows } = await q('SELECT file_name, file_type, file_data FROM deal_invoices WHERE id=?', [req.params.id]);
+    if (!rows.length) return res.status(404).json({ error: 'Not found' });
+    res.json(rows[0]);
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+app.delete('/api/deal-invoices/:id', requireAuth, async (req, res) => {
+  try {
+    await ensureDb();
+    await q('DELETE FROM deal_invoices WHERE id=?', [req.params.id]);
+    res.json({ ok: true });
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
 
