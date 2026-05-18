@@ -2991,8 +2991,13 @@ function renderHotelTable() {
     const shStr   = r.staff_hotel != null ? `${fmtHotelNum(r.staff_hotel)}` : '—';
     const flStr   = r.flights    != null ? `${fmtHotelNum(r.flights)}` : '—';
     const prStr   = r.printing   != null ? `${fmtHotelNum(r.printing)}` : '—';
-    return `<tr class="${rowClass}" title="${esc(r.notes||'')}">
-      <td><strong>${esc(r.event_name)}</strong></td>
+    const hasNotes = !!(r.notes && r.notes.trim());
+    const chevron = hasNotes ? '<span id="hotel-chev-'+r.id+'" style="font-size:10px;color:var(--muted);margin-left:4px;transition:transform .2s;display:inline-block">›</span>' : '';
+    const detailRow = hasNotes
+      ? `<tr id="hotel-detail-${r.id}" style="display:none"><td colspan="10" style="padding:0 20px 14px 20px;background:#0d1220;border-bottom:1px solid var(--border)"><div style="font:600 9px/1 var(--font-mono);text-transform:uppercase;letter-spacing:1px;color:var(--muted);margin-bottom:6px">Notes</div><div style="font:500 12px/1.5 var(--font-mono);color:var(--text)">${esc(r.notes)}</div></td></tr>`
+      : '';
+    return `<tr class="${rowClass}" style="${hasNotes ? 'cursor:pointer' : ''}" onclick="${hasNotes ? 'toggleHotelDetail('+r.id+')' : ''}">
+      <td><strong>${esc(r.event_name)}</strong>${chevron}</td>
       <td style="font-size:0.82rem">${esc(r.hotel||'—')}</td>
       <td style="font-size:0.82rem;color:var(--text-2)">${esc(r.cost||'—')}</td>
       <td style="font-size:0.82rem">${avStr}</td>
@@ -3002,13 +3007,22 @@ function renderHotelTable() {
       <td style="font-size:0.82rem;color:var(--muted)">${prStr}</td>
       <td>${STATUS_BADGE[r.status] || ''}</td>
       <td>
-        <div style="display:flex;gap:4px">
+        <div style="display:flex;gap:4px" onclick="event.stopPropagation()">
           <button class="btn btn-ghost btn-sm" onclick="openHotelModal(${r.id})">Edit</button>
           <button class="btn btn-danger btn-sm" onclick="deleteHotelExpense(${r.id})">×</button>
         </div>
       </td>
-    </tr>`;
+    </tr>${detailRow}`;
   }).join('');
+}
+
+function toggleHotelDetail(id) {
+  const detail = document.getElementById('hotel-detail-' + id);
+  const chev   = document.getElementById('hotel-chev-' + id);
+  if (!detail) return;
+  const open = detail.style.display !== 'none';
+  detail.style.display = open ? 'none' : 'table-row';
+  if (chev) chev.style.transform = open ? '' : 'rotate(90deg)';
 }
 
 function openHotelModal(id) {
@@ -3089,13 +3103,12 @@ async function initEmployeePortal(user) {
   });
 
   // Hide non-allowed nav items
+  const EMP_PAGES = ['dashboard', 'calendar', 'portfolio'];
   document.querySelectorAll('.nav-item').forEach(el => {
-    const page = el.dataset.page;
-    if (page !== 'dashboard' && page !== 'calendar') el.style.display = 'none';
+    if (!EMP_PAGES.includes(el.dataset.page)) el.style.display = 'none';
   });
   document.querySelectorAll('.bottom-nav-item').forEach(el => {
-    const page = el.dataset.page;
-    if (page !== 'dashboard' && page !== 'calendar') el.style.display = 'none';
+    if (!EMP_PAGES.includes(el.dataset.page)) el.style.display = 'none';
   });
   const addEmpBtn = document.getElementById('addEmpBtn');
   if (addEmpBtn) addEmpBtn.style.display = 'none';
@@ -3104,14 +3117,15 @@ async function initEmployeePortal(user) {
 
   // Override navigate
   window.navigate = function(page) {
-    if (page !== 'dashboard' && page !== 'calendar') return;
+    if (!EMP_PAGES.includes(page)) return;
     document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
     document.querySelectorAll('.nav-item, .bottom-nav-item').forEach(n => n.classList.remove('active'));
     const pageEl = document.getElementById('page-' + page);
     if (pageEl) pageEl.classList.add('active');
     document.querySelectorAll('[data-page="' + page + '"]').forEach(n => n.classList.add('active'));
-    if (page === 'dashboard') loadEmployeeDashboard(user);
-    if (page === 'calendar') loadEmployeeCalendar();
+    if (page === 'dashboard')  loadEmployeeDashboard(user);
+    if (page === 'calendar')   loadEmployeeCalendar();
+    if (page === 'portfolio')  loadEmployeePortfolio();
   };
 
   // Attach click handlers since admin init was skipped
@@ -3218,12 +3232,14 @@ async function loadEmployeeDashboard(user) {
     const upcoming = upcomingRes.ok ? await upcomingRes.json() : [];
     const sal      = salaryRes.ok   ? await salaryRes.json()   : null;
 
-    const daysUsed  = parseFloat(profile.days_used) || 0;
-    const allowance = profile.allowance_days || 20;
-    const remaining = Math.max(0, allowance - daysUsed);
-    const pct       = Math.min(100, Math.round((daysUsed / allowance) * 100));
-    const initials  = (profile.name || '?').split(' ').map(w => w[0]).join('').slice(0,2).toUpperCase();
-    const barColor  = pct > 80 ? 'var(--negative)' : pct > 60 ? 'var(--warning)' : 'var(--positive)';
+    const daysUsed      = parseFloat(profile.days_used) || 0;
+    const allowance     = profile.allowance_days || 20;
+    const excessDays    = parseFloat(profile.excess_days) || 0;
+    const excessDeduct  = parseFloat(profile.excess_deduction) || 0;
+    const remaining     = Math.max(0, allowance - daysUsed);
+    const pct           = Math.min(100, Math.round((daysUsed / allowance) * 100));
+    const initials      = (profile.name || '?').split(' ').map(w => w[0]).join('').slice(0,2).toUpperCase();
+    const barColor      = pct > 80 ? 'var(--negative)' : pct > 60 ? 'var(--warning)' : 'var(--positive)';
     const MONS = ['JAN','FEB','MAR','APR','MAY','JUN','JUL','AUG','SEP','OCT','NOV','DEC'];
 
     let upcomingHtml = '';
@@ -3371,12 +3387,21 @@ async function loadEmployeeDashboard(user) {
             (profile.start_date ? '<div style="font:500 11px/1 var(--font-mono);color:var(--muted);margin-bottom:16px">Since ' + profile.start_date + '</div>' : '') +
             '<div style="font:600 10px/1 var(--font-mono);text-transform:uppercase;letter-spacing:1px;color:var(--muted);margin-bottom:8px">Days Off ' + (profile.year||new Date().getFullYear()) + '</div>' +
             '<div style="display:flex;justify-content:space-between;font:600 12px/1 var(--font-mono);color:var(--muted);margin-bottom:6px">' +
-              '<span>' + daysUsed + ' used</span><span style="color:' + barColor + '">' + remaining + ' remaining</span>' +
+              '<span>' + daysUsed + ' used</span>' +
+              (excessDays > 0
+                ? '<span style="color:var(--negative)">' + excessDays + ' excess day' + (excessDays !== 1 ? 's' : '') + '</span>'
+                : '<span style="color:' + barColor + '">' + remaining + ' remaining</span>') +
             '</div>' +
             '<div style="height:8px;background:var(--border);border-radius:4px;margin-bottom:8px">' +
               '<div style="height:100%;width:' + pct + '%;background:' + barColor + ';border-radius:4px"></div>' +
             '</div>' +
-            '<div style="font:500 11px/1 var(--font-mono);color:var(--muted)">' + daysUsed + ' / ' + allowance + ' days used &middot; ' + pct + '%</div>' +
+            '<div style="font:500 11px/1 var(--font-mono);color:var(--muted)">' + daysUsed + ' used · ' + allowance + ' allowed</div>' +
+            (excessDays > 0
+              ? '<div style="margin-top:8px;padding:8px 10px;background:rgba(239,68,68,0.08);border:1px solid rgba(239,68,68,0.2);border-radius:6px;font:500 10px/1.4 var(--font-mono);color:var(--negative)">' +
+                  excessDays + ' excess day' + (excessDays !== 1 ? 's' : '') + ' · ' +
+                  (excessDeduct > 0 ? '£' + excessDeduct.toLocaleString('en-GB',{minimumFractionDigits:2}) + ' deducted from salary' : 'deduction calculated at year end') +
+                '</div>'
+              : '') +
           '</div>' +
         '</div>' +
         // Upcoming reminders
@@ -3402,6 +3427,72 @@ async function loadEmployeeDashboard(user) {
 
   } catch(e) {
     el.innerHTML = '<div class="alert alert-error">Failed to load profile: ' + e.message + '</div>';
+  }
+}
+
+async function loadEmployeePortfolio() {
+  const page = document.getElementById('page-portfolio');
+  if (!page) return;
+  page.innerHTML = '<div class="skeleton" style="height:300px;border-radius:16px;margin:24px"></div>';
+
+  try {
+    const res = await fetch('/api/hotel-expenses');
+    const events = res.ok ? await res.json() : [];
+    const STATUS_COLOR = { paid: 'var(--positive)', partial: '#f59e0b', pending: 'var(--muted)' };
+    const STATUS_LABEL = { paid: 'Paid', partial: 'Partial', pending: 'Pending' };
+    const sortedEvents = [...events].sort((a, b) => (b.id - a.id));
+
+    const cards = sortedEvents.map(r => {
+      const sc = STATUS_COLOR[r.status] || 'var(--muted)';
+      const sl = STATUS_LABEL[r.status] || r.status;
+      const avSym  = r.av_currency === 'GBP' ? '£' : r.av_currency === 'USD' ? '$' : (r.av_currency || '') + ' ';
+      const paidSym = r.paid_currency === 'GBP' ? '£' : r.paid_currency === 'USD' ? '$' : (r.paid_currency || '') + ' ';
+      const rows = [
+        r.hotel     ? ['Hotel',       esc(r.hotel)]     : null,
+        r.cost      ? ['Room cost',   esc(r.cost)]      : null,
+        r.av_amount != null ? ['AV', avSym + parseFloat(r.av_amount).toLocaleString('en-GB') + (r.av_billing === 'included' ? ' (incl.)' : '')] : null,
+        r.paid_amount != null ? ['Paid so far', paidSym + parseFloat(r.paid_amount).toLocaleString('en-GB')] : null,
+        r.staff_hotel != null ? ['Staff hotel', parseFloat(r.staff_hotel).toLocaleString('en-GB')] : null,
+        r.flights    != null ? ['Flights',   parseFloat(r.flights).toLocaleString('en-GB')]    : null,
+        r.printing   != null ? ['Printing',  parseFloat(r.printing).toLocaleString('en-GB')]   : null,
+      ].filter(Boolean);
+
+      return '<div class="card" style="margin-bottom:12px">' +
+        '<div style="padding:16px 20px 12px;display:flex;justify-content:space-between;align-items:flex-start">' +
+          '<div>' +
+            '<div style="font:700 15px/1 var(--font-sans);color:var(--text)">' + esc(r.event_name) + '</div>' +
+            (r.hotel ? '<div style="font:500 11px/1 var(--font-mono);color:var(--muted);margin-top:4px">' + esc(r.hotel) + '</div>' : '') +
+          '</div>' +
+          '<span style="font:700 10px/1 var(--font-mono);color:' + sc + ';padding:4px 10px;border:1px solid ' + sc + ';border-radius:20px;opacity:.85">' + sl.toUpperCase() + '</span>' +
+        '</div>' +
+        (rows.length
+          ? '<div style="padding:0 20px 12px;display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:8px">' +
+              rows.map(([lbl, val]) =>
+                '<div style="background:#12172a;border-radius:8px;padding:8px 12px">' +
+                  '<div style="font:600 9px/1 var(--font-mono);text-transform:uppercase;letter-spacing:1px;color:var(--muted);margin-bottom:4px">' + lbl + '</div>' +
+                  '<div style="font:600 12px/1 var(--font-mono);color:var(--text)">' + val + '</div>' +
+                '</div>'
+              ).join('') +
+            '</div>'
+          : '') +
+        (r.notes
+          ? '<div style="padding:10px 20px 14px;font:500 11px/1.5 var(--font-mono);color:var(--muted);border-top:1px solid var(--border)">' + esc(r.notes) + '</div>'
+          : '') +
+      '</div>';
+    }).join('');
+
+    page.innerHTML =
+      '<div style="padding:24px">' +
+        '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px">' +
+          '<div>' +
+            '<h2 style="font:700 20px/1 var(--font-sans);color:var(--text);margin:0">My Portfolio</h2>' +
+            '<div style="font:500 11px/1 var(--font-mono);color:var(--muted);margin-top:6px">' + sortedEvents.length + ' events</div>' +
+          '</div>' +
+        '</div>' +
+        (cards || '<div style="color:var(--muted);font:500 12px/1 var(--font-mono);padding:20px 0">No events yet.</div>') +
+      '</div>';
+  } catch(e) {
+    page.innerHTML = '<div style="padding:24px"><div class="alert alert-error">Failed to load portfolio: ' + e.message + '</div></div>';
   }
 }
 
