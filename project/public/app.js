@@ -3556,6 +3556,7 @@ function renderDealTracker() {
   page.innerHTML =
     '<div style="padding:20px 24px 0;display:flex;align-items:center;gap:12px;flex-wrap:wrap">' +
       '<h2 style="font:700 20px/1 var(--font-sans);color:var(--text);flex:1">Deal Tracker</h2>' +
+      '<button class="btn btn-ghost btn-sm" onclick="dealAutoColour()" title="Set green where paid, no colour where unpaid">Auto-colour rows</button>' +
       '<button class="btn btn-ghost btn-sm" onclick="openDealImport()" style="gap:6px"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg> Import Excel / CSV</button>' +
       '<button class="btn btn-primary btn-sm" onclick="openDealModal(null)">+ Add Deal</button>' +
     '</div>' +
@@ -3798,6 +3799,16 @@ async function deleteDeal(id) {
   } catch(e) { showToast('Error: ' + e.message, 'error'); }
 }
 
+async function dealAutoColour() {
+  try {
+    const res  = await fetch('/api/deal-tracker/auto-colour', { method: 'POST' });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Failed');
+    await loadDealTracker();
+    showToast('Colours updated: ' + data.updated + ' rows changed', 'success');
+  } catch(e) { showToast('Error: ' + e.message, 'error'); }
+}
+
 async function toggleDealFlag(id, event) {
   event.stopPropagation();
   const deal = _dealData.find(d => d.id === id);
@@ -3929,7 +3940,7 @@ function mapDealImportRow(row) {
     invoice_sent:        normSent(find('invoice&agreementsent','invoiceagreementsent','invoice sent','invoicesent','sent')),
     signature_received:  normSig(find('signaturereceived','signature received','signature','signed')),
     initials:            String(find('initials','initial') || ''),
-    row_color:           'green',
+    row_color:           (parseAmt(find('paidincvat','paid inc vat','paid','paid inc. vat')) ? 'green' : 'none'),
   };
 }
 
