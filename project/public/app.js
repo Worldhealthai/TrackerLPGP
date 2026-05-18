@@ -3494,10 +3494,11 @@ function renderDealTracker() {
   if (!page) return;
 
   const ROW_COLORS = {
-    green:  { bg: 'rgba(34,197,94,0.12)',  border: 'rgba(34,197,94,0.35)',  dot: '#22c55e' },
-    orange: { bg: 'rgba(251,146,60,0.14)', border: 'rgba(251,146,60,0.4)',  dot: '#fb923c' },
-    red:    { bg: 'rgba(239,68,68,0.14)',  border: 'rgba(239,68,68,0.4)',   dot: '#ef4444' },
-    none:   { bg: 'transparent',           border: 'transparent',           dot: 'var(--border)' },
+    green:  { bg: 'rgba(34,197,94,0.12)',  dot: '#22c55e' },
+    orange: { bg: 'rgba(251,146,60,0.14)', dot: '#fb923c' },
+    red:    { bg: 'rgba(239,68,68,0.14)',  dot: '#ef4444' },
+    yellow: { bg: 'rgba(250,204,21,0.18)', dot: '#facc15' },
+    none:   { bg: 'transparent',           dot: 'var(--border)' },
   };
 
   const fmtAmt = v => (v == null || v === '') ? '' : '£' + parseFloat(v).toLocaleString('en-GB', {minimumFractionDigits:2, maximumFractionDigits:2});
@@ -3514,10 +3515,18 @@ function renderDealTracker() {
 
   const colW = ['80px','200px','110px','110px','90px','90px','90px','90px','160px','200px','90px','80px','55px'];
   const colH = ['Month','Company','Paid inc VAT','Deal','Tax/VAT','Invoice Date','Date Paid','Bank','Invoice Number','Notes','Sent','Signed','Init'];
-  const headerCols = colH.map((h,i) => '<div style="width:' + colW[i] + ';min-width:' + colW[i] + ';padding:8px 10px;font:700 10px/1 var(--font-mono);color:var(--muted);letter-spacing:.5px;text-transform:uppercase;border-right:1px solid var(--border);flex-shrink:0">' + h + '</div>').join('');
+  const headerCols =
+    '<div style="width:36px;min-width:36px;border-right:1px solid var(--border);flex-shrink:0"></div>' +
+    colH.map((h,i) => '<div style="width:' + colW[i] + ';min-width:' + colW[i] + ';padding:8px 10px;font:700 10px/1 var(--font-mono);color:var(--muted);letter-spacing:.5px;text-transform:uppercase;border-right:1px solid var(--border);flex-shrink:0">' + h + '</div>').join('');
 
   const buildRows = list => list.map(r => {
-    const c = ROW_COLORS[r.row_color] || ROW_COLORS.none;
+    const effectiveColor = r.is_flagged ? 'yellow' : (r.row_color || 'none');
+    const c = ROW_COLORS[effectiveColor] || ROW_COLORS.none;
+    const flagged = r.is_flagged;
+    const flagBtn =
+      '<div style="width:36px;min-width:36px;border-right:1px solid var(--border);flex-shrink:0;display:flex;align-items:center;justify-content:center">' +
+        '<button onclick="toggleDealFlag(' + r.id + ',event)" title="' + (flagged?'Remove flag':'Flag row') + '" style="background:none;border:none;cursor:pointer;padding:4px;font-size:15px;line-height:1;color:' + (flagged?'#facc15':'var(--dim)') + ';transition:color .15s">⚑</button>' +
+      '</div>';
     const cols = [
       '<div style="font:600 11px/1.3 var(--font-mono);color:var(--muted)">' + esc(r.month_label||'') + '</div>',
       '<div style="font:600 13px/1.3 var(--font-sans);color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + esc(r.company) + '</div>',
@@ -3534,6 +3543,7 @@ function renderDealTracker() {
       '<div style="font:700 11px/1 var(--font-mono);color:var(--text)">' + esc(r.initials||'') + '</div>',
     ];
     return '<div onclick="openDealModal(' + r.id + ')" style="display:flex;align-items:stretch;border-bottom:1px solid var(--border);background:' + c.bg + ';border-left:3px solid ' + c.dot + ';cursor:pointer;transition:filter .15s" onmouseenter="this.style.filter=\'brightness(1.08)\'" onmouseleave="this.style.filter=\'\'">'+
+      flagBtn +
       cols.map((col,i) => '<div style="width:' + colW[i] + ';min-width:' + colW[i] + ';padding:10px 10px;border-right:1px solid var(--border);flex-shrink:0;display:flex;align-items:center">' + col + '</div>').join('') +
     '</div>';
   }).join('');
@@ -3619,9 +3629,9 @@ function openDealModal(id) {
   const fmtDateInput = d => { if (!d) return ''; return String(d).slice(0,10); };
 
   const colorOpts = [
-    { val:'green',  label:'Green (paid/complete)' },
-    { val:'orange', label:'Orange (attention)' },
-    { val:'red',    label:'Red (overdue/problem)' },
+    { val:'green',  label:'Green — Paid' },
+    { val:'orange', label:'Orange — Partial / Incomplete' },
+    { val:'red',    label:'Red — Overdue / Problem' },
     { val:'none',   label:'No colour' },
   ];
   const colorSel = colorOpts.map(o => '<option value="' + o.val + '"' + (v('row_color')===o.val||(!v('row_color')&&o.val==='green')?' selected':'') + '>' + o.label + '</option>').join('');
@@ -3763,6 +3773,24 @@ async function deleteDeal(id) {
     closeDealModal();
     renderDealTracker();
     showToast('Deal deleted', 'success');
+  } catch(e) { showToast('Error: ' + e.message, 'error'); }
+}
+
+async function toggleDealFlag(id, event) {
+  event.stopPropagation();
+  const deal = _dealData.find(d => d.id === id);
+  if (!deal) return;
+  try {
+    const res = await fetch('/api/deal-tracker/' + id + '/flag', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ is_flagged: !deal.is_flagged })
+    });
+    const updated = await res.json();
+    if (!res.ok) throw new Error(updated.error || 'Failed');
+    const idx = _dealData.findIndex(d => d.id === id);
+    if (idx !== -1) _dealData[idx] = updated;
+    renderDealTracker();
   } catch(e) { showToast('Error: ' + e.message, 'error'); }
 }
 
