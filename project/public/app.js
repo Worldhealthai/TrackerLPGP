@@ -3503,17 +3503,20 @@ function renderDealTracker() {
   const fmtAmt = v => (v == null || v === '') ? '' : '£' + parseFloat(v).toLocaleString('en-GB', {minimumFractionDigits:2, maximumFractionDigits:2});
   const fmtDate = d => { if (!d) return ''; const dt = new Date(d+'T12:00:00'); return dt.toLocaleDateString('en-GB',{day:'2-digit',month:'2-digit',year:'2-digit'}); };
 
-  // Totals
-  const totalPaid  = _dealData.reduce((s,r) => s + (parseFloat(r.paid_inc_vat)||0), 0);
-  const totalDeal  = _dealData.reduce((s,r) => s + (parseFloat(r.deal_amount)||0), 0);
-  const totalVat   = _dealData.reduce((s,r) => s + (parseFloat(r.tax_vat)||0), 0);
+  const active    = _dealData.filter(r => r.status !== 'cancelled');
+  const cancelled = _dealData.filter(r => r.status === 'cancelled');
+
+  // Totals (active only)
+  const totalPaid  = active.reduce((s,r) => s + (parseFloat(r.paid_inc_vat)||0), 0);
+  const totalDeal  = active.reduce((s,r) => s + (parseFloat(r.deal_amount)||0), 0);
+  const totalVat   = active.reduce((s,r) => s + (parseFloat(r.tax_vat)||0), 0);
   const remaining  = totalDeal - totalPaid;
 
   const colW = ['80px','200px','110px','110px','90px','90px','90px','90px','160px','200px','90px','80px','55px'];
   const colH = ['Month','Company','Paid inc VAT','Deal','Tax/VAT','Invoice Date','Date Paid','Bank','Invoice Number','Notes','Sent','Signed','Init'];
   const headerCols = colH.map((h,i) => '<div style="width:' + colW[i] + ';min-width:' + colW[i] + ';padding:8px 10px;font:700 10px/1 var(--font-mono);color:var(--muted);letter-spacing:.5px;text-transform:uppercase;border-right:1px solid var(--border);flex-shrink:0">' + h + '</div>').join('');
 
-  const rowsHtml = _dealData.map(r => {
+  const buildRows = list => list.map(r => {
     const c = ROW_COLORS[r.row_color] || ROW_COLORS.none;
     const cols = [
       '<div style="font:600 11px/1.3 var(--font-mono);color:var(--muted)">' + esc(r.month_label||'') + '</div>',
@@ -3534,6 +3537,9 @@ function renderDealTracker() {
       cols.map((col,i) => '<div style="width:' + colW[i] + ';min-width:' + colW[i] + ';padding:10px 10px;border-right:1px solid var(--border);flex-shrink:0;display:flex;align-items:center">' + col + '</div>').join('') +
     '</div>';
   }).join('');
+
+  const rowsHtml       = buildRows(active);
+  const cancelledHtml  = buildRows(cancelled);
 
   const fmtTotal = v => '£' + v.toLocaleString('en-GB',{minimumFractionDigits:2,maximumFractionDigits:2});
 
@@ -3585,7 +3591,26 @@ function renderDealTracker() {
           '</div>' +
         '</div>' +
       '</div>' +
-    '</div>';
+    '</div>' +
+
+    // Cancelled section
+    (cancelled.length ?
+      '<div style="padding:0 24px 32px">' +
+        '<details>' +
+          '<summary style="cursor:pointer;list-style:none;display:flex;align-items:center;gap:10px;padding:12px 16px;border:1px solid var(--border);border-radius:10px;background:var(--surface);font:600 13px/1 var(--font-sans);color:var(--muted);user-select:none">' +
+            '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>' +
+            '<span style="flex:1">Cancelled Deals</span>' +
+            '<span style="font:700 11px/1 var(--font-mono);background:rgba(239,68,68,0.12);color:var(--negative);padding:3px 8px;border-radius:20px">' + cancelled.length + '</span>' +
+          '</summary>' +
+          '<div style="margin-top:8px;border:1px solid var(--border);border-radius:10px;overflow:hidden">' +
+            '<div style="overflow-x:auto"><div style="min-width:1400px;opacity:.7">' +
+              '<div style="display:flex;background:var(--surface-2,var(--surface));border-bottom:2px solid var(--border)">' + headerCols + '</div>' +
+              cancelledHtml +
+            '</div></div>' +
+          '</div>' +
+        '</details>' +
+      '</div>'
+    : '') ;
 }
 
 function openDealModal(id) {
@@ -3602,6 +3627,7 @@ function openDealModal(id) {
   const colorSel = colorOpts.map(o => '<option value="' + o.val + '"' + (v('row_color')===o.val||(!v('row_color')&&o.val==='green')?' selected':'') + '>' + o.label + '</option>').join('');
   const sentOpts = ['no','yes','yes-pdf'].map(o => '<option value="' + o + '"' + (v('invoice_sent')===o?' selected':'') + '>' + (o==='no'?'No':o==='yes'?'Yes':'Yes (PDF)') + '</option>').join('');
   const sigOpts  = ['no','yes'].map(o => '<option value="' + o + '"' + (v('signature_received')===o?' selected':'') + '>' + (o==='no'?'No':'Yes') + '</option>').join('');
+  const statusSel = ['active','cancelled'].map(o => '<option value="' + o + '"' + ((v('status')||'active')===o?' selected':'') + '>' + (o==='active'?'Active':'Cancelled') + '</option>').join('');
 
   const html =
     '<div class="modal-overlay active" id="dealModal" onclick="if(event.target===this)closeDealModal()">' +
@@ -3622,6 +3648,10 @@ function openDealModal(id) {
       '<div class="form-group">' +
         '<label class="form-label">Row Colour</label>' +
         '<select id="dlColor" class="form-control">' + colorSel + '</select>' +
+      '</div>' +
+      '<div class="form-group">' +
+        '<label class="form-label">Status</label>' +
+        '<select id="dlStatus" class="form-control">' + statusSel + '</select>' +
       '</div>' +
       '<div class="form-group">' +
         '<label class="form-label">Deal Amount (£)</label>' +
@@ -3693,6 +3723,7 @@ async function saveDeal(id) {
     company,
     month_label:        document.getElementById('dlMonth').value.trim(),
     row_color:          document.getElementById('dlColor').value,
+    status:             document.getElementById('dlStatus').value,
     deal_amount:        document.getElementById('dlDeal').value || null,
     paid_inc_vat:       document.getElementById('dlPaid').value || null,
     tax_vat:            document.getElementById('dlVat').value || null,
