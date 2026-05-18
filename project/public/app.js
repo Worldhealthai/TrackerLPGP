@@ -1,3 +1,30 @@
+// ─── THEME ───────────────────────────────────────────────────────────────────
+function toggleTheme() {
+  const isLight = document.body.classList.toggle('light-mode');
+  localStorage.setItem('theme', isLight ? 'light' : 'dark');
+  updateThemeButton(isLight);
+}
+function updateThemeButton(isLight) {
+  const btn   = document.getElementById('themeToggleBtn');
+  const label = document.getElementById('themeLabel');
+  const icon  = document.getElementById('themeIcon');
+  if (!btn) return;
+  if (isLight) {
+    if (label) label.textContent = 'Dark';
+    if (icon)  icon.innerHTML = '<path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>';
+  } else {
+    if (label) label.textContent = 'Light';
+    if (icon)  icon.innerHTML = '<circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/>';
+  }
+}
+(function applyStoredTheme() {
+  const stored = localStorage.getItem('theme');
+  if (stored === 'light') {
+    document.body.classList.add('light-mode');
+    document.addEventListener('DOMContentLoaded', () => updateThemeButton(true));
+  }
+})();
+
 // ─── STATE ───────────────────────────────────────────────────────────────────
 let currentUser = null;
 let employees = [];
@@ -1509,7 +1536,7 @@ async function loadSalaryPage() {
       return sum + (g.currency === 'AED' ? v * AED_TO_GBP : v);
     }, 0);
     const totalBonusGBP = groups.reduce((sum, g) => {
-      const v = g.rows.reduce((a, b) => a + (parseFloat(b.bonus_total) || 0), 0);
+      const v = g.rows.reduce((a, b) => a + (parseFloat(b.total_bonuses) || 0), 0);
       return sum + (g.currency === 'AED' ? v * AED_TO_GBP : v);
     }, 0);
     const paidPct = totalDueGBP > 0 ? (totalPaidGBP / totalDueGBP * 100) : 0;
@@ -1520,27 +1547,25 @@ async function loadSalaryPage() {
     salaryTotalsEl.style.cssText = 'display:grid;grid-template-columns:repeat(4,1fr);gap:1px;background:var(--border);border:1px solid var(--border);border-radius:var(--radius);overflow:hidden;margin-bottom:24px';
     const outstandingColor = totalOutstandingGBP > 0 ? 'var(--negative)' : 'var(--positive)';
     const unpaidLabel = unpaidCount > 0 ? (unpaidCount + ' employee' + (unpaidCount !== 1 ? 's' : '') + ' unpaid') : 'all paid up';
-    salaryTotalsEl.innerHTML =
-      '<div style="background:var(--surface);padding:20px 24px;display:flex;flex-direction:column;gap:12px">' +
-        '<div style="font:600 10px/1 var(--font-mono);text-transform:uppercase;letter-spacing:1.2px;color:var(--muted)">Paid YTD</div>' +
-        '<div style="font:700 32px/1 var(--font-mono);color:var(--text);letter-spacing:-1.5px">' + fmtGBP(totalPaidGBP) + '</div>' +
-        '<div style="font:500 11px/1 var(--font-mono);color:var(--positive)">' + paidPct.toFixed(0) + '% of target</div>' +
-      '</div>' +
-      '<div style="background:var(--surface);padding:20px 24px;display:flex;flex-direction:column;gap:12px">' +
-        '<div style="font:600 10px/1 var(--font-mono);text-transform:uppercase;letter-spacing:1.2px;color:var(--muted)">Due YTD</div>' +
-        '<div style="font:700 32px/1 var(--font-mono);color:var(--text);letter-spacing:-1.5px">' + fmtGBP(totalDueGBP) + '</div>' +
-        '<div style="font:500 11px/1 var(--font-mono);color:var(--muted)">salary target ' + year + '</div>' +
-      '</div>' +
-      '<div style="background:var(--surface);padding:20px 24px;display:flex;flex-direction:column;gap:12px">' +
-        '<div style="font:600 10px/1 var(--font-mono);text-transform:uppercase;letter-spacing:1.2px;color:var(--muted)">Outstanding</div>' +
-        '<div style="font:700 32px/1 var(--font-mono);color:' + outstandingColor + ';letter-spacing:-1.5px">' + fmtGBP(Math.abs(totalOutstandingGBP)) + '</div>' +
-        '<div style="font:500 11px/1 var(--font-mono);color:var(--muted)">' + unpaidLabel + '</div>' +
-      '</div>' +
-      '<div style="background:var(--surface);padding:20px 24px;display:flex;flex-direction:column;gap:12px">' +
-        '<div style="font:600 10px/1 var(--font-mono);text-transform:uppercase;letter-spacing:1.2px;color:var(--muted)">Bonuses YTD</div>' +
-        '<div style="font:700 32px/1 var(--font-mono);color:var(--text);letter-spacing:-1.5px">' + fmtGBP(totalBonusGBP) + '</div>' +
-        '<div style="font:500 11px/1 var(--font-mono);color:var(--muted)">across all staff</div>' +
+
+    // Store rows for breakdown modal access
+    window._salaryRows = rows;
+    window._salaryAedRate = AED_TO_GBP;
+
+    const statBox = (label, value, sub, subColor, key) =>
+      '<div style="background:var(--surface);padding:20px 24px;display:flex;flex-direction:column;gap:12px;cursor:pointer;transition:background .15s" ' +
+        'onmouseenter="this.style.background=\'var(--surface-2)\'" onmouseleave="this.style.background=\'var(--surface)\'" ' +
+        'onclick="showSalaryBreakdown(\'' + key + '\')">' +
+        '<div style="font:600 10px/1 var(--font-mono);text-transform:uppercase;letter-spacing:1.2px;color:var(--muted)">' + label + '</div>' +
+        '<div style="font:700 32px/1 var(--font-mono);color:' + (key === 'outstanding' ? outstandingColor : 'var(--text)') + ';letter-spacing:-1.5px">' + value + '</div>' +
+        '<div style="font:500 11px/1 var(--font-mono);color:' + subColor + '">' + sub + '</div>' +
       '</div>';
+
+    salaryTotalsEl.innerHTML =
+      statBox('Total Salaries ' + year, fmtGBP(totalDueGBP),                'annual target · click for breakdown',  'var(--muted)',    'due') +
+      statBox('Total Paid',             fmtGBP(totalPaidGBP),                paidPct.toFixed(0) + '% of target',     'var(--positive)', 'paid') +
+      statBox('Outstanding',            fmtGBP(Math.abs(totalOutstandingGBP)), unpaidLabel,                           'var(--muted)',    'outstanding') +
+      statBox('Total Bonuses',          fmtGBP(totalBonusGBP),               totalBonusGBP > 0 ? 'across all staff' : 'none logged yet', 'var(--muted)', 'bonuses');
 
     // ── Per-employee cards ──
     if (!rows.length) {
@@ -1639,7 +1664,7 @@ async function loadSalaryPage() {
             <div class="sc-emp-badges">
               <span class="badge ${typeBadge}" style="font-size:0.67rem">${typeLabel}</span>
               <span class="badge badge-grey" style="font-size:0.67rem">${cur}</span>
-              ${emp.start_date ? `<span class="sc-emp-since">${isTerminated ? 'Started' : 'Since'} ${emp.start_date}</span>` : ''}
+              ${emp.start_date ? `<span class="sc-emp-since">${isTerminated ? 'Started' : 'Since'} ${emp.start_date}</span>` : `<span class="badge" style="background:#7f1d1d;color:#fca5a5;font-size:0.67rem;cursor:pointer" onclick="openEditEmployee(${emp.employee_id})">⚠ No start date — click to set</span>`}
             </div>
           </div>
           <div class="sc-annual">
@@ -1672,24 +1697,36 @@ async function loadSalaryPage() {
           const showFirstMonth = suggestedFirstMonthNet !== null && fmMeta && !isOverpaid;
           const fmMonthName = fmMeta ? (fmMeta.monthName || '') : '';
           const fmSub = fmMeta ? fmMeta.daysWorked + ' of ' + fmMeta.daysTotal + ' days · ' + fmMonthName : '';
+          // For first-month starters not yet paid: make pro-rated amount the primary "pay this" figure
+          const firstMonthUnpaid = showFirstMonth && totalPaidEmp === 0;
           return '<div style="display:flex;border-top:1px solid var(--border);border-bottom:1px solid var(--border)">' +
             '<div style="flex:1;padding:16px 20px;border-right:1px solid var(--border)">' +
               '<div style="font:600 9px/1 var(--font-mono);text-transform:uppercase;letter-spacing:1px;color:var(--muted);margin-bottom:8px">' + monthlyLbl + '</div>' +
               '<div style="font:700 22px/1 var(--font-mono);color:var(--text)">' + sym + monthlyVal.toLocaleString('en-GB',{maximumFractionDigits:0}) + '</div>' +
               '<div style="font:500 10px/1 var(--font-mono);color:var(--muted);margin-top:6px">' + monthlySub + '</div>' +
             '</div>' +
-            (showFirstMonth
-              ? '<div style="flex:1;padding:16px 20px;border-right:1px solid var(--border);background:rgba(251,191,36,0.05)">' +
-                  '<div style="font:600 9px/1 var(--font-mono);text-transform:uppercase;letter-spacing:1px;color:#f59e0b;margin-bottom:8px">1st Month Due</div>' +
+            (firstMonthUnpaid
+              // ── First-month starter, not paid yet: show pro-rated amount as the "pay this" number ──
+              ? '<div style="flex:1;padding:16px 20px;background:rgba(251,191,36,0.06)">' +
+                  '<div style="font:600 9px/1 var(--font-mono);text-transform:uppercase;letter-spacing:1px;color:#f59e0b;margin-bottom:8px">Pay This Month</div>' +
                   '<div style="font:700 22px/1 var(--font-mono);color:#f59e0b">' + sym + Math.round(suggestedFirstMonthNet).toLocaleString('en-GB') + '</div>' +
                   '<div style="font:500 10px/1 var(--font-mono);color:var(--muted);margin-top:6px">' + fmSub + '</div>' +
+                  '<div style="font:500 10px/1 var(--font-mono);color:var(--muted);margin-top:4px;opacity:.7">year balance: ' + sym + Math.abs(netRemaining).toLocaleString('en-GB',{maximumFractionDigits:0}) + '</div>' +
                 '</div>'
-              : '') +
-            '<div style="flex:1;padding:16px 20px">' +
-              '<div style="font:600 9px/1 var(--font-mono);text-transform:uppercase;letter-spacing:1px;color:var(--muted);margin-bottom:8px">Year Balance</div>' +
-              '<div style="font:700 22px/1 var(--font-mono);color:' + outColor + '">' + (isOverpaid ? '−' : '') + sym + Math.abs(netRemaining).toLocaleString('en-GB',{maximumFractionDigits:0}) + '</div>' +
-              '<div style="font:500 10px/1 var(--font-mono);color:var(--muted);margin-top:6px">' + outSub + '</div>' +
-            '</div>' +
+              // ── Normal: monthly + year balance (+ optional 1st month middle column if partially paid) ──
+              : (showFirstMonth
+                  ? '<div style="flex:1;padding:16px 20px;border-right:1px solid var(--border);background:rgba(251,191,36,0.05)">' +
+                      '<div style="font:600 9px/1 var(--font-mono);text-transform:uppercase;letter-spacing:1px;color:#f59e0b;margin-bottom:8px">1st Month Due</div>' +
+                      '<div style="font:700 22px/1 var(--font-mono);color:#f59e0b">' + sym + Math.round(suggestedFirstMonthNet).toLocaleString('en-GB') + '</div>' +
+                      '<div style="font:500 10px/1 var(--font-mono);color:var(--muted);margin-top:6px">' + fmSub + '</div>' +
+                    '</div>'
+                  : '') +
+                '<div style="flex:1;padding:16px 20px">' +
+                  '<div style="font:600 9px/1 var(--font-mono);text-transform:uppercase;letter-spacing:1px;color:var(--muted);margin-bottom:8px">Year Balance</div>' +
+                  '<div style="font:700 22px/1 var(--font-mono);color:' + outColor + '">' + (isOverpaid ? '−' : '') + sym + Math.abs(netRemaining).toLocaleString('en-GB',{maximumFractionDigits:0}) + '</div>' +
+                  '<div style="font:500 10px/1 var(--font-mono);color:var(--muted);margin-top:6px">' + outSub + '</div>' +
+                '</div>'
+            ) +
           '</div>' +
           (!paye && excessDays > 0
             ? '<div style="padding:8px 20px;font:500 11px/1 var(--font-mono);color:var(--negative);border-bottom:1px solid var(--border)">' +
@@ -1932,6 +1969,98 @@ async function loadSalaryPage() {
 
 function toggleSection(btn) {
   btn.closest('.sc-section').classList.toggle('open');
+}
+
+function showSalaryBreakdown(key) {
+  const rows = window._salaryRows || [];
+  const AED_TO_GBP = window._salaryAedRate || (1/4.67);
+  const fmtGBP = v => '£' + Math.abs(v).toLocaleString('en-GB', {minimumFractionDigits:2, maximumFractionDigits:2});
+  const fmtCur = (v, cur) => {
+    const sym = cur === 'GBP' ? '£' : cur === 'USD' ? '$' : (cur + ' ');
+    return sym + Math.abs(v).toLocaleString('en-GB', {minimumFractionDigits:2, maximumFractionDigits:2});
+  };
+  const toGBP = (v, cur) => cur === 'AED' ? v * AED_TO_GBP : v;
+
+  const titles = { paid: 'Total Paid — Breakdown', due: 'Total Salaries — Breakdown', outstanding: 'Outstanding Balance — Breakdown', bonuses: 'Total Bonuses — Breakdown' };
+  const notes  = { paid: 'Payments logged this year per employee', due: 'Net annual salary target incl. PAYE/NI deductions', outstanding: 'Remaining balance after payments & deductions (excl. bonuses)', bonuses: 'Bonus payments logged per employee' };
+
+  // Build per-employee rows
+  const empRows = rows.map(emp => {
+    const cur = emp.currency || 'GBP';
+    let nativeVal, gbpVal, label;
+    if (key === 'paid') {
+      nativeVal = parseFloat(emp.total_paid) || 0;
+      gbpVal    = toGBP(nativeVal, cur);
+      label     = nativeVal;
+    } else if (key === 'due') {
+      nativeVal = parseFloat(emp.salary_target ?? emp.annual_salary) || 0;
+      gbpVal    = toGBP(nativeVal, cur);
+    } else if (key === 'outstanding') {
+      nativeVal = parseFloat(emp.net_remaining) || 0;
+      gbpVal    = toGBP(nativeVal, cur);
+    } else { // bonuses
+      nativeVal = parseFloat(emp.total_bonuses) || 0;
+      gbpVal    = toGBP(nativeVal, cur);
+    }
+    return { emp, cur, nativeVal, gbpVal };
+  }).filter(r => Math.abs(r.nativeVal) > 0.005)
+    .sort((a, b) => Math.abs(b.gbpVal) - Math.abs(a.gbpVal));
+
+  const totalGBP = empRows.reduce((s, r) => s + r.gbpVal, 0);
+
+  const rowsHtml = empRows.map(({ emp, cur, nativeVal, gbpVal }) => {
+    const isNeg = nativeVal < 0;
+    const valColor = key === 'outstanding' ? (isNeg ? 'var(--positive)' : 'var(--negative)') : 'var(--text)';
+    const deductHtml = key === 'outstanding' ? (() => {
+      const od  = parseFloat(emp.total_office_deductions) || 0;
+      const ed  = parseFloat(emp.excess_deduction) || 0;
+      const paid = parseFloat(emp.total_paid) || 0;
+      const target = parseFloat(emp.salary_target ?? emp.annual_salary) || 0;
+      const parts = [];
+      if (paid > 0)  parts.push('<span style="color:var(--positive)">−' + fmtCur(paid, cur) + ' paid</span>');
+      if (od > 0)    parts.push('<span style="color:var(--negative)">−' + fmtCur(od, cur) + ' deductions</span>');
+      if (ed > 0)    parts.push('<span style="color:var(--negative)">−' + fmtCur(ed, cur) + ' excess days</span>');
+      return parts.length ? '<div style="font:500 10px/1.4 var(--font-mono);color:var(--muted);margin-top:3px">' + parts.join(' · ') + '</div>' : '';
+    })() : '';
+    return '<div style="display:flex;align-items:center;gap:12px;padding:11px 0;border-bottom:1px solid var(--border)">' +
+      '<div style="width:32px;height:32px;border-radius:50%;background:var(--primary);display:flex;align-items:center;justify-content:center;font:700 11px/1 var(--font-mono);color:#000;flex-shrink:0">' +
+        (emp.name||'?').split(' ').map(w=>w[0]).join('').slice(0,2).toUpperCase() +
+      '</div>' +
+      '<div style="flex:1;min-width:0">' +
+        '<div style="font:600 13px/1 var(--font-sans);color:var(--text)">' + esc(emp.name||'') + '</div>' +
+        '<div style="font:500 10px/1 var(--font-mono);color:var(--muted);margin-top:2px">' + esc(emp.job_title||emp.department||'') + '</div>' +
+        deductHtml +
+      '</div>' +
+      '<div style="text-align:right;flex-shrink:0">' +
+        '<div style="font:700 14px/1 var(--font-mono);color:' + valColor + '">' + (isNeg ? '−' : '') + fmtCur(nativeVal, cur) + '</div>' +
+        (cur !== 'GBP' ? '<div style="font:500 10px/1 var(--font-mono);color:var(--muted);margin-top:3px">≈ ' + fmtGBP(gbpVal) + ' GBP</div>' : '') +
+      '</div>' +
+    '</div>';
+  }).join('');
+
+  const modal = document.createElement('div');
+  modal.className = 'modal-overlay';
+  modal.innerHTML =
+    '<div class="modal" style="max-width:520px;max-height:80vh;display:flex;flex-direction:column">' +
+      '<div class="modal-header" style="flex-shrink:0">' +
+        '<h3 class="modal-title">' + titles[key] + '</h3>' +
+        '<button class="modal-close" onclick="this.closest(\'.modal-overlay\').remove()">×</button>' +
+      '</div>' +
+      '<div style="padding:0 20px 8px;flex-shrink:0">' +
+        '<div style="font:500 11px/1 var(--font-mono);color:var(--muted)">' + notes[key] + '</div>' +
+        (key === 'outstanding' ? '<div style="font:500 11px/1 var(--font-mono);color:var(--muted);margin-top:4px">Excludes bonuses · AED converted at 1 AED = ' + AED_TO_GBP.toFixed(4) + ' GBP</div>' : '') +
+      '</div>' +
+      '<div style="overflow-y:auto;padding:0 20px 8px;flex:1">' +
+        (rowsHtml || '<div style="color:var(--muted);padding:20px 0;font:500 12px/1 var(--font-mono)">No data.</div>') +
+      '</div>' +
+      '<div style="padding:16px 20px;border-top:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;flex-shrink:0;background:var(--surface)">' +
+        '<span style="font:600 11px/1 var(--font-mono);color:var(--muted)">TOTAL (' + empRows.length + ' employee' + (empRows.length !== 1 ? 's' : '') + ')</span>' +
+        '<span style="font:700 18px/1 var(--font-mono);color:var(--text)">' + fmtGBP(totalGBP) + '</span>' +
+      '</div>' +
+    '</div>';
+  modal.addEventListener('click', e => { if (e.target === modal) modal.remove(); });
+  document.body.appendChild(modal);
+  requestAnimationFrame(() => modal.classList.add('open'));
 }
 
 // ─── HR NOTES ─────────────────────────────────────────────────────────────────
@@ -2889,8 +3018,14 @@ function renderHotelTable() {
     const shStr   = r.staff_hotel != null ? `${fmtHotelNum(r.staff_hotel)}` : '—';
     const flStr   = r.flights    != null ? `${fmtHotelNum(r.flights)}` : '—';
     const prStr   = r.printing   != null ? `${fmtHotelNum(r.printing)}` : '—';
-    return `<tr class="${rowClass}" title="${esc(r.notes||'')}">
-      <td><strong>${esc(r.event_name)}</strong></td>
+    const hasNotes = !!(r.notes && r.notes.trim());
+    const chevron = '<span id="hotel-chev-'+r.id+'" style="font-size:10px;color:var(--muted);margin-left:4px;transition:transform .2s;display:inline-block">›</span>';
+    const notesContent = hasNotes
+      ? `<div style="font:600 9px/1 var(--font-mono);text-transform:uppercase;letter-spacing:1px;color:var(--muted);margin-bottom:6px">Notes</div><div style="font:500 12px/1.5 var(--font-mono);color:var(--text)">${esc(r.notes)}</div>`
+      : `<div style="font:500 12px/1.5 var(--font-mono);color:var(--dim);font-style:italic">No notes added</div>`;
+    const detailRow = `<tr id="hotel-detail-${r.id}" style="display:none"><td colspan="10" style="padding:0 20px 14px 20px;background:#0d1220;border-bottom:1px solid var(--border)">${notesContent}</td></tr>`;
+    return `<tr class="${rowClass}" style="cursor:pointer" onclick="toggleHotelDetail(${r.id})">
+      <td><strong>${esc(r.event_name)}</strong>${chevron}</td>
       <td style="font-size:0.82rem">${esc(r.hotel||'—')}</td>
       <td style="font-size:0.82rem;color:var(--text-2)">${esc(r.cost||'—')}</td>
       <td style="font-size:0.82rem">${avStr}</td>
@@ -2900,13 +3035,22 @@ function renderHotelTable() {
       <td style="font-size:0.82rem;color:var(--muted)">${prStr}</td>
       <td>${STATUS_BADGE[r.status] || ''}</td>
       <td>
-        <div style="display:flex;gap:4px">
+        <div style="display:flex;gap:4px" onclick="event.stopPropagation()">
           <button class="btn btn-ghost btn-sm" onclick="openHotelModal(${r.id})">Edit</button>
           <button class="btn btn-danger btn-sm" onclick="deleteHotelExpense(${r.id})">×</button>
         </div>
       </td>
-    </tr>`;
+    </tr>${detailRow}`;
   }).join('');
+}
+
+function toggleHotelDetail(id) {
+  const detail = document.getElementById('hotel-detail-' + id);
+  const chev   = document.getElementById('hotel-chev-' + id);
+  if (!detail) return;
+  const open = detail.style.display !== 'none';
+  detail.style.display = open ? 'none' : 'table-row';
+  if (chev) chev.style.transform = open ? '' : 'rotate(90deg)';
 }
 
 function openHotelModal(id) {
@@ -2987,13 +3131,12 @@ async function initEmployeePortal(user) {
   });
 
   // Hide non-allowed nav items
+  const EMP_PAGES = ['dashboard', 'calendar', 'portfolio'];
   document.querySelectorAll('.nav-item').forEach(el => {
-    const page = el.dataset.page;
-    if (page !== 'dashboard' && page !== 'calendar') el.style.display = 'none';
+    if (!EMP_PAGES.includes(el.dataset.page)) el.style.display = 'none';
   });
   document.querySelectorAll('.bottom-nav-item').forEach(el => {
-    const page = el.dataset.page;
-    if (page !== 'dashboard' && page !== 'calendar') el.style.display = 'none';
+    if (!EMP_PAGES.includes(el.dataset.page)) el.style.display = 'none';
   });
   const addEmpBtn = document.getElementById('addEmpBtn');
   if (addEmpBtn) addEmpBtn.style.display = 'none';
@@ -3002,14 +3145,15 @@ async function initEmployeePortal(user) {
 
   // Override navigate
   window.navigate = function(page) {
-    if (page !== 'dashboard' && page !== 'calendar') return;
+    if (!EMP_PAGES.includes(page)) return;
     document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
     document.querySelectorAll('.nav-item, .bottom-nav-item').forEach(n => n.classList.remove('active'));
     const pageEl = document.getElementById('page-' + page);
     if (pageEl) pageEl.classList.add('active');
     document.querySelectorAll('[data-page="' + page + '"]').forEach(n => n.classList.add('active'));
-    if (page === 'dashboard') loadEmployeeDashboard(user);
-    if (page === 'calendar') loadEmployeeCalendar();
+    if (page === 'dashboard')  loadEmployeeDashboard(user);
+    if (page === 'calendar')   loadEmployeeCalendar();
+    if (page === 'portfolio')  loadEmployeePortfolio();
   };
 
   // Attach click handlers since admin init was skipped
@@ -3116,12 +3260,14 @@ async function loadEmployeeDashboard(user) {
     const upcoming = upcomingRes.ok ? await upcomingRes.json() : [];
     const sal      = salaryRes.ok   ? await salaryRes.json()   : null;
 
-    const daysUsed  = parseFloat(profile.days_used) || 0;
-    const allowance = profile.allowance_days || 20;
-    const remaining = Math.max(0, allowance - daysUsed);
-    const pct       = Math.min(100, Math.round((daysUsed / allowance) * 100));
-    const initials  = (profile.name || '?').split(' ').map(w => w[0]).join('').slice(0,2).toUpperCase();
-    const barColor  = pct > 80 ? 'var(--negative)' : pct > 60 ? 'var(--warning)' : 'var(--positive)';
+    const daysUsed      = parseFloat(profile.days_used) || 0;
+    const allowance     = profile.allowance_days || 20;
+    const excessDays    = parseFloat(profile.excess_days) || 0;
+    const excessDeduct  = parseFloat(profile.excess_deduction) || 0;
+    const remaining     = Math.max(0, allowance - daysUsed);
+    const pct           = Math.min(100, Math.round((daysUsed / allowance) * 100));
+    const initials      = (profile.name || '?').split(' ').map(w => w[0]).join('').slice(0,2).toUpperCase();
+    const barColor      = pct > 80 ? 'var(--negative)' : pct > 60 ? 'var(--warning)' : 'var(--positive)';
     const MONS = ['JAN','FEB','MAR','APR','MAY','JUN','JUL','AUG','SEP','OCT','NOV','DEC'];
 
     let upcomingHtml = '';
@@ -3269,12 +3415,21 @@ async function loadEmployeeDashboard(user) {
             (profile.start_date ? '<div style="font:500 11px/1 var(--font-mono);color:var(--muted);margin-bottom:16px">Since ' + profile.start_date + '</div>' : '') +
             '<div style="font:600 10px/1 var(--font-mono);text-transform:uppercase;letter-spacing:1px;color:var(--muted);margin-bottom:8px">Days Off ' + (profile.year||new Date().getFullYear()) + '</div>' +
             '<div style="display:flex;justify-content:space-between;font:600 12px/1 var(--font-mono);color:var(--muted);margin-bottom:6px">' +
-              '<span>' + daysUsed + ' used</span><span style="color:' + barColor + '">' + remaining + ' remaining</span>' +
+              '<span>' + daysUsed + ' used</span>' +
+              (excessDays > 0
+                ? '<span style="color:var(--negative)">' + excessDays + ' excess day' + (excessDays !== 1 ? 's' : '') + '</span>'
+                : '<span style="color:' + barColor + '">' + remaining + ' remaining</span>') +
             '</div>' +
             '<div style="height:8px;background:var(--border);border-radius:4px;margin-bottom:8px">' +
               '<div style="height:100%;width:' + pct + '%;background:' + barColor + ';border-radius:4px"></div>' +
             '</div>' +
-            '<div style="font:500 11px/1 var(--font-mono);color:var(--muted)">' + daysUsed + ' / ' + allowance + ' days used &middot; ' + pct + '%</div>' +
+            '<div style="font:500 11px/1 var(--font-mono);color:var(--muted)">' + daysUsed + ' used · ' + allowance + ' allowed</div>' +
+            (excessDays > 0
+              ? '<div style="margin-top:8px;padding:8px 10px;background:rgba(239,68,68,0.08);border:1px solid rgba(239,68,68,0.2);border-radius:6px;font:500 10px/1.4 var(--font-mono);color:var(--negative)">' +
+                  excessDays + ' excess day' + (excessDays !== 1 ? 's' : '') + ' · ' +
+                  (excessDeduct > 0 ? '£' + excessDeduct.toLocaleString('en-GB',{minimumFractionDigits:2}) + ' deducted from salary' : 'deduction calculated at year end') +
+                '</div>'
+              : '') +
           '</div>' +
         '</div>' +
         // Upcoming reminders
@@ -3300,6 +3455,72 @@ async function loadEmployeeDashboard(user) {
 
   } catch(e) {
     el.innerHTML = '<div class="alert alert-error">Failed to load profile: ' + e.message + '</div>';
+  }
+}
+
+async function loadEmployeePortfolio() {
+  const page = document.getElementById('page-portfolio');
+  if (!page) return;
+  page.innerHTML = '<div class="skeleton" style="height:300px;border-radius:16px;margin:24px"></div>';
+
+  try {
+    const res = await fetch('/api/hotel-expenses');
+    const events = res.ok ? await res.json() : [];
+    const STATUS_COLOR = { paid: 'var(--positive)', partial: '#f59e0b', pending: 'var(--muted)' };
+    const STATUS_LABEL = { paid: 'Paid', partial: 'Partial', pending: 'Pending' };
+    const sortedEvents = [...events].sort((a, b) => (b.id - a.id));
+
+    const cards = sortedEvents.map(r => {
+      const sc = STATUS_COLOR[r.status] || 'var(--muted)';
+      const sl = STATUS_LABEL[r.status] || r.status;
+      const avSym  = r.av_currency === 'GBP' ? '£' : r.av_currency === 'USD' ? '$' : (r.av_currency || '') + ' ';
+      const paidSym = r.paid_currency === 'GBP' ? '£' : r.paid_currency === 'USD' ? '$' : (r.paid_currency || '') + ' ';
+      const rows = [
+        r.hotel     ? ['Hotel',       esc(r.hotel)]     : null,
+        r.cost      ? ['Room cost',   esc(r.cost)]      : null,
+        r.av_amount != null ? ['AV', avSym + parseFloat(r.av_amount).toLocaleString('en-GB') + (r.av_billing === 'included' ? ' (incl.)' : '')] : null,
+        r.paid_amount != null ? ['Paid so far', paidSym + parseFloat(r.paid_amount).toLocaleString('en-GB')] : null,
+        r.staff_hotel != null ? ['Staff hotel', parseFloat(r.staff_hotel).toLocaleString('en-GB')] : null,
+        r.flights    != null ? ['Flights',   parseFloat(r.flights).toLocaleString('en-GB')]    : null,
+        r.printing   != null ? ['Printing',  parseFloat(r.printing).toLocaleString('en-GB')]   : null,
+      ].filter(Boolean);
+
+      return '<div class="card" style="margin-bottom:12px">' +
+        '<div style="padding:16px 20px 12px;display:flex;justify-content:space-between;align-items:flex-start">' +
+          '<div>' +
+            '<div style="font:700 15px/1 var(--font-sans);color:var(--text)">' + esc(r.event_name) + '</div>' +
+            (r.hotel ? '<div style="font:500 11px/1 var(--font-mono);color:var(--muted);margin-top:4px">' + esc(r.hotel) + '</div>' : '') +
+          '</div>' +
+          '<span style="font:700 10px/1 var(--font-mono);color:' + sc + ';padding:4px 10px;border:1px solid ' + sc + ';border-radius:20px;opacity:.85">' + sl.toUpperCase() + '</span>' +
+        '</div>' +
+        (rows.length
+          ? '<div style="padding:0 20px 12px;display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:8px">' +
+              rows.map(([lbl, val]) =>
+                '<div style="background:#12172a;border-radius:8px;padding:8px 12px">' +
+                  '<div style="font:600 9px/1 var(--font-mono);text-transform:uppercase;letter-spacing:1px;color:var(--muted);margin-bottom:4px">' + lbl + '</div>' +
+                  '<div style="font:600 12px/1 var(--font-mono);color:var(--text)">' + val + '</div>' +
+                '</div>'
+              ).join('') +
+            '</div>'
+          : '') +
+        (r.notes
+          ? '<div style="padding:10px 20px 14px;font:500 11px/1.5 var(--font-mono);color:var(--muted);border-top:1px solid var(--border)">' + esc(r.notes) + '</div>'
+          : '') +
+      '</div>';
+    }).join('');
+
+    page.innerHTML =
+      '<div style="padding:24px">' +
+        '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px">' +
+          '<div>' +
+            '<h2 style="font:700 20px/1 var(--font-sans);color:var(--text);margin:0">My Portfolio</h2>' +
+            '<div style="font:500 11px/1 var(--font-mono);color:var(--muted);margin-top:6px">' + sortedEvents.length + ' events</div>' +
+          '</div>' +
+        '</div>' +
+        (cards || '<div style="color:var(--muted);font:500 12px/1 var(--font-mono);padding:20px 0">No events yet.</div>') +
+      '</div>';
+  } catch(e) {
+    page.innerHTML = '<div style="padding:24px"><div class="alert alert-error">Failed to load portfolio: ' + e.message + '</div></div>';
   }
 }
 
