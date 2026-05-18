@@ -49,7 +49,11 @@ document.addEventListener('DOMContentLoaded', async () => {
   // Check user role before initializing
   if (currentUser.role === 'employee') {
     await initEmployeePortal(currentUser);
-    return; // Don't run admin init
+    return;
+  }
+  if (currentUser.role === 'accounts') {
+    await initAccountsPortal(currentUser);
+    return;
   }
 
   const initials = currentUser.username.slice(0,2).toUpperCase();
@@ -77,6 +81,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   // Hamburger / drawer
   document.getElementById('hamburgerBtn')?.addEventListener('click', toggleMobileNav);
   document.getElementById('navOverlay')?.addEventListener('click', closeMobileNav);
+  initSidebarCollapse();
 
   document.getElementById('logoutBtn')?.addEventListener('click', async () => {
     await fetch('/api/logout', { method: 'POST' });
@@ -105,6 +110,19 @@ function closeMobileNav() {
   document.querySelector('.sidebar').classList.remove('open');
   document.getElementById('hamburgerBtn').classList.remove('open');
   document.getElementById('navOverlay').classList.remove('open');
+}
+
+// ─── SIDEBAR COLLAPSE ─────────────────────────────────────────────────────────
+function initSidebarCollapse() {
+  const sidebar = document.querySelector('.sidebar');
+  const btn = document.getElementById('sidebarCollapseBtn');
+  if (!sidebar || !btn) return;
+  const collapsed = localStorage.getItem('sidebarCollapsed') === '1';
+  if (collapsed) sidebar.classList.add('collapsed');
+  btn.addEventListener('click', () => {
+    const isNowCollapsed = sidebar.classList.toggle('collapsed');
+    localStorage.setItem('sidebarCollapsed', isNowCollapsed ? '1' : '0');
+  });
 }
 
 // ─── NAVIGATION ──────────────────────────────────────────────────────────────
@@ -3128,6 +3146,8 @@ async function checkUserRole() {
 async function initEmployeePortal(user) {
   window.currentUser = user;
 
+  initSidebarCollapse();
+
   // Wire logout
   document.getElementById('logoutBtn')?.addEventListener('click', async () => {
     await fetch('/api/logout', { method: 'POST' });
@@ -3174,6 +3194,120 @@ async function initEmployeePortal(user) {
 
   // Show dashboard
   window.navigate('dashboard');
+}
+
+// ─── ACCOUNTS PORTAL ─────────────────────────────────────────────────────────
+async function initAccountsPortal(user) {
+  window.currentUser = user;
+  initSidebarCollapse();
+
+  document.getElementById('logoutBtn')?.addEventListener('click', async () => {
+    await fetch('/api/logout', { method: 'POST' });
+    window.location.href = '/login.html';
+  });
+
+  const initials = user.username.slice(0,2).toUpperCase();
+  document.getElementById('userLabel').innerHTML =
+    '<div class="sidebar-user-pill"><div class="sidebar-user-avatar">' + esc(initials) + '</div>' +
+    '<span class="sidebar-user-name">' + esc(user.username) + '</span>' +
+    '<span class="sidebar-user-role" style="font:500 9px/1 var(--font-mono);color:var(--accent);text-transform:uppercase;letter-spacing:.5px">Accounts</span></div>';
+
+  document.title = 'LPGP – Accounts';
+
+  const ACC_PAGES = ['dashboard', 'calendar', 'deals'];
+
+  // Hide pages not allowed
+  document.querySelectorAll('.nav-item').forEach(el => {
+    if (!ACC_PAGES.includes(el.dataset.page)) el.style.display = 'none';
+  });
+  document.querySelectorAll('.nav-section-label').forEach(el => el.style.display = 'none');
+
+  window.navigate = function(page) {
+    if (!ACC_PAGES.includes(page)) return;
+    document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+    document.querySelectorAll('.nav-item, .bottom-nav-item').forEach(n => n.classList.remove('active'));
+    const pageEl = document.getElementById('page-' + page);
+    if (pageEl) pageEl.classList.add('active');
+    document.querySelectorAll('[data-page="' + page + '"]').forEach(n => n.classList.add('active'));
+    const titles = { dashboard: 'Accounts Dashboard', calendar: 'Calendar', deals: 'Deal Tracker' };
+    document.getElementById('pageTitle').textContent = titles[page] || page;
+    if (page === 'dashboard') loadAccountsDashboard(user);
+    if (page === 'calendar')  loadCalendar();
+    if (page === 'deals')     loadDealTracker();
+  };
+
+  document.querySelectorAll('.nav-item').forEach(el => {
+    el.addEventListener('click', () => { if (ACC_PAGES.includes(el.dataset.page)) window.navigate(el.dataset.page); });
+  });
+
+  window.navigate('dashboard');
+}
+
+async function loadAccountsDashboard(user) {
+  const page = document.getElementById('page-dashboard');
+  if (!page) return;
+  page.innerHTML = '<div style="padding:32px 24px"><div style="font:500 11px/1 var(--font-mono);color:var(--muted)">Loading…</div></div>';
+
+  let deals = [];
+  try {
+    const r = await fetch('/api/deal-tracker');
+    if (r.ok) deals = await r.json();
+  } catch(e) {}
+
+  const active = deals.filter(d => d.status !== 'cancelled');
+  const totalPaid  = active.reduce((s,d) => s + (parseFloat(d.paid_inc_vat)||0), 0);
+  const totalDeal  = active.reduce((s,d) => s + (parseFloat(d.deal_amount)||0), 0);
+  const outstanding = totalDeal - totalPaid;
+  const fmtAmt = v => '£' + v.toLocaleString('en-GB',{minimumFractionDigits:2,maximumFractionDigits:2});
+
+  let lastInv = '', nextInv = '';
+  let maxN = -1;
+  active.forEach(d => {
+    if (!d.invoice_number) return;
+    const m = String(d.invoice_number).match(/(\d+)\s*$/);
+    if (m) { const n = parseInt(m[1]); if (n > maxN) { maxN = n; lastInv = d.invoice_number; } }
+  });
+  if (maxN >= 0) nextInv = lastInv.replace(/\d+$/, String(maxN + 1));
+
+  const card = (label, val, color) =>
+    '<div style="flex:1;min-width:140px;background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:18px 20px">' +
+      '<div style="font:600 9px/1 var(--font-mono);color:var(--muted);letter-spacing:.5px;text-transform:uppercase;margin-bottom:8px">' + label + '</div>' +
+      '<div style="font:700 22px/1 var(--font-sans);color:' + (color||'var(--text)') + '">' + val + '</div>' +
+    '</div>';
+
+  const greeting = 'Good ' + (new Date().getHours() < 12 ? 'morning' : new Date().getHours() < 17 ? 'afternoon' : 'evening') + ', ' + user.username;
+
+  page.innerHTML =
+    '<div style="padding:28px 24px">' +
+      '<div style="margin-bottom:24px">' +
+        '<div style="font:700 20px/1.2 var(--font-sans);color:var(--text);margin-bottom:4px">' + esc(greeting) + '</div>' +
+        '<div style="font:500 11px/1 var(--font-mono);color:var(--muted)">Accounts overview · ' + active.length + ' active deal' + (active.length!==1?'s':'') + '</div>' +
+      '</div>' +
+
+      '<div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:20px">' +
+        card('Total Paid', fmtAmt(totalPaid), 'var(--positive)') +
+        card('Total Deal Value', fmtAmt(totalDeal)) +
+        card('Outstanding', fmtAmt(outstanding), outstanding > 0 ? 'var(--negative)' : 'var(--positive)') +
+        (lastInv ?
+          '<div style="flex:1;min-width:180px;background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:18px 20px">' +
+            '<div style="font:600 9px/1 var(--font-mono);color:var(--muted);letter-spacing:.5px;text-transform:uppercase;margin-bottom:8px">Last Invoice</div>' +
+            '<div style="font:600 12px/1.3 var(--font-mono);color:var(--text);word-break:break-all">' + esc(lastInv) + '</div>' +
+            '<div style="font:500 11px/1 var(--font-mono);color:var(--primary);margin-top:10px">Next → ' + esc(nextInv) + '</div>' +
+          '</div>'
+        : '') +
+      '</div>' +
+
+      '<div style="display:flex;gap:12px;flex-wrap:wrap">' +
+        '<button class="btn btn-primary" onclick="window.navigate(\'deals\')" style="gap:8px">' +
+          '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>' +
+          'Open Deal Tracker' +
+        '</button>' +
+        '<button class="btn btn-ghost" onclick="window.navigate(\'calendar\')" style="gap:8px">' +
+          '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>' +
+          'View Calendar' +
+        '</button>' +
+      '</div>' +
+    '</div>';
 }
 
 async function loadEmpNotifications() {
