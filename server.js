@@ -1613,6 +1613,29 @@ app.delete('/api/deal-tracker/:id', requireAuth, async (req, res) => {
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
 
+app.post('/api/deal-tracker/bulk', requireAuth, async (req, res) => {
+  try {
+    await ensureDb();
+    const { deals } = req.body;
+    if (!Array.isArray(deals) || !deals.length) return res.status(400).json({ error: 'No deals provided' });
+    let count = 0;
+    for (let i = 0; i < deals.length; i++) {
+      const d = deals[i];
+      if (!d.company) continue;
+      await q(
+        `INSERT INTO deal_tracker (month_label,company,paid_inc_vat,deal_amount,tax_vat,date_invoice_issued,date_paid,bank,invoice_number,notes,invoice_sent,signature_received,initials,row_color,sort_order,created_by)
+         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+        [d.month_label||'', d.company, d.paid_inc_vat||null, d.deal_amount||null, d.tax_vat||null,
+         d.date_invoice_issued||null, d.date_paid||null, d.bank||'', d.invoice_number||'', d.notes||'',
+         d.invoice_sent||'no', d.signature_received||'no', d.initials||'', d.row_color||'green',
+         i, req.user.id||null]
+      );
+      count++;
+    }
+    res.json({ ok: true, count });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
 // ─── GLOBAL ERROR HANDLER ────────────────────────────────────────────────────
 // Catches any unhandled async errors thrown in routes (e.g. DB failures)
 // eslint-disable-next-line no-unused-vars
