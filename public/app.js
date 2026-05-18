@@ -3538,6 +3538,21 @@ function renderDealTracker() {
   const totalVat   = active.reduce((s,r) => s + (parseFloat(r.tax_vat)||0), 0);
   const remaining  = totalDeal - totalPaid;
 
+  // Latest invoice number (scan all deals, not just filtered)
+  let _lastInvNum = '', _nextInvNum = '';
+  (function() {
+    let maxN = -1, maxRaw = '';
+    _dealData.forEach(r => {
+      if (!r.invoice_number) return;
+      const m = String(r.invoice_number).match(/(\d+)\s*$/);
+      if (m) { const n = parseInt(m[1]); if (n > maxN) { maxN = n; maxRaw = r.invoice_number; } }
+    });
+    if (maxN >= 0) {
+      _lastInvNum = maxRaw;
+      _nextInvNum = maxRaw.replace(/\d+$/, String(maxN + 1));
+    }
+  })();
+
   const colW = ['80px','200px','110px','110px','90px','90px','90px','90px','160px','200px','90px','80px','55px'];
   const colH = ['Month','Company','Paid inc VAT','Deal','Tax/VAT','Invoice Date','Date Paid','Bank','Invoice Number','Notes','Sent','Signed','Init'];
   const headerCols =
@@ -3609,6 +3624,13 @@ function renderDealTracker() {
         '<div style="font:600 9px/1 var(--font-mono);color:var(--muted);letter-spacing:.5px;text-transform:uppercase;margin-bottom:6px">Remaining</div>' +
         '<div style="font:700 18px/1 var(--font-sans);color:' + (remaining > 0 ? 'var(--negative)' : 'var(--positive)') + '">' + fmtTotal(remaining) + '</div>' +
       '</div>' +
+      (_lastInvNum ? (
+        '<div style="flex:1;min-width:180px;background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:14px 16px">' +
+          '<div style="font:600 9px/1 var(--font-mono);color:var(--muted);letter-spacing:.5px;text-transform:uppercase;margin-bottom:6px">Last Invoice</div>' +
+          '<div style="font:600 11px/1.3 var(--font-mono);color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="' + esc(_lastInvNum) + '">' + esc(_lastInvNum) + '</div>' +
+          '<div style="font:500 10px/1 var(--font-mono);color:var(--primary);margin-top:8px">Next → ' + esc(_nextInvNum) + '</div>' +
+        '</div>'
+      ) : '') +
     '</div>' +
 
     // Filter bar
