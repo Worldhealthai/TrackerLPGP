@@ -1330,8 +1330,9 @@ async function loadAdmins() {
   const adminCount = admins.length;
   const adminRoleCount = admins.filter(a => a.role === 'admin').length;
   const managerCount = admins.filter(a => a.role === 'manager').length;
+  const accountsCount = admins.filter(a => a.role === 'accounts').length;
   const adminSub = document.getElementById('adminSub');
-  if (adminSub) adminSub.textContent = `// ${adminCount} account${adminCount !== 1 ? 's' : ''} · ${adminRoleCount} admin · ${managerCount} manager`;
+  if (adminSub) adminSub.textContent = `// ${adminCount} account${adminCount !== 1 ? 's' : ''} · ${adminRoleCount} admin · ${managerCount} manager` + (accountsCount ? ` · ${accountsCount} accounts` : '');
 
   const tbody = document.getElementById('adminTable');
   tbody.innerHTML = '';
@@ -1345,7 +1346,7 @@ async function loadAdmins() {
           <strong>${esc(a.username)}</strong>
         </div>
       </td>
-      <td><span class="badge ${a.role==='admin'?'badge-green':'badge-blue'}">${a.role.toUpperCase()}</span></td>
+      <td><span class="badge ${a.role==='admin'?'badge-green':a.role==='accounts'?'badge-teal':'badge-blue'}">${a.role.toUpperCase()}</span></td>
       <td>${a.created_at.slice(0,10)}</td>
       <td style="text-align:right">
         <button class="btn btn-ghost btn-sm" onclick="resetPw(${a.id})">Reset PW</button>
