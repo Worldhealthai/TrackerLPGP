@@ -450,7 +450,7 @@ app.get('/api/employee/profile', requireAuth, async (req, res) => {
   const year = new Date().getFullYear();
   const allowance = DAY_OFF_ALLOWANCE[emp.employment_type] || 20;
   const calc = await calcExcessDeductions(empId, year, parseFloat(emp.annual_salary) || 0, allowance);
-  res.json({ ...emp, year, days_used: calc.total_days_off, allowance_days: allowance, excess_days: calc.excess_days });
+  res.json({ ...emp, year, days_used: calc.total_days_off, allowance_days: allowance, excess_days: calc.excess_days, excess_deduction: calc.excess_deduction });
 });
 
 // Employee: own calendar records for a month
