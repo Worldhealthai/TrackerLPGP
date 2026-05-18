@@ -3254,14 +3254,14 @@ async function loadEmployeeDashboard(user) {
   el.innerHTML = '<div class="skeleton" style="height:200px;border-radius:16px"></div>';
 
   try {
-    const [profileRes, upcomingRes, salaryRes] = await Promise.all([
+    const [profileRes, remindersRes, salaryRes] = await Promise.all([
       fetch('/api/employee/profile'),
-      fetch('/api/calendar-reminders/upcoming?days=30'),
+      fetch('/api/employee/reminders'),
       fetch('/api/employee/salary')
     ]);
-    const profile  = profileRes.ok  ? await profileRes.json()  : {};
-    const upcoming = upcomingRes.ok ? await upcomingRes.json() : [];
-    const sal      = salaryRes.ok   ? await salaryRes.json()   : null;
+    const profile   = profileRes.ok   ? await profileRes.json()   : {};
+    const reminders = remindersRes.ok  ? await remindersRes.json() : [];
+    const sal       = salaryRes.ok    ? await salaryRes.json()    : null;
 
     const daysUsed      = parseFloat(profile.days_used) || 0;
     const allowance     = profile.allowance_days || 20;
@@ -3273,22 +3273,31 @@ async function loadEmployeeDashboard(user) {
     const barColor      = pct > 80 ? 'var(--negative)' : pct > 60 ? 'var(--warning)' : 'var(--positive)';
     const MONS = ['JAN','FEB','MAR','APR','MAY','JUN','JUL','AUG','SEP','OCT','NOV','DEC'];
 
-    let upcomingHtml = '';
-    if (upcoming.length) {
-      upcomingHtml = upcoming.slice(0,4).map(r => {
-        const d = new Date(r.virtual_date);
-        const sym = r.currency === 'GBP' ? '£' : r.currency === 'USD' ? '$' : (r.currency + ' ');
-        const amt = r.amount ? sym + parseFloat(r.amount).toLocaleString('en-GB',{maximumFractionDigits:0}) : '';
-        return '<div style="display:flex;gap:12px;padding:11px 0;border-bottom:1px solid var(--border);align-items:center">' +
-          '<div style="width:38px;min-width:38px;text-align:center;background:#1a1f2e;border:1px solid var(--border);border-radius:7px;padding:6px 0">' +
-            '<div style="font:800 14px/1 var(--font-mono);color:var(--text)">' + d.getUTCDate() + '</div>' +
-            '<div style="font:600 9px/1 var(--font-mono);color:var(--muted);margin-top:3px">' + MONS[d.getUTCMonth()] + '</div>' +
+    window._empReminders = reminders;
+    function remindersCardHtml() {
+      const pending = (window._empReminders||[]).filter(r => !r.is_done);
+      const done    = (window._empReminders||[]).filter(r => r.is_done);
+      const fmtDate = d => { if (!d) return ''; const dt = new Date(d+'T12:00:00'); return dt.toLocaleDateString('en-GB',{day:'numeric',month:'short'}); };
+      const itemHtml = r => {
+        const isPast = r.reminder_date && r.reminder_date.slice(0,10) < new Date().toLocaleDateString('en-CA');
+        return '<div style="display:flex;align-items:center;gap:10px;padding:9px 0;border-bottom:1px solid var(--border)">' +
+          '<div onclick="empToggleReminder(' + r.id + ')" style="width:18px;height:18px;border:2px solid ' + (r.is_done?'var(--primary)':'var(--border)') + ';border-radius:4px;flex-shrink:0;cursor:pointer;display:flex;align-items:center;justify-content:center;background:' + (r.is_done?'var(--primary)':'transparent') + '">' +
+            (r.is_done ? '<svg width="10" height="10" viewBox="0 0 12 12" fill="none" stroke="#fff" stroke-width="2.5" stroke-linecap="round"><polyline points="2,6 5,9 10,3"/></svg>' : '') +
           '</div>' +
-          '<div style="flex:1"><div style="font:600 12px/1 var(--font-sans);color:var(--text)">' + esc(r.title) + '</div>' +
-            '<div style="font:600 10px/1 var(--font-mono);color:var(--muted);margin-top:4px">' + (r.category||'').toUpperCase() + '</div></div>' +
-          (amt ? '<div style="font:700 12px/1 var(--font-mono);color:var(--text)">' + amt + '</div>' : '') +
+          '<div style="flex:1;min-width:0">' +
+            '<div style="font:600 13px/1 var(--font-sans);color:' + (r.is_done?'var(--dim)':'var(--text)') + ';' + (r.is_done?'text-decoration:line-through':'') + ';white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + esc(r.title) + '</div>' +
+            (r.reminder_date ? '<div style="font:500 10px/1 var(--font-mono);color:' + (isPast&&!r.is_done?'var(--negative)':'var(--muted)') + ';margin-top:3px">' + fmtDate(r.reminder_date) + (isPast&&!r.is_done?' · overdue':'') + '</div>' : '') +
+          '</div>' +
+          '<button onclick="empDeleteReminder(' + r.id + ')" style="background:none;border:none;color:var(--dim);cursor:pointer;font-size:14px;padding:2px 4px;flex-shrink:0">×</button>' +
         '</div>';
-      }).join('');
+      };
+      const listHtml = pending.map(itemHtml).join('') + (done.length ? '<div style="font:600 9px/1 var(--font-mono);color:var(--dim);letter-spacing:.5px;margin:10px 0 4px">COMPLETED</div>' + done.slice(0,3).map(itemHtml).join('') : '');
+      return '<div id="empRemindersList">' + (listHtml || '<div style="color:var(--muted);font:500 12px/1.5 var(--font-mono);padding:12px 0;text-align:center">No reminders yet.<br>Add one below.</div>') + '</div>' +
+        '<div style="display:flex;gap:8px;margin-top:12px;padding-top:12px;border-top:1px solid var(--border)">' +
+          '<input id="empReminderInput" class="form-control" style="flex:1;font-size:12px;padding:7px 10px" placeholder="Add a reminder..." onkeydown="if(event.keyCode===13)empAddReminder()">' +
+          '<input id="empReminderDate" class="form-control" type="date" style="width:130px;font-size:12px;padding:7px 8px">' +
+          '<button class="btn btn-primary btn-sm" onclick="empAddReminder()">+</button>' +
+        '</div>';
     }
 
     // ── Salary card HTML (employee read-only view) ──
@@ -3435,10 +3444,12 @@ async function loadEmployeeDashboard(user) {
               : '') +
           '</div>' +
         '</div>' +
-        // Upcoming reminders
-        '<div class="card">' +
-          '<div class="card-header"><span class="card-title">Upcoming</span><span style="font:700 11px/1 var(--font-mono);color:var(--muted)">NEXT 30D</span></div>' +
-          '<div style="padding:4px 18px 12px">' + (upcomingHtml || '<div style="color:var(--muted);font-size:0.82rem;padding:16px 0">No upcoming reminders</div>') + '</div>' +
+        // My Reminders card
+        '<div class="card" id="empRemindersCard">' +
+          '<div class="card-header"><span class="card-title">My Reminders</span>' +
+            '<span style="font:700 11px/1 var(--font-mono);color:var(--muted)">' + ((window._empReminders||[]).filter(r=>!r.is_done).length||'') + (((window._empReminders||[]).filter(r=>!r.is_done).length) ? ' pending' : 'PERSONAL') + '</span>' +
+          '</div>' +
+          '<div style="padding:4px 18px 14px">' + remindersCardHtml() + '</div>' +
         '</div>' +
       '</div>' +
       salHtml;
@@ -3459,6 +3470,82 @@ async function loadEmployeeDashboard(user) {
   } catch(e) {
     el.innerHTML = '<div class="alert alert-error">Failed to load profile: ' + e.message + '</div>';
   }
+}
+
+// ─── EMPLOYEE REMINDERS ───────────────────────────────────────────────────────
+async function empToggleReminder(id) {
+  try {
+    await fetch('/api/employee/reminders/' + id + '/done', { method: 'PATCH' });
+    const res = await fetch('/api/employee/reminders');
+    window._empReminders = res.ok ? await res.json() : window._empReminders;
+    const card = document.getElementById('empRemindersCard');
+    if (card) {
+      const inner = card.querySelector('[style*="padding:4px"]');
+      if (inner) inner.innerHTML = empRemindersHtmlStandalone();
+    }
+  } catch(e) { console.warn('Toggle reminder failed', e); }
+}
+
+async function empDeleteReminder(id) {
+  try {
+    await fetch('/api/employee/reminders/' + id, { method: 'DELETE' });
+    const res = await fetch('/api/employee/reminders');
+    window._empReminders = res.ok ? await res.json() : (window._empReminders||[]).filter(r => r.id !== id);
+    const card = document.getElementById('empRemindersCard');
+    if (card) {
+      const inner = card.querySelector('[style*="padding:4px"]');
+      if (inner) inner.innerHTML = empRemindersHtmlStandalone();
+    }
+  } catch(e) { console.warn('Delete reminder failed', e); }
+}
+
+async function empAddReminder() {
+  const inp = document.getElementById('empReminderInput');
+  const dt  = document.getElementById('empReminderDate');
+  if (!inp || !inp.value.trim()) return;
+  try {
+    await fetch('/api/employee/reminders', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ title: inp.value.trim(), reminder_date: dt ? dt.value || null : null })
+    });
+    if (inp) inp.value = '';
+    if (dt)  dt.value  = '';
+    const res = await fetch('/api/employee/reminders');
+    window._empReminders = res.ok ? await res.json() : window._empReminders;
+    const card = document.getElementById('empRemindersCard');
+    if (card) {
+      const inner = card.querySelector('[style*="padding:4px"]');
+      if (inner) inner.innerHTML = empRemindersHtmlStandalone();
+    }
+  } catch(e) { console.warn('Add reminder failed', e); }
+}
+
+function empRemindersHtmlStandalone() {
+  const reminders = window._empReminders || [];
+  const pending = reminders.filter(r => !r.is_done);
+  const done    = reminders.filter(r => r.is_done);
+  const fmtDate = d => { if (!d) return ''; const dt = new Date(d+'T12:00:00'); return dt.toLocaleDateString('en-GB',{day:'numeric',month:'short'}); };
+  const itemHtml = r => {
+    const isPast = r.reminder_date && r.reminder_date.slice(0,10) < new Date().toLocaleDateString('en-CA');
+    return '<div style="display:flex;align-items:center;gap:10px;padding:9px 0;border-bottom:1px solid var(--border)">' +
+      '<div onclick="empToggleReminder(' + r.id + ')" style="width:18px;height:18px;border:2px solid ' + (r.is_done?'var(--primary)':'var(--border)') + ';border-radius:4px;flex-shrink:0;cursor:pointer;display:flex;align-items:center;justify-content:center;background:' + (r.is_done?'var(--primary)':'transparent') + '">' +
+        (r.is_done ? '<svg width="10" height="10" viewBox="0 0 12 12" fill="none" stroke="#fff" stroke-width="2.5" stroke-linecap="round"><polyline points="2,6 5,9 10,3"/></svg>' : '') +
+      '</div>' +
+      '<div style="flex:1;min-width:0">' +
+        '<div style="font:600 13px/1 var(--font-sans);color:' + (r.is_done?'var(--dim)':'var(--text)') + ';' + (r.is_done?'text-decoration:line-through':'') + ';white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + esc(r.title) + '</div>' +
+        (r.reminder_date ? '<div style="font:500 10px/1 var(--font-mono);color:' + (isPast&&!r.is_done?'var(--negative)':'var(--muted)') + ';margin-top:3px">' + fmtDate(r.reminder_date) + (isPast&&!r.is_done?' · overdue':'') + '</div>' : '') +
+      '</div>' +
+      '<button onclick="empDeleteReminder(' + r.id + ')" style="background:none;border:none;color:var(--dim);cursor:pointer;font-size:14px;padding:2px 4px;flex-shrink:0">×</button>' +
+    '</div>';
+  };
+  const listHtml = pending.map(itemHtml).join('') + (done.length ? '<div style="font:600 9px/1 var(--font-mono);color:var(--dim);letter-spacing:.5px;margin:10px 0 4px">COMPLETED</div>' + done.slice(0,3).map(itemHtml).join('') : '');
+  return '<div id="empRemindersList">' + (listHtml || '<div style="color:var(--muted);font:500 12px/1.5 var(--font-mono);padding:12px 0;text-align:center">No reminders yet.<br>Add one below.</div>') + '</div>' +
+    '<div style="display:flex;gap:8px;margin-top:12px;padding-top:12px;border-top:1px solid var(--border)">' +
+      '<input id="empReminderInput" class="form-control" style="flex:1;font-size:12px;padding:7px 10px" placeholder="Add a reminder..." onkeydown="if(event.keyCode===13)empAddReminder()">' +
+      '<input id="empReminderDate" class="form-control" type="date" style="width:130px;font-size:12px;padding:7px 8px">' +
+      '<button class="btn btn-primary btn-sm" onclick="empAddReminder()">+</button>' +
+    '</div>';
 }
 
 // ─── ADMIN STAFF PORTFOLIO ────────────────────────────────────────────────────
