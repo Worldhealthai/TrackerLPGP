@@ -1536,7 +1536,7 @@ async function loadSalaryPage() {
       return sum + (g.currency === 'AED' ? v * AED_TO_GBP : v);
     }, 0);
     const totalBonusGBP = groups.reduce((sum, g) => {
-      const v = g.rows.reduce((a, b) => a + (parseFloat(b.bonus_total) || 0), 0);
+      const v = g.rows.reduce((a, b) => a + (parseFloat(b.total_bonuses) || 0), 0);
       return sum + (g.currency === 'AED' ? v * AED_TO_GBP : v);
     }, 0);
     const paidPct = totalDueGBP > 0 ? (totalPaidGBP / totalDueGBP * 100) : 0;
@@ -1554,7 +1554,7 @@ async function loadSalaryPage() {
 
     const statBox = (label, value, sub, subColor, key) =>
       '<div style="background:var(--surface);padding:20px 24px;display:flex;flex-direction:column;gap:12px;cursor:pointer;transition:background .15s" ' +
-        'onmouseenter="this.style.background=\'#12172a\'" onmouseleave="this.style.background=\'var(--surface)\'" ' +
+        'onmouseenter="this.style.background=\'var(--surface-2)\'" onmouseleave="this.style.background=\'var(--surface)\'" ' +
         'onclick="showSalaryBreakdown(\'' + key + '\')">' +
         '<div style="font:600 10px/1 var(--font-mono);text-transform:uppercase;letter-spacing:1.2px;color:var(--muted)">' + label + '</div>' +
         '<div style="font:700 32px/1 var(--font-mono);color:' + (key === 'outstanding' ? outstandingColor : 'var(--text)') + ';letter-spacing:-1.5px">' + value + '</div>' +
@@ -1562,10 +1562,10 @@ async function loadSalaryPage() {
       '</div>';
 
     salaryTotalsEl.innerHTML =
-      statBox('Paid YTD',     fmtGBP(totalPaidGBP),               paidPct.toFixed(0) + '% of target',  'var(--positive)', 'paid') +
-      statBox('Due YTD',      fmtGBP(totalDueGBP),                'salary target ' + year,              'var(--muted)',    'due') +
-      statBox('Outstanding',  fmtGBP(Math.abs(totalOutstandingGBP)), unpaidLabel,                        'var(--muted)',    'outstanding') +
-      statBox('Bonuses YTD',  fmtGBP(totalBonusGBP),              'across all staff',                   'var(--muted)',    'bonuses');
+      statBox('Total Salaries ' + year, fmtGBP(totalDueGBP),                'annual target · click for breakdown',  'var(--muted)',    'due') +
+      statBox('Total Paid',             fmtGBP(totalPaidGBP),                paidPct.toFixed(0) + '% of target',     'var(--positive)', 'paid') +
+      statBox('Outstanding',            fmtGBP(Math.abs(totalOutstandingGBP)), unpaidLabel,                           'var(--muted)',    'outstanding') +
+      statBox('Total Bonuses',          fmtGBP(totalBonusGBP),               totalBonusGBP > 0 ? 'across all staff' : 'none logged yet', 'var(--muted)', 'bonuses');
 
     // ── Per-employee cards ──
     if (!rows.length) {
@@ -1981,8 +1981,8 @@ function showSalaryBreakdown(key) {
   };
   const toGBP = (v, cur) => cur === 'AED' ? v * AED_TO_GBP : v;
 
-  const titles = { paid: 'Paid YTD', due: 'Due YTD (Salary Target)', outstanding: 'Outstanding Balance', bonuses: 'Bonuses YTD' };
-  const notes  = { paid: 'Actual payments logged', due: 'Net salary target incl. PAYE/NI deductions', outstanding: 'Net remaining after payments & deductions (excl. bonuses)', bonuses: 'Bonus payments logged' };
+  const titles = { paid: 'Total Paid — Breakdown', due: 'Total Salaries — Breakdown', outstanding: 'Outstanding Balance — Breakdown', bonuses: 'Total Bonuses — Breakdown' };
+  const notes  = { paid: 'Payments logged this year per employee', due: 'Net annual salary target incl. PAYE/NI deductions', outstanding: 'Remaining balance after payments & deductions (excl. bonuses)', bonuses: 'Bonus payments logged per employee' };
 
   // Build per-employee rows
   const empRows = rows.map(emp => {
