@@ -42,6 +42,7 @@ async function runLateMigrations() {
       created_at TIMESTAMPTZ DEFAULT NOW()
     )`,
     `ALTER TABLE deal_tracker ADD COLUMN IF NOT EXISTS status TEXT DEFAULT 'active'`,
+    `ALTER TABLE deal_tracker ADD COLUMN IF NOT EXISTS is_flagged BOOLEAN DEFAULT FALSE`,
   ];
   for (const step of steps) {
     try { await sql(step); } catch(e) { console.warn('Migration step skipped:', e.message); }
@@ -1612,6 +1613,16 @@ app.delete('/api/deal-tracker/:id', requireAuth, async (req, res) => {
     await ensureDb();
     await q('DELETE FROM deal_tracker WHERE id=?', [req.params.id]);
     res.json({ ok: true });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+app.patch('/api/deal-tracker/:id/flag', requireAuth, async (req, res) => {
+  try {
+    await ensureDb();
+    const { is_flagged } = req.body;
+    const { rows } = await q('UPDATE deal_tracker SET is_flagged=? WHERE id=? RETURNING *', [!!is_flagged, req.params.id]);
+    if (!rows.length) return res.status(404).json({ error: 'not found' });
+    res.json(rows[0]);
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
 
