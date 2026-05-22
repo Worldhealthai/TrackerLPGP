@@ -71,6 +71,22 @@ async function runMigrations() {
 
   await sql(`ALTER TABLE employees ADD COLUMN IF NOT EXISTS portal_pin TEXT DEFAULT NULL`);
 
+  await sql(`ALTER TABLE admins ADD COLUMN IF NOT EXISTS email TEXT DEFAULT NULL`);
+
+  await sql(`
+    CREATE TABLE IF NOT EXISTS holiday_requests (
+      id SERIAL PRIMARY KEY,
+      employee_id INT NOT NULL REFERENCES employees(id) ON DELETE CASCADE,
+      request_date DATE NOT NULL,
+      day_type TEXT NOT NULL DEFAULT 'full' CHECK (day_type IN ('full','half')),
+      note TEXT DEFAULT '',
+      status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending','approved','denied')),
+      reviewed_by INT REFERENCES admins(id) ON DELETE SET NULL,
+      reviewed_at TIMESTAMPTZ,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `);
+
   await sql(`
     CREATE TABLE IF NOT EXISTS daily_records (
       id SERIAL PRIMARY KEY,

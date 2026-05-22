@@ -3,7 +3,31 @@ const cookieParser = require('cookie-parser');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const path = require('path');
+const nodemailer = require('nodemailer');
 const { sql, initDb } = require('./database');
+
+// Email transporter — configured via env vars; silently disabled if not set
+function createMailTransport() {
+  if (!process.env.SMTP_HOST) return null;
+  return nodemailer.createTransport({
+    host: process.env.SMTP_HOST,
+    port: parseInt(process.env.SMTP_PORT || '587'),
+    secure: process.env.SMTP_SECURE === 'true',
+    auth: { user: process.env.SMTP_USER, pass: process.env.SMTP_PASS }
+  });
+}
+
+async function sendAdminEmail(subject, html) {
+  const to = process.env.ADMIN_EMAIL;
+  if (!to) return;
+  try {
+    const transport = createMailTransport();
+    if (!transport) return;
+    await transport.sendMail({ from: process.env.SMTP_FROM || process.env.SMTP_USER, to, subject, html });
+  } catch (e) {
+    console.warn('Email send failed:', e.message);
+  }
+}
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -1160,17 +1184,129 @@ app.post('/api/portal/auth', async (req, res) => {
 app.post('/api/portal/holiday-request', async (req, res) => {
   try {
     const { employee_id, pin, date, type, note } = req.body;
-    const { rows } = await q('SELECT id, portal_pin FROM employees WHERE id = ? AND active = true', [employee_id]);
-    const emp = rows[0];
+    const { rows: empRows } = await q('SELECT id, name, portal_pin FROM employees WHERE id = ? AND active = true', [employee_id]);
+    const emp = empRows[0];
     if (!emp || String(emp.portal_pin) !== String(pin).trim()) return res.status(401).json({ error: 'Invalid credentials' });
-    const dayOff = type === 'half' ? 0.5 : 1;
+    // Check for duplicate pending/approved request for same date
+    const { rows: existing } = await q(
+      `SELECT id FROM holiday_requests WHERE employee_id = ? AND request_date = ? AND status IN ('pending','approved')`,
+      [employee_id, date]
+    );
+    if (existing.length > 0) return res.status(409).json({ error: 'A request for this date already exists.' });
+    await q(
+      `INSERT INTO holiday_requests (employee_id, request_date, day_type, note) VALUES (?, ?, ?, ?)`,
+      [employee_id, date, type === 'half' ? 'half' : 'full', note || '']
+    );
+    // Send admin email notification
+    await sendAdminEmail(
+      `Holiday Request: ${emp.name}`,
+      `<p><strong>${emp.name}</strong> has requested a day off.</p>
+       <p><strong>Date:</strong> ${date}<br><strong>Type:</strong> ${type === 'half' ? 'Half Day' : 'Full Day'}<br><strong>Note:</strong> ${note || '—'}</p>
+       <p>Log in to EmpTracker to approve or deny this request.</p>`
+    );
+    res.json({ success: true });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// ─── Holiday Requests (admin) ────────────────────────────────────────────────
+
+app.get('/api/holiday-requests', requireAuth, async (req, res) => {
+  try {
+    const status = req.query.status || 'pending';
+    const { rows } = await q(
+      `SELECT hr.id, hr.employee_id, e.name AS employee_name, hr.request_date, hr.day_type, hr.note,
+              hr.status, hr.reviewed_by, hr.reviewed_at, hr.created_at
+       FROM holiday_requests hr
+       JOIN employees e ON e.id = hr.employee_id
+       WHERE hr.status = ?
+       ORDER BY hr.created_at DESC`,
+      [status]
+    );
+    res.json(rows);
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.get('/api/holiday-requests/count', requireAuth, async (req, res) => {
+  try {
+    const { rows } = await q(`SELECT COUNT(*) AS c FROM holiday_requests WHERE status = 'pending'`);
+    res.json({ count: parseInt(rows[0].c) });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.put('/api/holiday-requests/:id/approve', requireAuth, async (req, res) => {
+  try {
+    const { rows: hrRows } = await q('SELECT * FROM holiday_requests WHERE id = ?', [req.params.id]);
+    const hr = hrRows[0];
+    if (!hr) return res.status(404).json({ error: 'Request not found' });
+    if (hr.status !== 'pending') return res.status(400).json({ error: 'Request already reviewed' });
+    const dayOff = hr.day_type === 'half' ? 0.5 : 1;
     await q(
       `INSERT INTO daily_records (employee_id, record_date, is_day_off, notes)
        VALUES (?, ?, ?, ?)
        ON CONFLICT (employee_id, record_date) DO UPDATE SET is_day_off = EXCLUDED.is_day_off, notes = EXCLUDED.notes`,
-      [employee_id, date, dayOff, note || 'Portal request']
+      [hr.employee_id, hr.request_date, dayOff, hr.note || 'Portal request (approved)']
+    );
+    await q(
+      `UPDATE holiday_requests SET status = 'approved', reviewed_by = ?, reviewed_at = NOW() WHERE id = ?`,
+      [req.admin.id, req.params.id]
     );
     res.json({ success: true });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.put('/api/holiday-requests/:id/deny', requireAuth, async (req, res) => {
+  try {
+    const { rows: hrRows } = await q('SELECT * FROM holiday_requests WHERE id = ?', [req.params.id]);
+    const hr = hrRows[0];
+    if (!hr) return res.status(404).json({ error: 'Request not found' });
+    if (hr.status !== 'pending') return res.status(400).json({ error: 'Request already reviewed' });
+    await q(
+      `UPDATE holiday_requests SET status = 'denied', reviewed_by = ?, reviewed_at = NOW() WHERE id = ?`,
+      [req.admin.id, req.params.id]
+    );
+    res.json({ success: true });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// ─── Portal calendar (no admin reminders — days off only) ────────────────────
+
+app.get('/api/portal/calendar', async (req, res) => {
+  try {
+    const { employee_id, pin, year, month } = req.query;
+    if (!employee_id || !pin) return res.status(401).json({ error: 'Authentication required' });
+    const { rows: empRows } = await q('SELECT id, portal_pin FROM employees WHERE id = ? AND active = true', [employee_id]);
+    const emp = empRows[0];
+    if (!emp || String(emp.portal_pin) !== String(pin).trim()) return res.status(401).json({ error: 'Invalid credentials' });
+    const y = parseInt(year) || new Date().getFullYear();
+    const m = parseInt(month);
+    const allYear = !m || isNaN(m);
+    // All days off for all employees in the requested month (or full year)
+    const { rows: daysOff } = allYear
+      ? await q(
+          `SELECT dr.employee_id, e.name AS employee_name, dr.record_date::TEXT AS record_date, dr.is_day_off
+           FROM daily_records dr
+           JOIN employees e ON e.id = dr.employee_id
+           WHERE dr.is_day_off > 0 AND EXTRACT(YEAR FROM dr.record_date) = ?
+           ORDER BY dr.record_date`, [y])
+      : await q(
+          `SELECT dr.employee_id, e.name AS employee_name, dr.record_date::TEXT AS record_date, dr.is_day_off
+           FROM daily_records dr
+           JOIN employees e ON e.id = dr.employee_id
+           WHERE dr.is_day_off > 0
+             AND EXTRACT(YEAR FROM dr.record_date) = ?
+             AND EXTRACT(MONTH FROM dr.record_date) = ?
+           ORDER BY dr.record_date`,
+          [y, m]);
+    // Upcoming days off for all employees (next 60 days)
+    const { rows: upcoming } = await q(
+      `SELECT dr.employee_id, e.name AS employee_name, dr.record_date::TEXT AS record_date, dr.is_day_off
+       FROM daily_records dr
+       JOIN employees e ON e.id = dr.employee_id
+       WHERE dr.is_day_off > 0 AND dr.record_date >= CURRENT_DATE
+       ORDER BY dr.record_date
+       LIMIT 20`
+    );
+    res.json({ days_off: daysOff, upcoming });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 

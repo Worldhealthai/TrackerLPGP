@@ -87,6 +87,13 @@ document.addEventListener('DOMContentLoaded', async () => {
   await loadEmployees();
   loadDashboard();
 
+  // Notification bell — admin only
+  if (currentUser.role === 'admin') {
+    document.getElementById('notifBellWrap').style.display = 'block';
+    refreshNotifBadge();
+    setInterval(refreshNotifBadge, 60000);
+  }
+
   // Initial badge — silent, non-blocking
   fetch(`/api/salary-overview?year=${new Date().getFullYear()}`)
     .then(r => r.ok ? r.json() : [])
@@ -2578,4 +2585,66 @@ async function deleteHotelExpense(id) {
   if (!res.ok) { showToast('Delete failed', 'error'); return; }
   showToast('Deleted', 'success');
   loadHotelExpenses();
+}
+
+// ─── HOLIDAY REQUEST NOTIFICATIONS ───────────────────────────────────────────
+
+async function refreshNotifBadge() {
+  try {
+    const res = await fetch('/api/holiday-requests/count');
+    if (!res.ok) return;
+    const { count } = await res.json();
+    const badge = document.getElementById('notifBadge');
+    badge.textContent = count;
+    badge.classList.toggle('hidden', count === 0);
+    document.getElementById('notifBellBtn').classList.toggle('notif-has-pending', count > 0);
+  } catch {}
+}
+
+function toggleNotifPanel() {
+  const panel = document.getElementById('notifPanel');
+  const isHidden = panel.classList.toggle('hidden');
+  if (!isHidden) loadNotifPanel();
+}
+
+document.addEventListener('click', e => {
+  const wrap = document.getElementById('notifBellWrap');
+  if (wrap && !wrap.contains(e.target)) {
+    document.getElementById('notifPanel')?.classList.add('hidden');
+  }
+});
+
+async function loadNotifPanel() {
+  const list = document.getElementById('notifList');
+  list.innerHTML = '<div class="notif-empty">Loading…</div>';
+  try {
+    const res = await fetch('/api/holiday-requests?status=pending');
+    const items = await res.json();
+    if (!items.length) { list.innerHTML = '<div class="notif-empty">No pending requests</div>'; return; }
+    list.innerHTML = items.map(r => {
+      const d = new Date(r.request_date);
+      const dateStr = d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
+      const typeStr = r.day_type === 'half' ? 'Half Day' : 'Full Day';
+      const since = new Date(r.created_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
+      return `<div class="notif-item" id="notif-item-${r.id}">
+        <div class="notif-item-name">${esc(r.employee_name)}</div>
+        <div class="notif-item-meta">${dateStr} · ${typeStr} · Requested ${since}</div>
+        ${r.note ? `<div class="notif-item-note">"${esc(r.note)}"</div>` : ''}
+        <div class="notif-item-actions">
+          <button class="notif-approve-btn" onclick="reviewHolidayRequest(${r.id},'approve')">✓ Approve</button>
+          <button class="notif-deny-btn" onclick="reviewHolidayRequest(${r.id},'deny')">✕ Deny</button>
+        </div>
+      </div>`;
+    }).join('');
+  } catch { list.innerHTML = '<div class="notif-empty">Failed to load</div>'; }
+}
+
+async function reviewHolidayRequest(id, action) {
+  const res = await fetch(`/api/holiday-requests/${id}/${action}`, { method: 'PUT' });
+  if (!res.ok) { const e = await res.json(); showToast(e.error || 'Failed', 'error'); return; }
+  showToast(action === 'approve' ? 'Request approved' : 'Request denied', action === 'approve' ? 'success' : 'error');
+  document.getElementById(`notif-item-${id}`)?.remove();
+  const remaining = document.querySelectorAll('#notifList .notif-item').length;
+  if (!remaining) document.getElementById('notifList').innerHTML = '<div class="notif-empty">No pending requests</div>';
+  refreshNotifBadge();
 }
