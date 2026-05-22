@@ -3874,6 +3874,7 @@ function renderPortfolioGrid() {
     const dateStr = ev.event_date ? new Date(ev.event_date).toLocaleDateString('en-GB',{day:'numeric',month:'short',year:'numeric'}) : 'TBD';
     const won = parseFloat(ev.total_won) || 0;
     const pipeline = parseFloat(ev.total_pipeline) || 0;
+    const dealCount = parseInt(ev.deal_count) || 0;
     return `<div class="port-card">
       <div class="port-card-header">
         <div class="port-card-title">${esc(ev.name)}</div>
@@ -3896,10 +3897,35 @@ function renderPortfolioGrid() {
           <div class="port-stat-val">£${fmt(pipeline)}</div>
         </div>
       </div>
-      ${ev.notes ? `<div class="port-card-notes">${esc(ev.notes)}</div>` : ''}
       ${ev.companies ? `<div class="port-card-companies"><span style="font-size:0.72rem;color:var(--muted)">Companies: </span>${esc(ev.companies)}</div>` : ''}
+      ${ev.notes ? `<div class="port-card-notes">${esc(ev.notes)}</div>` : ''}
+      <div style="margin-top:10px;padding-top:10px;border-top:1px solid var(--border);display:flex;justify-content:space-between;align-items:center">
+        <span style="font-size:0.75rem;color:var(--muted)">${dealCount} deal${dealCount !== 1 ? 's' : ''} linked</span>
+        <button class="btn btn-ghost btn-sm" onclick="viewEventDeals(${ev.id},'${esc(ev.name)}')" style="font-size:0.78rem;padding:4px 10px">View Deals →</button>
+      </div>
     </div>`;
   }).join('');
+}
+
+function viewEventDeals(eventId, eventName) {
+  _dealEventFilter = String(eventId);
+  navigate('deals');
+  // Ensure deals are loaded then apply filter
+  const apply = () => {
+    const sel = document.getElementById('dealEventFilter');
+    if (sel) {
+      // Ensure the option exists (loadDeals populates it)
+      let opt = Array.from(sel.options).find(o => o.value === String(eventId));
+      if (!opt) {
+        opt = new Option(eventName, String(eventId));
+        sel.add(opt);
+      }
+      sel.value = String(eventId);
+    }
+    renderDealsTable();
+  };
+  if (dealsData.length) { apply(); }
+  else { loadDeals().then(apply); }
 }
 
 function openPortfolioModal(id) {
@@ -4311,24 +4337,23 @@ function renderDealTotals(filtered, tfoot) {
       ${_dealQFilter !== 'all' ? `&nbsp;·&nbsp; VAT: <strong>£${fmt(totalTax)}</strong>` : ''}
     </td>
   </tr>`;
-  // Also update the top totals summary
   document.getElementById('dealTotals').innerHTML = `
-    <div style="display:flex;gap:10px;flex-wrap:wrap">
-      <div class="dash-mini-card" style="flex:1;min-width:130px">
-        <div class="dash-mini-label">Total Paid</div>
-        <div class="dash-mini-value">£${fmt(totalPaid)}</div>
+    <div class="deal-stat-cards">
+      <div class="deal-stat-card">
+        <div class="deal-stat-label">Total Paid</div>
+        <div class="deal-stat-value">£${fmt(totalPaid)}</div>
       </div>
-      <div class="dash-mini-card dash-mini--green" style="flex:1;min-width:130px">
-        <div class="dash-mini-label">Total Revenue</div>
-        <div class="dash-mini-value">£${fmt(totalDeal)}</div>
+      <div class="deal-stat-card ds--green">
+        <div class="deal-stat-label">Total Revenue</div>
+        <div class="deal-stat-value">£${fmt(totalDeal)}</div>
       </div>
-      <div class="dash-mini-card dash-mini--alert" style="flex:1;min-width:130px">
-        <div class="dash-mini-label">Outstanding</div>
-        <div class="dash-mini-value">£${fmt(Math.max(0,remaining))}</div>
+      <div class="deal-stat-card ds--alert">
+        <div class="deal-stat-label">Outstanding</div>
+        <div class="deal-stat-value">£${fmt(Math.max(0,remaining))}</div>
       </div>
-      <div class="dash-mini-card dash-mini--indigo" style="flex:1;min-width:130px">
-        <div class="dash-mini-label">VAT${_dealQFilter !== 'all' ? ' '+_dealQFilter : ' Total'}</div>
-        <div class="dash-mini-value">£${fmt(totalTax)}</div>
+      <div class="deal-stat-card ds--indigo">
+        <div class="deal-stat-label">VAT${_dealQFilter !== 'all' ? ' '+_dealQFilter : ' Total'}</div>
+        <div class="deal-stat-value">£${fmt(totalTax)}</div>
       </div>
     </div>`;
 }

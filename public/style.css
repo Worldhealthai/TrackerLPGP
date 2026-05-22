@@ -3683,6 +3683,40 @@ tbody tr:last-child td { border-bottom: none; }
 .deal-totals-row { background: var(--bg-2) !important; }
 .deal-totals-row td { border-top: 2px solid var(--border) !important; padding: 10px 12px !important; }
 
+/* ── Deal stat summary cards (top of deal tracker) ── */
+.deal-stat-cards {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 12px;
+  margin-bottom: 16px;
+}
+@media (max-width: 800px) { .deal-stat-cards { grid-template-columns: repeat(2, 1fr); } }
+@media (max-width: 480px) { .deal-stat-cards { grid-template-columns: 1fr; } }
+.deal-stat-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 18px 22px;
+}
+.deal-stat-label {
+  font: 600 10px/1 var(--font-mono);
+  text-transform: uppercase;
+  letter-spacing: 0.9px;
+  color: var(--muted);
+  margin-bottom: 10px;
+}
+.deal-stat-value {
+  font: 700 26px/1.1 var(--font-sans);
+  color: var(--text);
+  letter-spacing: -0.5px;
+}
+.deal-stat-card.ds--green  { border-left: 3px solid var(--positive); }
+.deal-stat-card.ds--green  .deal-stat-value { color: var(--positive); }
+.deal-stat-card.ds--alert  { border-left: 3px solid var(--warning); }
+.deal-stat-card.ds--alert  .deal-stat-value { color: var(--warning); }
+.deal-stat-card.ds--indigo { border-left: 3px solid var(--accent); }
+.deal-stat-card.ds--indigo .deal-stat-value { color: var(--accent); }
+
 .port-card-companies { font-size: 0.75rem; color: var(--text); border-top: 1px solid var(--border); padding-top: 6px; }
 
 /* Deal year/quarter filter add button */

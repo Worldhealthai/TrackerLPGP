@@ -1546,6 +1546,7 @@ app.get('/api/portfolio-events', requireAuth, requireAdminOrManager, async (req,
       SELECT pe.*,
         COALESCE(SUM(CASE WHEN d.stage='Won' THEN de.allocated_amount ELSE 0 END),0) AS total_won,
         COALESCE(SUM(de.allocated_amount),0) AS total_pipeline,
+        COUNT(DISTINCT de.deal_id) AS deal_count,
         string_agg(DISTINCT NULLIF(COALESCE(NULLIF(d.company,''), d.title),''), ', ') AS companies
       FROM portfolio_events pe
       LEFT JOIN deal_events de ON de.event_id=pe.id
