@@ -1117,9 +1117,14 @@ tbody tr:hover td strong { color: var(--primary); }
    SALARY OVERVIEW CARDS
 ══════════════════════════════════════════ */
 .salary-overview-grid {
-  display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr));
   gap: 16px; margin-bottom: 24px;
 }
+/* ensure text inside cards never bleeds to edge */
+.salary-overview-card .soc-title { font-size: 0.68rem; }
+.salary-overview-card .soc-hero-val { font-size: 1.2rem; }
+.salary-overview-card .soc-footer-val { font-size: 0.92rem; }
+.salary-overview-card .soc-footer-item--outstanding .soc-footer-val { font-size: 1.05rem; }
 /* ── Salary Overview Cards ──────────────────────────────────────────────────── */
 .salary-overview-card {
   background: var(--card);
@@ -2419,7 +2424,7 @@ tr.hotel-row-partial:hover td {
 .ri-metrics {
   flex: 1;
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: repeat(4, 1fr);
   gap: 10px;
 }
 .ri-metric {
@@ -2428,7 +2433,11 @@ tr.hotel-row-partial:hover td {
   border-radius: 11px;
   padding: 9px 11px;
 }
-.ri-metric--wide { grid-column: span 2; }
+.ri-metric--wide { grid-column: span 1; }
+@media (max-width: 900px) {
+  .ri-metrics { grid-template-columns: 1fr 1fr; }
+  .ri-metric--wide { grid-column: span 2; }
+}
 .ri-metric-label {
   font-size: 0.65rem;
   color: rgba(255,255,255,0.38);
@@ -2527,13 +2536,42 @@ tr.hotel-row-partial:hover td {
   margin-top: 14px;
   padding-top: 10px;
 }
+.ri-evt-section-hd {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 10px;
+}
 .ri-evt-section-title {
   font-size: 0.65rem;
   font-weight: 700;
   color: rgba(255,255,255,0.35);
   letter-spacing: .09em;
   text-transform: uppercase;
-  margin-bottom: 8px;
+}
+.ri-evt-search {
+  background: rgba(255,255,255,0.06);
+  border: 1px solid rgba(255,255,255,0.1);
+  border-radius: 7px;
+  color: rgba(255,255,255,0.7);
+  font-size: 0.72rem;
+  padding: 4px 9px;
+  outline: none;
+  font-family: inherit;
+  width: 140px;
+  transition: border-color 0.15s;
+}
+.ri-evt-search::placeholder { color: rgba(255,255,255,0.25); }
+.ri-evt-search:focus { border-color: rgba(99,102,241,0.5); background: rgba(255,255,255,0.08); }
+
+/* Full-width RI on dashboard — cards go horizontal when space allows */
+#contractExpiryPanel .ri-card { max-width: 100%; }
+#contractExpiryPanel .ri-evt-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 10px;
+  max-height: 500px;
 }
 .ri-evt-list {
   display: flex;

@@ -209,14 +209,10 @@ function renderEmpTable() {
       <td><span class="badge ${typeBadge}">${typeLabel}</span></td>
       <td>${emp.annual_salary > 0 ? fmtMoney(emp.annual_salary, emp.currency) + '/yr' : '—'}</td>
       <td>${emp.start_date ? emp.start_date.slice(0,10) : '<span style="color:var(--muted)">—</span>'}</td>
-      <td>${emp.contract_end_date ? (() => {
-        const today = new Date().toISOString().slice(0,10);
-        const cls = emp.contract_end_date < today ? 'badge-red' : (emp.contract_end_date <= new Date(Date.now()+30*864e5).toISOString().slice(0,10) ? 'badge-yellow' : 'badge-grey');
-        return `<span class="badge ${cls}">${emp.contract_end_date.slice(0,10)}</span>`;
-      })() : '<span style="color:var(--muted)">Permanent</span>'}</td>
       <td><span class="badge ${statusBadge}" style="white-space:normal">${esc(statusLabel)}</span></td>
-      <td style="text-align:right">
+      <td style="text-align:right;white-space:nowrap">
         <button class="btn btn-ghost btn-sm" onclick='openEmpModal(${JSON.stringify(emp)})'>Edit</button>
+        ${!emp.portal_pin ? `<button class="btn btn-ghost btn-sm" style="color:#818cf8;border-color:#4f46e5" onclick="openAddPinModal(${emp.id},'${esc(emp.name)}')">Add PIN</button>` : ''}
         ${emp.active
           ? `<button class="btn btn-danger btn-sm" onclick="openTerminateModal(${emp.id},'${esc(emp.name)}')">Terminate</button>`
           : `<button class="btn btn-ghost btn-sm" onclick="reactivateEmployee(${emp.id})">Reactivate</button>`}
@@ -323,6 +319,22 @@ async function confirmTerminate() {
   });
   if (!res.ok) { const e = await res.json(); return showToast(e.error, 'error'); }
   closeModal('terminateModal');
+  await loadEmployees();
+  loadEmpTable();
+}
+
+async function openAddPinModal(id, name) {
+  const pin = prompt(`Set portal PIN for ${name} (4–6 digits):`);
+  if (pin === null) return;
+  const cleaned = pin.replace(/\D/g,'').slice(0,6);
+  if (cleaned.length < 4) { showToast('PIN must be 4–6 digits', 'error'); return; }
+  const res = await fetch(`/api/employees/${id}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ portal_pin: cleaned })
+  });
+  if (!res.ok) { showToast('Failed to set PIN', 'error'); return; }
+  showToast(`PIN set for ${name}`, 'success');
   await loadEmployees();
   loadEmpTable();
 }
@@ -608,10 +620,13 @@ function renderRevenueIntelPanel(deals, expiring, evtRevData) {
       </div>
 
       <!-- Per-event cards -->
-      ${eventsHtml ? `
+      ${(evtRevData||[]).filter(ev => Number(ev.deal_count) > 0).length > 0 ? `
       <div class="ri-evt-section">
-        <div class="ri-evt-section-title">Events Breakdown</div>
-        <div class="ri-evt-list">${eventsHtml}</div>
+        <div class="ri-evt-section-hd">
+          <div class="ri-evt-section-title">Events Breakdown</div>
+          <input class="ri-evt-search" id="riEvtSearch" placeholder="Search events…" oninput="riFilterEvtCards(this.value)" />
+        </div>
+        <div class="ri-evt-list" id="riEvtList">${eventsHtml}</div>
       </div>` : ''}
 
       ${expiryHtml}
@@ -629,6 +644,14 @@ function renderRevenueIntelPanel(deals, expiring, evtRevData) {
         bar.style.width = bar.dataset.pct + '%';
       });
     }, 80);
+  });
+}
+
+function riFilterEvtCards(query) {
+  const q = (query || '').toLowerCase();
+  document.querySelectorAll('#riEvtList .ri-evt-card').forEach(card => {
+    const name = (card.querySelector('.ri-evt-name')?.textContent || '').toLowerCase();
+    card.style.display = !q || name.includes(q) ? '' : 'none';
   });
 }
 
@@ -3734,8 +3757,8 @@ async function openDealModal(id, defaultStage) {
     document.getElementById('dealInvoiceDate').value = d.invoice_date ? d.invoice_date.split('T')[0] : '';
     document.getElementById('dealPaidDate').value = d.paid_date ? d.paid_date.split('T')[0] : '';
     document.getElementById('dealBank').value = d.bank || '';
-    document.getElementById('dealInvSent').checked = !!d.invoice_agreement_sent;
-    document.getElementById('dealSigReceived').checked = !!d.signature_received;
+    document.getElementById('dealInvSent').value = d.invoice_agreement_sent ? 'true' : 'false';
+    document.getElementById('dealSigReceived').value = d.signature_received ? 'true' : 'false';
     document.getElementById('dealNotes').value = d.notes || '';
     const evIds = Array.isArray(d.events) ? d.events.map(e => e.event_id).filter(Boolean) : [];
     Array.from(sel.options).forEach(o => { o.selected = evIds.includes(parseInt(o.value)); });
@@ -3754,8 +3777,8 @@ async function openDealModal(id, defaultStage) {
     document.getElementById('dealInvoiceDate').value = '';
     document.getElementById('dealPaidDate').value = '';
     document.getElementById('dealBank').value = '';
-    document.getElementById('dealInvSent').checked = false;
-    document.getElementById('dealSigReceived').checked = false;
+    document.getElementById('dealInvSent').value = 'false';
+    document.getElementById('dealSigReceived').value = 'false';
     document.getElementById('dealNotes').value = '';
     Array.from(sel.options).forEach(o => o.selected = false);
   }
@@ -3821,8 +3844,8 @@ async function saveDeal() {
     invoice_date: document.getElementById('dealInvoiceDate').value || null,
     paid_date: document.getElementById('dealPaidDate').value || null,
     bank: document.getElementById('dealBank').value,
-    invoice_agreement_sent: document.getElementById('dealInvSent').checked,
-    signature_received: document.getElementById('dealSigReceived').checked,
+    invoice_agreement_sent: document.getElementById('dealInvSent').value === 'true',
+    signature_received: document.getElementById('dealSigReceived').value === 'true',
     notes: document.getElementById('dealNotes').value.trim(),
     event_ids
   };

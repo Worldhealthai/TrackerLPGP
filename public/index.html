@@ -81,12 +81,8 @@
       <!-- ══ DASHBOARD ══ -->
       <div class="page active" id="page-dashboard">
         <div id="dashStats"></div>
-
-        <!-- Contract expiry + headcount row -->
-        <div class="dash-two-col">
-          <div id="contractExpiryPanel"></div>
-          <div id="headcountPanel"></div>
-        </div>
+        <div id="headcountPanel" style="margin-bottom:20px"></div>
+        <div id="contractExpiryPanel" style="margin-bottom:20px"></div>
 
         <div class="card">
           <div class="card-header"><span class="card-title">Employee Summary</span></div>
@@ -223,7 +219,7 @@
           <div class="table-wrap">
             <table>
               <thead>
-                <tr><th>Name</th><th>Department / Title</th><th>Type</th><th>Annual Salary</th><th>Start Date</th><th>Contract End</th><th>Status</th><th></th></tr>
+                <tr><th>Name</th><th>Department / Title</th><th>Type</th><th>Annual Salary</th><th>Start Date</th><th>Status</th><th></th></tr>
               </thead>
               <tbody id="empTable"></tbody>
             </table>
@@ -1243,16 +1239,17 @@
       <div class="form-group"><label>Tax/VAT</label><input type="number" id="dealTaxVat" min="0" step="0.01" placeholder="0.00"></div>
     </div>
     <div class="form-row">
-      <div class="form-group"><label>Invoice Number</label>
+      <div class="form-group" style="flex:2">
+        <label>Invoice Number</label>
         <div style="display:flex;gap:6px;align-items:center">
-          <input type="text" id="dealInvoiceNumber" placeholder="LPGPCONNECTCOMLTD001" style="flex:1">
-          <button type="button" class="btn btn-ghost" style="padding:6px 10px;font-size:0.78rem;white-space:nowrap" onclick="fillNextInvoiceNumber()">Use Next</button>
+          <input type="text" id="dealInvoiceNumber" placeholder="LPGPCONNECTCOMLTD001" style="flex:1;min-width:0">
+          <button type="button" class="btn btn-ghost" style="padding:6px 10px;font-size:0.78rem;white-space:nowrap;flex-shrink:0" onclick="fillNextInvoiceNumber()">Use Next</button>
         </div>
       </div>
       <div class="form-group"><label>Invoice Date</label><input type="date" id="dealInvoiceDate"></div>
+      <div class="form-group"><label>Date Paid</label><input type="date" id="dealPaidDate"></div>
     </div>
     <div class="form-row">
-      <div class="form-group"><label>Date Paid</label><input type="date" id="dealPaidDate"></div>
       <div class="form-group">
         <label>Bank / Payment</label>
         <select id="dealBank">
@@ -1263,15 +1260,9 @@
           <option value="Other">Other</option>
         </select>
       </div>
-      <div class="form-group" style="justify-content:flex-end;align-items:flex-end;gap:14px;padding-bottom:4px">
-        <label style="display:flex;align-items:center;gap:6px;font-weight:500;cursor:pointer">
-          <input type="checkbox" id="dealInvSent"> Sent
-        </label>
-        <label style="display:flex;align-items:center;gap:6px;font-weight:500;cursor:pointer">
-          <input type="checkbox" id="dealSigReceived"> Signed
-        </label>
-      </div>
     </div>
+    <input type="hidden" id="dealInvSent" value="false">
+    <input type="hidden" id="dealSigReceived" value="false">
     <div class="form-group">
       <label>Events (hold Ctrl/Cmd for multiple — amount splits equally)</label>
       <select id="dealEvents" multiple style="min-height:72px;border:1px solid var(--border);border-radius:9px;padding:8px;background:var(--bg);color:var(--text);font-family:inherit;width:100%" onchange="updateDealSplitPreview()">

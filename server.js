@@ -415,6 +415,16 @@ app.put('/api/employees/:id', requireAuth, async (req, res) => {
   res.json({ success: true });
 });
 
+app.patch('/api/employees/:id', requireAuth, async (req, res) => {
+  try {
+    const { portal_pin } = req.body;
+    const pinVal = portal_pin ? String(portal_pin).replace(/\D/g,'').slice(0,6) || null : null;
+    const { rows } = await q('UPDATE employees SET portal_pin=? WHERE id=? RETURNING id', [pinVal, req.params.id]);
+    if (!rows.length) return res.status(404).json({ error: 'Not found' });
+    res.json({ ok: true });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
 app.post('/api/employees/:id/terminate', requireAuth, async (req, res) => {
   const { termination_date, termination_reason } = req.body;
   if (!termination_date) return res.status(400).json({ error: 'termination_date required' });
