@@ -1093,6 +1093,14 @@ function setSalaryTab(btn) {
   loadSalaryPage();
 }
 
+function pbFilter(btn, filter) {
+  document.querySelectorAll('.pb-filter').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  document.querySelectorAll('#pbList .pb-row').forEach(row => {
+    row.style.display = (filter === 'unpaid' && row.classList.contains('pb-row--settled')) ? 'none' : '';
+  });
+}
+
 function activeSalaryTab() {
   return document.querySelector('.salary-tab.active')?.dataset.tab || 'all';
 }
@@ -1236,6 +1244,47 @@ async function loadSalaryPage() {
 
     document.getElementById('salaryTotals').innerHTML = (groupCards.join('') + gbpCard) || '';
 
+    // ── Payment Board ──
+    const activeForBoard = rows.filter(r => !r.is_terminated);
+    const unpaidForBoard = activeForBoard.filter(r => (parseFloat(r.net_remaining) || 0) > 0);
+    const boardHtml = activeForBoard.length ? `
+      <div class="payment-board">
+        <div class="pb-header">
+          <div class="pb-title-group">
+            <span class="pb-title">Payment Status</span>
+            <span class="pb-subtitle">${activeForBoard.length} employee${activeForBoard.length !== 1 ? 's' : ''} · ${year}</span>
+          </div>
+          <div class="pb-filters">
+            <button class="pb-filter active" onclick="pbFilter(this,'all')">All (${activeForBoard.length})</button>
+            <button class="pb-filter" onclick="pbFilter(this,'unpaid')">To Pay (${unpaidForBoard.length})</button>
+          </div>
+        </div>
+        <div class="pb-list" id="pbList">
+          ${activeForBoard.map(emp => {
+            const remaining = parseFloat(emp.net_remaining) || 0;
+            const sym = currencySymbol(emp.currency || 'GBP');
+            const initials = (emp.name || '?').split(' ').map(w => w[0]).join('').slice(0,2).toUpperCase();
+            const isOverpaid = remaining < 0;
+            const dotCls = isOverpaid ? 'pb-dot--over' : remaining <= 0 ? 'pb-dot--paid' : 'pb-dot--due';
+            const amtCls = isOverpaid ? 'pb-amt--over' : remaining <= 0 ? 'pb-amt--paid' : 'pb-amt--due';
+            const amtText = isOverpaid
+              ? `Overpaid ${sym}${Math.abs(remaining).toLocaleString('en-GB',{maximumFractionDigits:0})}`
+              : remaining <= 0 ? '✓ Settled'
+              : `${sym}${remaining.toLocaleString('en-GB',{maximumFractionDigits:0})}`;
+            const isPaidRow = remaining <= 0;
+            return `<div class="pb-row${isPaidRow ? ' pb-row--settled' : ''}" onclick="document.getElementById('sc-emp-${emp.employee_id}')?.scrollIntoView({behavior:'smooth',block:'start'})">
+              <span class="pb-dot ${dotCls}"></span>
+              <div class="pb-avatar">${initials}</div>
+              <div class="pb-name">${esc(emp.name)}</div>
+              <span class="badge ${emp.employment_type === 'self_employed' ? 'badge-yellow' : 'badge-blue'} pb-type-badge">${emp.employment_type === 'self_employed' ? 'SE' : 'PR'}</span>
+              <div class="pb-amt ${amtCls}">${amtText}</div>
+              <span class="pb-chevron">›</span>
+            </div>`;
+          }).join('')}
+        </div>
+      </div>` : '';
+    document.getElementById('salaryBoard').innerHTML = boardHtml;
+
     // ── Per-employee cards ──
     if (!rows.length) {
       container.innerHTML = `<div class="empty-state"><div class="icon">💰</div><div>No employees with salary data.</div></div>`;
@@ -1292,7 +1341,7 @@ async function loadSalaryPage() {
       const avatarTypeClass = isTerminated ? '' : emp.employment_type === 'self_employed' ? ' sc-self-emp-type' : '';
       const accentClass = isTerminated ? 'sc-term-accent' : emp.employment_type === 'self_employed' ? 'sc-self-emp' : 'sc-payroll';
 
-      return `<div class="sc-card${isTerminated ? ' sc-terminated' : ''}${avatarTypeClass}">
+      return `<div class="sc-card${isTerminated ? ' sc-terminated' : ''}${avatarTypeClass}" id="sc-emp-${emp.employee_id}">
         <div class="sc-accent ${accentClass}"></div>
 
         ${isTerminated ? `<div class="sc-term-banner">
