@@ -295,6 +295,18 @@ async function runMigrations() {
     )
   `);
 
+  // Migrations: add new deal columns (safe on existing installs)
+  await sql(`ALTER TABLE deals ADD COLUMN IF NOT EXISTS paid_inc_vat NUMERIC(12,2)`);
+  await sql(`ALTER TABLE deals ADD COLUMN IF NOT EXISTS tax_vat NUMERIC(12,2)`);
+  await sql(`ALTER TABLE deals ADD COLUMN IF NOT EXISTS invoice_date DATE`);
+  await sql(`ALTER TABLE deals ADD COLUMN IF NOT EXISTS paid_date DATE`);
+  await sql(`ALTER TABLE deals ADD COLUMN IF NOT EXISTS bank TEXT DEFAULT ''`);
+  await sql(`ALTER TABLE deals ADD COLUMN IF NOT EXISTS invoice_number TEXT DEFAULT ''`);
+  await sql(`ALTER TABLE deals ADD COLUMN IF NOT EXISTS invoice_agreement_sent BOOLEAN DEFAULT false`);
+  await sql(`ALTER TABLE deals ADD COLUMN IF NOT EXISTS signature_received BOOLEAN DEFAULT false`);
+  await sql(`ALTER TABLE deals ADD COLUMN IF NOT EXISTS initials TEXT DEFAULT ''`);
+  await sql(`ALTER TABLE deals ADD COLUMN IF NOT EXISTS row_status TEXT NOT NULL DEFAULT 'none'`);
+
   // Seed initial hotel expense rows if table is empty
   const heCount = await sql('SELECT COUNT(*) AS c FROM hotel_expenses');
   if (parseInt(heCount[0].c) === 0) {

@@ -1254,11 +1254,15 @@ app.get('/api/portfolio-events', requireAuth, requireAdminOrManager, async (req,
   try {
     const { rows } = await q(`
       SELECT pe.*,
-        COALESCE(SUM(CASE WHEN d.stage='Won' THEN de.allocated_amount ELSE 0 END), 0) AS total_won,
-        COALESCE(SUM(de.allocated_amount), 0) AS total_pipeline
+        COALESCE(SUM(CASE WHEN d.stage='Won' THEN de.allocated_amount ELSE 0 END),0) AS total_won,
+        COALESCE(SUM(de.allocated_amount),0) AS total_pipeline,
+        COALESCE(
+          string_agg(DISTINCT CASE WHEN d.company != '' THEN d.company ELSE d.title END, ', ')
+          FILTER (WHERE d.id IS NOT NULL), ''
+        ) AS companies
       FROM portfolio_events pe
-      LEFT JOIN deal_events de ON de.event_id = pe.id
-      LEFT JOIN deals d ON d.id = de.deal_id
+      LEFT JOIN deal_events de ON de.event_id=pe.id
+      LEFT JOIN deals d ON d.id=de.deal_id
       GROUP BY pe.id ORDER BY pe.event_date DESC NULLS LAST, pe.created_at DESC`);
     res.json(rows);
   } catch (e) { res.status(500).json({ error: e.message }); }
@@ -1299,21 +1303,42 @@ app.get('/api/deals', requireAuth, requireAdminOrManager, async (req, res) => {
       FROM deals d
       LEFT JOIN deal_events de ON de.deal_id = d.id
       LEFT JOIN portfolio_events pe ON pe.id = de.event_id
-      GROUP BY d.id ORDER BY d.created_at DESC`);
+      GROUP BY d.id ORDER BY d.invoice_date DESC NULLS LAST, d.created_at DESC`);
     res.json(deals);
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
+// GET /api/deals/last-invoice — return last invoice number used (must be before /:id routes)
+app.get('/api/deals/last-invoice', requireAuth, requireAdminOrManager, async (req, res) => {
+  try {
+    const { rows } = await q(`SELECT id, invoice_number FROM deals WHERE invoice_number IS NOT NULL AND invoice_number != '' ORDER BY created_at DESC LIMIT 20`);
+    let maxNum = 0; let lastRow = null;
+    for (const r of rows) {
+      const m = r.invoice_number.match(/(\d+)$/);
+      if (m && parseInt(m[1]) > maxNum) { maxNum = parseInt(m[1]); lastRow = r; }
+    }
+    res.json(lastRow ? { id: lastRow.id, invoice_number: lastRow.invoice_number, next_number: maxNum + 1 } : { id: null, invoice_number: null, next_number: null });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 app.post('/api/deals', requireAuth, requireAdminOrManager, async (req, res) => {
   try {
     const { title, company, contact_name, amount, currency, stage, event_ids, notes,
-            invoice1_name, invoice1_data, invoice2_name, invoice2_data } = req.body;
+            invoice1_name, invoice1_data, invoice2_name, invoice2_data,
+            paid_inc_vat, tax_vat, invoice_date, paid_date, bank, invoice_number,
+            invoice_agreement_sent, signature_received, initials } = req.body;
     const { rows } = await q(
       `INSERT INTO deals (title, company, contact_name, amount, currency, stage, notes,
-        invoice1_name, invoice1_data, invoice2_name, invoice2_data, created_by)
-       VALUES (?,?,?,?,?,?,?,?,?,?,?,?) RETURNING *`,
+        invoice1_name, invoice1_data, invoice2_name, invoice2_data, created_by,
+        paid_inc_vat, tax_vat, invoice_date, paid_date, bank, invoice_number,
+        invoice_agreement_sent, signature_received, initials)
+       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) RETURNING *`,
       [title, company||'', contact_name||'', parseFloat(amount)||0, currency||'GBP',
        stage||'Prospect', notes||'', invoice1_name||null, invoice1_data||null,
-       invoice2_name||null, invoice2_data||null, req.admin.id]
+       invoice2_name||null, invoice2_data||null, req.admin.id,
+       paid_inc_vat != null ? parseFloat(paid_inc_vat) : null,
+       tax_vat != null ? parseFloat(tax_vat) : null,
+       invoice_date||null, paid_date||null, bank||'', invoice_number||'',
+       invoice_agreement_sent ? true : false, signature_received ? true : false, initials||'']
     );
     const deal = rows[0];
     if (Array.isArray(event_ids) && event_ids.length > 0) {
@@ -1329,15 +1354,23 @@ app.post('/api/deals', requireAuth, requireAdminOrManager, async (req, res) => {
 app.put('/api/deals/:id', requireAuth, requireAdminOrManager, async (req, res) => {
   try {
     const { title, company, contact_name, amount, currency, stage, event_ids, notes,
-            invoice1_name, invoice1_data, invoice2_name, invoice2_data } = req.body;
+            invoice1_name, invoice1_data, invoice2_name, invoice2_data,
+            paid_inc_vat, tax_vat, invoice_date, paid_date, bank, invoice_number,
+            invoice_agreement_sent, signature_received, initials } = req.body;
     const { rows } = await q(
       `UPDATE deals SET title=?, company=?, contact_name=?, amount=?, currency=?, stage=?, notes=?,
         invoice1_name=COALESCE(?,invoice1_name), invoice1_data=COALESCE(?,invoice1_data),
-        invoice2_name=COALESCE(?,invoice2_name), invoice2_data=COALESCE(?,invoice2_data)
+        invoice2_name=COALESCE(?,invoice2_name), invoice2_data=COALESCE(?,invoice2_data),
+        paid_inc_vat=?, tax_vat=?, invoice_date=?, paid_date=?, bank=?, invoice_number=?,
+        invoice_agreement_sent=?, signature_received=?, initials=?
        WHERE id=? RETURNING *`,
       [title, company||'', contact_name||'', parseFloat(amount)||0, currency||'GBP',
        stage||'Prospect', notes||'',
        invoice1_name||null, invoice1_data||null, invoice2_name||null, invoice2_data||null,
+       paid_inc_vat != null ? parseFloat(paid_inc_vat) : null,
+       tax_vat != null ? parseFloat(tax_vat) : null,
+       invoice_date||null, paid_date||null, bank||'', invoice_number||'',
+       invoice_agreement_sent ? true : false, signature_received ? true : false, initials||'',
        req.params.id]
     );
     if (!rows.length) return res.status(404).json({ error: 'Not found' });
@@ -1375,6 +1408,18 @@ app.get('/api/deals/:id/invoice/:n', requireAuth, requireAdminOrManager, async (
     res.setHeader('Content-Type', mimes[ext] || 'application/octet-stream');
     res.setHeader('Content-Disposition', `inline; filename="${r.name}"`);
     res.send(Buffer.from(r.data, 'base64'));
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// PATCH /api/deals/:id/row-status — set row color status
+app.patch('/api/deals/:id/row-status', requireAuth, requireAdminOrManager, async (req, res) => {
+  try {
+    const { row_status } = req.body;
+    const valid = ['none','paid','flagged','issue','urgent'];
+    if (!valid.includes(row_status)) return res.status(400).json({ error: 'Invalid status' });
+    const { rows } = await q('UPDATE deals SET row_status=? WHERE id=? RETURNING id,row_status', [row_status, req.params.id]);
+    if (!rows.length) return res.status(404).json({ error: 'Not found' });
+    res.json(rows[0]);
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
