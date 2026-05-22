@@ -1408,14 +1408,14 @@ app.get('/api/hotel-expenses', requireAuth, async (req, res) => {
 
 app.post('/api/hotel-expenses', requireAuth, async (req, res) => {
   try {
-    const { event_name, hotel, cost, av_amount, av_currency, av_billing, paid_amount, paid_currency,
-            staff_hotel, flights, printing, status, notes, event_year, total_cost_num } = req.body;
+    const { event_name, hotel, cost, av_amount, av_billing, paid_amount,
+            currency, staff_hotel, flights, printing, status, notes, event_year } = req.body;
     const { rows } = await q(
-      `INSERT INTO hotel_expenses (event_name, hotel, cost, av_amount, av_currency, av_billing, paid_amount, paid_currency, staff_hotel, flights, printing, status, notes, event_year, total_cost_num, created_by)
-       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) RETURNING *`,
-      [event_name, hotel||'', cost||'', av_amount||null, av_currency||'USD', av_billing||'separate',
-       paid_amount||null, paid_currency||'USD', staff_hotel||null, flights||null, printing||null,
-       status||'pending', notes||'', event_year||null, total_cost_num||null, req.user?.id||null]
+      `INSERT INTO hotel_expenses (event_name, hotel, cost, av_amount, av_billing, paid_amount, currency, staff_hotel, flights, printing, status, notes, event_year, created_by)
+       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?) RETURNING *`,
+      [event_name, hotel||'', cost||'', av_amount||null, av_billing||'separate',
+       paid_amount||null, currency||'USD', staff_hotel||null, flights||null, printing||null,
+       status||'pending', notes||'', event_year||null, req.user?.id||null]
     );
     res.json(rows[0]);
   } catch (e) { res.status(500).json({ error: e.message }); }
@@ -1423,16 +1423,16 @@ app.post('/api/hotel-expenses', requireAuth, async (req, res) => {
 
 app.put('/api/hotel-expenses/:id', requireAuth, async (req, res) => {
   try {
-    const { event_name, hotel, cost, av_amount, av_currency, av_billing, paid_amount, paid_currency,
-            staff_hotel, flights, printing, status, notes, event_year, total_cost_num } = req.body;
+    const { event_name, hotel, cost, av_amount, av_billing, paid_amount,
+            currency, staff_hotel, flights, printing, status, notes, event_year } = req.body;
     const { rows } = await q(
-      `UPDATE hotel_expenses SET event_name=?, hotel=?, cost=?, av_amount=?, av_currency=?,
-       av_billing=?, paid_amount=?, paid_currency=?, staff_hotel=?, flights=?, printing=?,
-       status=?, notes=?, event_year=?, total_cost_num=?
+      `UPDATE hotel_expenses SET event_name=?, hotel=?, cost=?, av_amount=?,
+       av_billing=?, paid_amount=?, currency=?, staff_hotel=?, flights=?, printing=?,
+       status=?, notes=?, event_year=?
        WHERE id=? RETURNING *`,
-      [event_name, hotel||'', cost||'', av_amount||null, av_currency||'USD', av_billing||'separate',
-       paid_amount||null, paid_currency||'USD', staff_hotel||null, flights||null, printing||null,
-       status||'pending', notes||'', event_year||null, total_cost_num||null, req.params.id]
+      [event_name, hotel||'', cost||'', av_amount||null, av_billing||'separate',
+       paid_amount||null, currency||'USD', staff_hotel||null, flights||null, printing||null,
+       status||'pending', notes||'', event_year||null, req.params.id]
     );
     if (!rows.length) return res.status(404).json({ error: 'Not found' });
     res.json(rows[0]);
@@ -1486,7 +1486,7 @@ app.delete('/api/hotel-expenses/:id', requireAuth, async (req, res) => {
 // PATCH: update individual fields of a hotel expense row
 app.patch('/api/hotel-expenses/:id', requireAuth, async (req, res) => {
   try {
-    const allowed = ['event_name','hotel','cost','currency','av_amount','av_currency','av_billing','paid_amount','paid_currency','staff_hotel','flights','printing','status','notes','invoice_name','event_year','total_cost_num'];
+    const allowed = ['event_name','hotel','cost','currency','av_amount','av_billing','paid_amount','staff_hotel','flights','printing','status','notes','invoice_name','event_year'];
     const fields = Object.keys(req.body).filter(k => allowed.includes(k));
     if (!fields.length) return res.status(400).json({ error: 'No valid fields' });
     const sets = fields.map(f => `${f}=?`).join(', ');

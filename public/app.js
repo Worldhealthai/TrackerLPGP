@@ -965,7 +965,7 @@ function renderDashActivity(summary, expiring, hotelData, salaryData) {
 
   // Hotel events
   hotelData.filter(h => h.status !== 'paid').slice(0,2).forEach(h => {
-    const sym = hotelCurrencySymbol(h.paid_currency || 'USD');
+    const sym = hotelCurrencySymbol(h.currency || h.paid_currency || 'USD');
     const amtStr = h.paid_amount ? sym + parseFloat(h.paid_amount).toLocaleString('en-GB') + ' &middot; ' : '';
     items.push({ icon: ICONS.hotel, tone: 'info', title: 'Hotel expense', detail: esc(h.event_name) + ' &middot; ' + amtStr + h.status });
   });
@@ -3544,7 +3544,6 @@ function openHotelModal(id) {
   document.getElementById('hotelFlights').value     = r && r.flights    != null ? r.flights    : '';
   document.getElementById('hotelPrinting').value    = r && r.printing   != null ? r.printing   : '';
   document.getElementById('hotelNotes').value       = r ? (r.notes || '') : '';
-  document.getElementById('hotelTotalCostNum').value = r && r.total_cost_num != null ? r.total_cost_num : '';
   document.getElementById('hotelEventYear').value   = r && r.event_year ? String(r.event_year) : '';
   document.getElementById('hotelModal').classList.add('open');
 }
