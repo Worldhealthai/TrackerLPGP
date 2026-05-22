@@ -69,6 +69,24 @@ async function runMigrations() {
       ADD COLUMN IF NOT EXISTS contract_end_date DATE
   `);
 
+  await sql(`ALTER TABLE employees ADD COLUMN IF NOT EXISTS portal_pin TEXT DEFAULT NULL`);
+
+  await sql(`ALTER TABLE admins ADD COLUMN IF NOT EXISTS email TEXT DEFAULT NULL`);
+
+  await sql(`
+    CREATE TABLE IF NOT EXISTS holiday_requests (
+      id SERIAL PRIMARY KEY,
+      employee_id INT NOT NULL REFERENCES employees(id) ON DELETE CASCADE,
+      request_date DATE NOT NULL,
+      day_type TEXT NOT NULL DEFAULT 'full' CHECK (day_type IN ('full','half')),
+      note TEXT DEFAULT '',
+      status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending','approved','denied')),
+      reviewed_by INT REFERENCES admins(id) ON DELETE SET NULL,
+      reviewed_at TIMESTAMPTZ,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `);
+
   await sql(`
     CREATE TABLE IF NOT EXISTS daily_records (
       id SERIAL PRIMARY KEY,
@@ -213,8 +231,86 @@ async function runMigrations() {
     )
   `);
 
-  // Safe migration: add av_billing if it doesn't exist yet
   await sql(`ALTER TABLE hotel_expenses ADD COLUMN IF NOT EXISTS av_billing TEXT NOT NULL DEFAULT 'separate'`);
+  await sql(`ALTER TABLE hotel_expenses ADD COLUMN IF NOT EXISTS invoice_name TEXT DEFAULT NULL`);
+  await sql(`ALTER TABLE hotel_expenses ADD COLUMN IF NOT EXISTS invoice_data TEXT DEFAULT NULL`);
+  await sql(`ALTER TABLE hotel_expenses ADD COLUMN IF NOT EXISTS event_year INT`);
+  await sql(`ALTER TABLE hotel_expenses ADD COLUMN IF NOT EXISTS total_cost_num NUMERIC(12,2)`);
+
+  // One-time: move 2025 invoice_dates to 2026 (deals were for 2026 events, signed in 2025)
+  await sql(`UPDATE deals SET invoice_date = invoice_date + INTERVAL '1 year' WHERE EXTRACT(YEAR FROM invoice_date) = 2025 AND invoice_date IS NOT NULL`);
+
+  // ── Subscriptions ──────────────────────────────────────────────────────────
+  await sql(`
+    CREATE TABLE IF NOT EXISTS subscriptions (
+      id SERIAL PRIMARY KEY,
+      name TEXT NOT NULL,
+      vendor TEXT DEFAULT '',
+      amount NUMERIC(12,2) NOT NULL,
+      currency TEXT NOT NULL DEFAULT 'GBP' CHECK (currency IN ('GBP','USD','AED','PHP')),
+      billing_cycle TEXT NOT NULL DEFAULT 'monthly' CHECK (billing_cycle IN ('monthly','quarterly','annually','one_off')),
+      renewal_date DATE,
+      notes TEXT DEFAULT '',
+      active BOOLEAN NOT NULL DEFAULT true,
+      created_by INT REFERENCES admins(id) ON DELETE SET NULL,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `);
+
+  // ── Portfolio Events ───────────────────────────────────────────────────────
+  await sql(`
+    CREATE TABLE IF NOT EXISTS portfolio_events (
+      id SERIAL PRIMARY KEY,
+      name TEXT NOT NULL,
+      event_date DATE,
+      location TEXT DEFAULT '',
+      notes TEXT DEFAULT '',
+      created_by INT REFERENCES admins(id) ON DELETE SET NULL,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `);
+
+  // ── Deals ──────────────────────────────────────────────────────────────────
+  await sql(`
+    CREATE TABLE IF NOT EXISTS deals (
+      id SERIAL PRIMARY KEY,
+      title TEXT NOT NULL,
+      company TEXT DEFAULT '',
+      contact_name TEXT DEFAULT '',
+      amount NUMERIC(12,2) NOT NULL DEFAULT 0,
+      currency TEXT NOT NULL DEFAULT 'GBP',
+      stage TEXT NOT NULL DEFAULT 'Prospect'
+        CHECK (stage IN ('Prospect','Qualified','Proposal','Negotiation','Won','Lost')),
+      notes TEXT DEFAULT '',
+      invoice1_name TEXT,
+      invoice1_data TEXT,
+      invoice2_name TEXT,
+      invoice2_data TEXT,
+      created_by INT REFERENCES admins(id) ON DELETE SET NULL,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `);
+
+  await sql(`
+    CREATE TABLE IF NOT EXISTS deal_events (
+      deal_id INT NOT NULL REFERENCES deals(id) ON DELETE CASCADE,
+      event_id INT NOT NULL REFERENCES portfolio_events(id) ON DELETE CASCADE,
+      allocated_amount NUMERIC(12,2) NOT NULL DEFAULT 0,
+      PRIMARY KEY (deal_id, event_id)
+    )
+  `);
+
+  // Migrations: add new deal columns (safe on existing installs)
+  await sql(`ALTER TABLE deals ADD COLUMN IF NOT EXISTS paid_inc_vat NUMERIC(12,2)`);
+  await sql(`ALTER TABLE deals ADD COLUMN IF NOT EXISTS tax_vat NUMERIC(12,2)`);
+  await sql(`ALTER TABLE deals ADD COLUMN IF NOT EXISTS invoice_date DATE`);
+  await sql(`ALTER TABLE deals ADD COLUMN IF NOT EXISTS paid_date DATE`);
+  await sql(`ALTER TABLE deals ADD COLUMN IF NOT EXISTS bank TEXT DEFAULT ''`);
+  await sql(`ALTER TABLE deals ADD COLUMN IF NOT EXISTS invoice_number TEXT DEFAULT ''`);
+  await sql(`ALTER TABLE deals ADD COLUMN IF NOT EXISTS invoice_agreement_sent BOOLEAN DEFAULT false`);
+  await sql(`ALTER TABLE deals ADD COLUMN IF NOT EXISTS signature_received BOOLEAN DEFAULT false`);
+  await sql(`ALTER TABLE deals ADD COLUMN IF NOT EXISTS initials TEXT DEFAULT ''`);
+  await sql(`ALTER TABLE deals ADD COLUMN IF NOT EXISTS row_status TEXT NOT NULL DEFAULT 'none'`);
 
   // Seed initial hotel expense rows if table is empty
   const heCount = await sql('SELECT COUNT(*) AS c FROM hotel_expenses');
@@ -254,6 +350,17 @@ async function runMigrations() {
   }
 
   await sql('ALTER TABLE employees ADD COLUMN IF NOT EXISTS portal_pin TEXT DEFAULT NULL');
+
+  await sql(`ALTER TABLE deals ADD COLUMN IF NOT EXISTS cancelled_reason TEXT DEFAULT ''`);
+  await sql(`ALTER TABLE deals ADD COLUMN IF NOT EXISTS stage_cancelled BOOLEAN NOT NULL DEFAULT false`);
+
+  // Single row-level currency for hotel expenses (replaces separate av_currency / paid_currency)
+  await sql(`ALTER TABLE hotel_expenses ADD COLUMN IF NOT EXISTS currency TEXT DEFAULT 'USD'`);
+  // Migrate: set currency from paid_currency where available
+  await sql(`UPDATE hotel_expenses SET currency = paid_currency WHERE currency IS NULL AND paid_currency IS NOT NULL`);
+
+  // Tag all existing hotel expenses as 2026 if event_year not set
+  await sql(`UPDATE hotel_expenses SET event_year = 2026 WHERE event_year IS NULL`);
 
   await sql(`CREATE TABLE IF NOT EXISTS day_off_requests (
   id SERIAL PRIMARY KEY,

@@ -38,6 +38,53 @@ const MONTHS = ['','January','February','March','April','May','June',
 
 function currencySymbol(c) { return c === 'AED' ? 'AED ' : '£'; }
 function fmtMoney(amount, currency) { return currencySymbol(currency) + Number(amount || 0).toLocaleString('en-GB', {minimumFractionDigits:2}); }
+function fmt(n) { return Number(n||0).toLocaleString('en-GB', {minimumFractionDigits:2, maximumFractionDigits:2}); }
+
+// ─── THEME ───────────────────────────────────────────────────────────────────
+(function applyStoredTheme() {
+  const saved = localStorage.getItem('emptracker-theme');
+  if (saved === 'dark') {
+    document.documentElement.setAttribute('data-theme', 'dark');
+    // update button once DOM is ready
+    document.addEventListener('DOMContentLoaded', () => _updateThemeBtn('dark'));
+  }
+})();
+
+function toggleTheme() {
+  const current = document.documentElement.getAttribute('data-theme');
+  const next = current === 'dark' ? 'light' : 'dark';
+  if (next === 'dark') {
+    document.documentElement.setAttribute('data-theme', 'dark');
+  } else {
+    document.documentElement.removeAttribute('data-theme');
+  }
+  localStorage.setItem('emptracker-theme', next);
+  _updateThemeBtn(next);
+}
+
+function _updateThemeBtn(theme) {
+  const icon  = document.getElementById('themeToggleIcon');
+  const label = document.getElementById('themeToggleLabel');
+  if (!icon || !label) return;
+  if (theme === 'dark') {
+    icon.textContent  = '☀️';
+    label.textContent = 'Light Mode';
+  } else {
+    icon.textContent  = '🌙';
+    label.textContent = 'Dark Mode';
+  }
+}
+
+// ─── SIDEBAR COLLAPSE ─────────────────────────────────────────────────────────
+function toggleSidebar() {
+  const collapsed = document.body.classList.toggle('sidebar-collapsed');
+  localStorage.setItem('sidebar-collapsed', collapsed ? '1' : '0');
+}
+(function applySidebarState() {
+  if (localStorage.getItem('sidebar-collapsed') === '1') {
+    document.body.classList.add('sidebar-collapsed');
+  }
+})();
 
 // ─── INIT ─────────────────────────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', async () => {
@@ -62,6 +109,9 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   if (currentUser.role === 'admin') {
     document.querySelectorAll('.admin-only').forEach(el => el.classList.remove('hidden'));
+  }
+  if (currentUser.role === 'admin' || currentUser.role === 'manager') {
+    document.querySelectorAll('.admin-manager-only').forEach(el => el.classList.remove('hidden'));
   }
 
   const m = thisMonth();
@@ -91,6 +141,13 @@ document.addEventListener('DOMContentLoaded', async () => {
   await loadEmployees().catch(err => console.error('loadEmployees failed:', err));
   loadDashboard();
   refreshCalendarBadge();
+
+  // Notification bell — admin only
+  if (currentUser.role === 'admin') {
+    document.getElementById('notifBellWrap').style.display = 'block';
+    refreshNotifBadge();
+    setInterval(refreshNotifBadge, 60000);
+  }
 
   // Initial badge — silent, non-blocking
   fetch(`/api/salary-overview?year=${new Date().getFullYear()}`)
@@ -127,21 +184,24 @@ function initSidebarCollapse() {
 
 // ─── NAVIGATION ──────────────────────────────────────────────────────────────
 function navigate(page) {
+  // Salary section is admin-only
+  if (page === 'salary' && currentUser?.role !== 'admin') return;
   document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
   document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
   document.querySelectorAll('.bottom-nav-item').forEach(n => n.classList.remove('active'));
   document.getElementById('page-' + page).classList.add('active');
   document.querySelector(`.nav-item[data-page="${page}"]`)?.classList.add('active');
   document.querySelector(`.bottom-nav-item[data-page="${page}"]`)?.classList.add('active');
-  const titles = { dashboard:'Dashboard', tracking:'Daily Tracking', salary:'Salary Tracker', employees:'Employees', reports:'Reports', calendar:'Calendar', admins:'Admin Users', hotels:'Hotel Expenses', portfolio:'Staff Portfolio', deals:'Deal Tracker' };
+  const titles = { dashboard:'Dashboard', tracking:'Daily Tracking', salary:'Salary Tracker', employees:'Employees', reports:'Reports', calendar:'Calendar', admins:'Admin Users', hotels:'Hotel Expenses', subscriptions:'Subscriptions', portfolio:'Portfolio', deals:'Deal Tracker' };
   document.getElementById('pageTitle').textContent = titles[page] || page;
   if (page === 'employees') loadEmpTable();
   if (page === 'admins') loadAdmins();
   if (page === 'calendar') loadCalendar();
   if (page === 'salary') { loadSalaryPage(); renderSalaryReminderPanel(); }
   if (page === 'hotels') loadHotelExpenses();
-  if (page === 'portfolio') loadAdminPortfolio();
-  if (page === 'deals') loadDealTracker();
+  if (page === 'subscriptions') loadSubscriptions();
+  if (page === 'portfolio') { loadPortfolio(); loadAdminPortfolio(); }
+  if (page === 'deals') { loadDeals(); loadDealTracker(); }
 }
 
 // ─── EMPLOYEES ───────────────────────────────────────────────────────────────
@@ -229,15 +289,10 @@ function renderEmpTable() {
       <td><span class="badge ${typeBadge}">${typeLabel}</span></td>
       <td>${emp.annual_salary > 0 ? fmtMoney(emp.annual_salary, emp.currency) + '/yr' : '—'}</td>
       <td>${emp.start_date ? emp.start_date.slice(0,10) : '<span style="color:var(--muted)">—</span>'}</td>
-      <td>${emp.contract_end_date ? (() => {
-        const today = new Date().toISOString().slice(0,10);
-        const cls = emp.contract_end_date < today ? 'badge-red' : (emp.contract_end_date <= new Date(Date.now()+30*864e5).toISOString().slice(0,10) ? 'badge-yellow' : 'badge-grey');
-        return `<span class="badge ${cls}">${emp.contract_end_date.slice(0,10)}</span>`;
-      })() : '<span style="color:var(--muted)">Permanent</span>'}</td>
       <td><span class="badge ${statusBadge}" style="white-space:normal">${esc(statusLabel)}</span></td>
-      <td style="text-align:right">
+      <td style="text-align:right;white-space:nowrap">
         <button class="btn btn-ghost btn-sm" onclick='openEmpModal(${JSON.stringify(emp)})'>Edit</button>
-        <button class="btn btn-ghost btn-sm" onclick="openSetPinModal(${emp.id},'${esc(emp.name)}')">Set PIN</button>
+        ${!emp.portal_pin ? `<button class="btn btn-ghost btn-sm" style="color:#818cf8;border-color:#4f46e5" onclick="openAddPinModal(${emp.id},'${esc(emp.name)}')">Add PIN</button>` : ''}
         ${emp.active
           ? `<button class="btn btn-danger btn-sm" onclick="openTerminateModal(${emp.id},'${esc(emp.name)}')">Terminate</button>`
           : `<button class="btn btn-ghost btn-sm" onclick="reactivateEmployee(${emp.id})">Reactivate</button>`}
@@ -261,6 +316,7 @@ function openEmpModal(emp = null) {
   document.getElementById('empContractEnd').value = emp ? (emp.contract_end_date || '') : '';
   document.getElementById('empSalaryEffective').value = today();
   document.getElementById('empSalaryReason').value = '';
+  document.getElementById('empPin').value = emp ? (emp.portal_pin || '') : '';
   document.getElementById('salaryChangeFields').classList.add('hidden');
   document.getElementById('empModalTitle').textContent = emp ? 'Edit Employee' : 'Add Employee';
 
@@ -297,10 +353,11 @@ async function saveEmployee() {
   const phone = document.getElementById('empPhone').value.trim();
   const email = document.getElementById('empEmail').value.trim();
   const contract_end_date = document.getElementById('empContractEnd').value || null;
+  const portal_pin = document.getElementById('empPin').value.replace(/\D/g,'').slice(0,6) || null;
   if (!name) return showToast('Name is required', 'error');
 
   const payload = { name, employment_type, annual_salary, currency, start_date, pension_rate,
-                    job_title, department, phone, email, contract_end_date };
+                    job_title, department, phone, email, contract_end_date, portal_pin };
   if (id) {
     await fetch(`/api/employees/${id}`, {
       method: 'PUT',
@@ -346,6 +403,22 @@ async function confirmTerminate() {
   loadEmpTable();
 }
 
+async function openAddPinModal(id, name) {
+  const pin = prompt(`Set portal PIN for ${name} (4–6 digits):`);
+  if (pin === null) return;
+  const cleaned = pin.replace(/\D/g,'').slice(0,6);
+  if (cleaned.length < 4) { showToast('PIN must be 4–6 digits', 'error'); return; }
+  const res = await fetch(`/api/employees/${id}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ portal_pin: cleaned })
+  });
+  if (!res.ok) { showToast('Failed to set PIN', 'error'); return; }
+  showToast(`PIN set for ${name}`, 'success');
+  await loadEmployees();
+  loadEmpTable();
+}
+
 async function reactivateEmployee(id) {
   if (!await showConfirm('Reactivate this employee? This clears the termination date.')) return;
   await fetch(`/api/employees/${id}/reactivate`, { method: 'POST' });
@@ -371,13 +444,15 @@ async function loadDashboard() {
     </div>
   `;
 
-  const [summaryRes, salaryRes, upcomingRes, expiringRes, allEmpRes, hotelRes, calCurRes, calNextRes] = await Promise.all([
+  const [summaryRes, salaryRes, upcomingRes, expiringRes, allEmpRes, hotelRes, dealsRes, evtRevRes, calCurRes, calNextRes] = await Promise.all([
     fetch(`/api/summary?from=${year}-01-01&to=${year}-12-31`),
     fetch(`/api/salary-overview?year=${year}`),
     fetch(`/api/calendar-reminders/upcoming?days=30`),
     fetch(`/api/contracts/expiring?days=60`),
     fetch(`/api/employees/all`),
     fetch(`/api/hotel-expenses`),
+    fetch(`/api/deals`),
+    fetch(`/api/deals/revenue-by-event`),
     fetch(`/api/calendar?year=${year}&month=${month}`),
     fetch(`/api/calendar?year=${month === 12 ? year + 1 : year}&month=${month === 12 ? 1 : month + 1}`)
   ]);
@@ -387,7 +462,9 @@ async function loadDashboard() {
   const upcoming      = upcomingRes.ok  ? await upcomingRes.json()  : [];
   const expiring      = expiringRes.ok  ? await expiringRes.json()  : [];
   const allEmps       = allEmpRes.ok    ? await allEmpRes.json()    : [];
+  const dashDeals     = dealsRes.ok     ? await dealsRes.json()     : [];
   const hotelData     = hotelRes.ok     ? await hotelRes.json()     : [];
+  const evtRevData    = evtRevRes.ok    ? await evtRevRes.json()    : [];
   const calCur        = calCurRes.ok    ? await calCurRes.json()    : [];
   const calNext       = calNextRes.ok   ? await calNextRes.json()   : [];
   const todayStr      = now.toISOString().slice(0,10);
@@ -403,62 +480,65 @@ async function loadDashboard() {
   const payrollCount    = activeEmps.filter(e => e.employment_type === 'payroll').length;
   const seCount         = activeEmps.filter(e => e.employment_type === 'self_employed').length;
 
-  // Total GBP salary remaining to pay this year
+  // Total salary remaining to pay this year — GBP + AED converted, max(0) per employee
+  const DASH_AED_TO_GBP = 1 / 4.67;
   const totalGBPRemaining = salaryData
-    .filter(e => (e.currency || 'GBP') === 'GBP')
-    .reduce((a, e) => a + Math.max(0, parseFloat(e.net_remaining) || 0), 0);
+    .filter(e => !e.is_terminated)
+    .reduce((a, e) => {
+      const r = Math.max(0, parseFloat(e.net_remaining) || 0);
+      const c = e.currency || 'GBP';
+      return a + (c === 'AED' ? r * DASH_AED_TO_GBP : c === 'GBP' ? r : 0);
+    }, 0);
 
   // Hotel fees remaining (unpaid + partial rows: paid_amount vs cost where parseable)
   const hotelUnpaidCount = hotelData.filter(h => h.status !== 'paid').length;
   const hotelPaidTotal   = hotelData.reduce((a, h) => a + (parseFloat(h.paid_amount) || 0), 0);
 
-  // Compute total deductions and flagged employees from summary data
-  const totalDeduct = summary.reduce((a, row) => a + (parseFloat(row.total_deduction) || 0), 0);
-  const flaggedCount = summary.filter(row => (parseFloat(row.excess_days) || 0) > 0).length;
+  document.getElementById('dashStats').innerHTML = `
+    <div class="dash-bento">
+      <div class="dash-hero-card">
+        <div class="dash-hero-glow"></div>
+        <div class="dash-hero-label">Active Headcount</div>
+        <div class="dash-hero-value">${totalHeadcount}</div>
+        <div class="dash-hero-pills">
+          <span class="dash-hero-pill dash-hero-pill--blue">${payrollCount} Payroll</span>
+          <span class="dash-hero-pill dash-hero-pill--amber">${seCount} Self-Emp</span>
+        </div>
+        <div class="dash-hero-footer">Total workforce · ${year}</div>
+      </div>
+      <div class="dash-mini-grid">
+        <div class="dash-mini-card dash-mini--indigo" style="cursor:pointer" onclick="navigate('salary')" title="Go to salary page">
+          <div class="dash-mini-icon">💷</div>
+          <div class="dash-mini-body">
+            <div class="dash-mini-label">Salaries Remaining</div>
+            <div class="dash-mini-value">£${fmtK(totalGBPRemaining)}</div>
+            <div class="dash-mini-sub">GBP outstanding · ${year}</div>
+          </div>
+        </div>
+        <div class="dash-mini-card ${hotelUnpaidCount > 0 ? 'dash-mini--alert' : 'dash-mini--green'}" style="cursor:pointer" onclick="navigate('hotels')" title="View hotel expenses">
+          <div class="dash-mini-icon">🏨</div>
+          <div class="dash-mini-body">
+            <div class="dash-mini-label">Hotel Fees Remaining</div>
+            <div class="dash-mini-value">${hotelUnpaidCount} event${hotelUnpaidCount !== 1 ? 's' : ''}</div>
+            <div class="dash-mini-sub">${hotelUnpaidCount > 0 ? `${hotelUnpaidCount} unpaid / partial →` : 'All settled'}</div>
+          </div>
+        </div>
+        <div class="dash-mini-card ${unpaidCount > 0 ? 'dash-mini--alert' : 'dash-mini--green'}" style="cursor:pointer" onclick="navigate('salary')" title="Go to salary page">
+          <div class="dash-mini-icon">${unpaidCount > 0 ? '🔔' : '✅'}</div>
+          <div class="dash-mini-body">
+            <div class="dash-mini-label">Unpaid This Month</div>
+            <div class="dash-mini-value">${unpaidCount}</div>
+            <div class="dash-mini-sub">${unpaidCount > 0 ? 'Action required →' : 'All paid up'}</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  `;
 
-  // Pre-compute all conditional strings to avoid nested template literals
-  const flaggedColor = flaggedCount > 0 ? 'var(--negative)' : 'var(--text)';
-  const flaggedLabel = flaggedCount > 0 ? (flaggedCount + ' over allowance') : 'all within allowance';
-  const hotelClass   = hotelUnpaidCount > 0 ? 'dash-mini--alert' : 'dash-mini--green';
-  const hotelSub     = hotelUnpaidCount > 0 ? (hotelUnpaidCount + ' unpaid / partial →') : 'All settled';
-  const hotelEvents  = hotelUnpaidCount + ' event' + (hotelUnpaidCount !== 1 ? 's' : '');
-  const unpaidClass  = unpaidCount > 0 ? 'dash-mini--alert' : 'dash-mini--green';
-  const unpaidIcon   = unpaidCount > 0 ? '&#128276;' : '&#9989;';
-  const unpaidSub    = unpaidCount > 0 ? 'Action required &rarr;' : 'All paid up';
-  const salaryFmt    = fmtK(totalGBPRemaining);
+  // Revenue Intelligence + contract expiry panel
+  renderRevenueIntelPanel(dashDeals, expiring, evtRevData);
 
-  const miniCardsHtml =
-    '<div class="dash-mini-card dash-mini--indigo" style="cursor:pointer" onclick="navigate(\'salary\')">' +
-      '<div class="dash-mini-icon">&pound;</div>' +
-      '<div class="dash-mini-body">' +
-        '<div class="dash-mini-label">Salaries Remaining</div>' +
-        '<div class="dash-mini-value">&pound;' + salaryFmt + '</div>' +
-        '<div class="dash-mini-sub">GBP outstanding &middot; ' + year + '</div>' +
-      '</div>' +
-    '</div>' +
-    '<div class="dash-mini-card ' + hotelClass + '" style="cursor:pointer" onclick="navigate(\'hotels\')">' +
-      '<div class="dash-mini-icon">&#127968;</div>' +
-      '<div class="dash-mini-body">' +
-        '<div class="dash-mini-label">Hotel Fees Remaining</div>' +
-        '<div class="dash-mini-value">' + hotelEvents + '</div>' +
-        '<div class="dash-mini-sub">' + hotelSub + '</div>' +
-      '</div>' +
-    '</div>' +
-    '<div class="dash-mini-card ' + unpaidClass + '" style="cursor:pointer" onclick="navigate(\'salary\')">' +
-      '<div class="dash-mini-icon">' + unpaidIcon + '</div>' +
-      '<div class="dash-mini-body">' +
-        '<div class="dash-mini-label">Unpaid This Month</div>' +
-        '<div class="dash-mini-value">' + unpaidCount + '</div>' +
-        '<div class="dash-mini-sub">' + unpaidSub + '</div>' +
-      '</div>' +
-    '</div>';
-
-  document.getElementById('dashStats').innerHTML = '';
-
-  // Contract expiry panel (now also carries the 3 mini cards in the left column)
-  renderContractExpiryPanel(expiring, miniCardsHtml);
-
-  // Headcount by department (combined with hero stats)
+  // Headcount by department
   renderHeadcountPanel(activeEmps, payrollCount, seCount, totalHeadcount, year);
 
   // Upcoming reminders panel (calendar reminders + day offs)
@@ -496,6 +576,192 @@ async function loadDashboard() {
     const el = document.getElementById('dashStats');
     if (el) el.innerHTML = `<div style="padding:20px;color:var(--negative);font-family:var(--font-mono);font-size:12px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius)">Dashboard error: ${e.message}</div>`;
   }
+}
+
+function renderRevenueIntelPanel(deals, expiring, evtRevData) {
+  const el = document.getElementById('contractExpiryPanel');
+  if (!el) return;
+
+  // Overall metrics from all deals
+  const totalRev   = deals.reduce((a,d) => a + (parseFloat(d.amount)||0), 0);
+  const totalPaid  = deals.reduce((a,d) => a + (parseFloat(d.paid_inc_vat)||0), 0);
+  const totalOut   = Math.max(0, totalRev - totalPaid);
+  const totalVAT = deals.reduce((a,d) => (parseFloat(d.paid_inc_vat)||0) > 0 ? a + (parseFloat(d.tax_vat)||0) : a, 0);
+  const totalPaidExVat = Math.max(0, totalPaid - totalVAT);
+  const paidDeals  = deals.filter(d => (parseFloat(d.paid_inc_vat)||0) > 0).length;
+  const collRate   = deals.length > 0 ? Math.round(paidDeals / deals.length * 100) : 0;
+
+  // SVG donut: paid vs partial vs unpaid
+  const R = 38, C = +(2 * Math.PI * R).toFixed(2);
+  const unpaidDeals  = deals.filter(d => (parseFloat(d.paid_inc_vat)||0) === 0).length;
+  const partialDeals = deals.filter(d => { const p=parseFloat(d.paid_inc_vat)||0; const a=parseFloat(d.amount)||0; return p>0 && p<a; }).length;
+  const fullPaidDeals= deals.filter(d => { const p=parseFloat(d.paid_inc_vat)||0; const a=parseFloat(d.amount)||0; return p>0 && p>=a; }).length;
+  const total = deals.length;
+  const segPaid    = total > 0 ? (fullPaidDeals / total * C) : 0;
+  const segPartial = total > 0 ? (partialDeals / total * C) : 0;
+  const segUnpaid  = total > 0 ? (unpaidDeals / total * C) : 0;
+  const offPaid    = 0;
+  const offPartial = -(segPaid);
+  const offUnpaid  = -(segPaid + segPartial);
+
+  const today = new Date().toISOString().slice(0,10);
+  const expiryHtml = expiring.length ? `
+    <div class="ri-expiry-section">
+      <div class="ri-expiry-title">⚠️ Contracts Expiring</div>
+      ${expiring.slice(0,3).map(e => {
+        const expired = e.contract_end_date < today;
+        return `<div class="ri-expiry-row">
+          <span>${esc(e.name)}</span>
+          <span class="ri-expiry-badge ${expired ? 'ri-expiry-red' : 'ri-expiry-yellow'}">${expired ? 'Expired' : e.contract_end_date}</span>
+        </div>`;
+      }).join('')}
+    </div>` : '';
+
+  // Per-event cards
+  const eventsHtml = (evtRevData||[]).filter(ev => Number(ev.deal_count) > 0).map(ev => {
+    const amt    = parseFloat(ev.total_amount) || 0;
+    const paid   = parseFloat(ev.total_paid) || 0;
+    const out    = Math.max(0, amt - paid);
+    const pct    = amt > 0 ? Math.min(100, Math.round(paid / amt * 100)) : 0;
+    const clients= Array.isArray(ev.clients) ? ev.clients : [];
+    const paidC  = clients.filter(c => (parseFloat(c.paid_inc_vat)||0) >= (parseFloat(c.amount)||0) && (parseFloat(c.amount)||0) > 0).length;
+    const partC  = clients.filter(c => { const p=parseFloat(c.paid_inc_vat)||0; const a=parseFloat(c.amount)||0; return p>0 && p<a; }).length;
+    const unpC   = clients.filter(c => (parseFloat(c.paid_inc_vat)||0) === 0).length;
+    const evtDate = ev.event_date ? new Date(ev.event_date).toLocaleDateString('en-GB',{month:'short',year:'2-digit'}) : '';
+
+    // Client dots
+    const dotHtml = clients.slice(0,12).map(c => {
+      const p=parseFloat(c.paid_inc_vat)||0; const a=parseFloat(c.amount)||0;
+      const status = p>=a && a>0 ? 'paid' : p>0 ? 'partial' : 'unpaid';
+      const dotCol = status==='paid' ? '#22c55e' : status==='partial' ? '#f59e0b' : '#6b7280';
+      const co = c.company || '?';
+      return `<span title="${esc(co)}: ${status}" style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${dotCol};margin:1px"></span>`;
+    }).join('') + (clients.length > 12 ? `<span style="font-size:0.7rem;color:rgba(255,255,255,0.4)">+${clients.length-12}</span>` : '');
+
+    return `<div class="ri-evt-card" onclick="riFilterEvent(${ev.event_id},'${esc(ev.event_name).replace(/'/g,"\\'")}')">
+      <div class="ri-evt-hd">
+        <span class="ri-evt-name">${esc(ev.event_name)}</span>
+        ${evtDate ? `<span class="ri-evt-date">${evtDate}</span>` : ''}
+      </div>
+      <div class="ri-evt-stats">
+        <span class="ri-evt-stat"><span style="color:rgba(255,255,255,0.45);font-size:0.7rem">Total</span><br><strong>£${fmtK(amt)}</strong></span>
+        <span class="ri-evt-stat"><span style="color:#22c55e;font-size:0.7rem">Collected</span><br><strong style="color:#22c55e">£${fmtK(paid)}</strong></span>
+        <span class="ri-evt-stat"><span style="color:#f59e0b;font-size:0.7rem">Outstanding</span><br><strong style="color:#f59e0b">£${fmtK(out)}</strong></span>
+      </div>
+      <div class="ri-evt-bar-wrap"><div class="ri-evt-bar" style="width:0%" data-pct="${pct}"></div></div>
+      <div class="ri-evt-foot">
+        <span class="ri-evt-dots">${dotHtml}</span>
+        <span class="ri-evt-counts">
+          <span style="color:#22c55e">${paidC}✓</span>
+          ${partC > 0 ? `<span style="color:#f59e0b"> ${partC}~</span>` : ''}
+          <span style="color:#6b7280"> ${unpC}✗</span>
+        </span>
+      </div>
+    </div>`;
+  }).join('');
+
+  el.innerHTML = `
+    <div class="ri-card">
+      <div class="ri-glow"></div>
+      <div class="ri-header">
+        <div class="ri-header-left">
+          <span class="ri-pulse"></span>
+          <span class="ri-title">REVENUE INTELLIGENCE</span>
+        </div>
+        <span class="ri-year">${new Date().getFullYear()}</span>
+      </div>
+
+      <!-- Top: donut + summary metrics -->
+      <div class="ri-body">
+        <div class="ri-chart-wrap">
+          <svg class="ri-donut" viewBox="0 0 100 100">
+            <circle cx="50" cy="50" r="${R}" fill="none" stroke="rgba(255,255,255,0.04)" stroke-width="10"/>
+            <circle cx="50" cy="50" r="${R}" fill="none" stroke="#22c55e" stroke-width="10" stroke-linecap="round"
+              stroke-dasharray="0 ${C}" stroke-dashoffset="${offPaid}" class="ri-seg"
+              data-final="${segPaid} ${C - segPaid}"/>
+            <circle cx="50" cy="50" r="${R}" fill="none" stroke="#f59e0b" stroke-width="10" stroke-linecap="round"
+              stroke-dasharray="0 ${C}" stroke-dashoffset="${offPartial}" class="ri-seg"
+              data-final="${segPartial} ${C - segPartial}"/>
+            <circle cx="50" cy="50" r="${R}" fill="none" stroke="#374151" stroke-width="10" stroke-linecap="round"
+              stroke-dasharray="0 ${C}" stroke-dashoffset="${offUnpaid}" class="ri-seg"
+              data-final="${segUnpaid} ${C - segUnpaid}"/>
+          </svg>
+          <div class="ri-donut-center">
+            <div class="ri-donut-num">${collRate}%</div>
+            <div class="ri-donut-label">Collected</div>
+          </div>
+        </div>
+        <div class="ri-metrics">
+          <div class="ri-metric">
+            <div class="ri-metric-label">Total Revenue</div>
+            <div class="ri-metric-val ri-blue">£${fmtK(totalRev)}</div>
+          </div>
+          <div class="ri-metric">
+            <div class="ri-metric-label">Collected (inc VAT)</div>
+            <div class="ri-metric-val ri-green">£${fmtK(totalPaid)}</div>
+            <div style="font-size:0.65rem;color:rgba(255,255,255,0.4);margin-top:2px">£${fmtK(totalPaidExVat)} ex VAT</div>
+          </div>
+          <div class="ri-metric">
+            <div class="ri-metric-label">Outstanding</div>
+            <div class="ri-metric-val" style="color:#f59e0b">£${fmtK(totalOut)}</div>
+          </div>
+          <div class="ri-metric ri-metric--wide">
+            <div class="ri-metric-label">Payment Status</div>
+            <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-top:2px">
+              <span style="font-size:0.72rem;color:#22c55e">●  ${fullPaidDeals} paid</span>
+              <span style="font-size:0.72rem;color:#f59e0b">● ${partialDeals} partial</span>
+              <span style="font-size:0.72rem;color:#6b7280">● ${unpaidDeals} unpaid</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Per-event cards -->
+      ${(evtRevData||[]).filter(ev => Number(ev.deal_count) > 0).length > 0 ? `
+      <div class="ri-evt-section">
+        <div class="ri-evt-section-hd">
+          <div class="ri-evt-section-title">Events Breakdown</div>
+          <input class="ri-evt-search" id="riEvtSearch" placeholder="Search events…" oninput="riFilterEvtCards(this.value)" />
+        </div>
+        <div class="ri-evt-list" id="riEvtList">${eventsHtml}</div>
+      </div>` : ''}
+
+      ${expiryHtml}
+    </div>`;
+
+  // Animate after render
+  requestAnimationFrame(() => {
+    setTimeout(() => {
+      el.querySelectorAll('.ri-seg').forEach(seg => {
+        seg.style.transition = 'stroke-dasharray 1.2s cubic-bezier(.4,0,.2,1)';
+        seg.setAttribute('stroke-dasharray', seg.dataset.final);
+      });
+      el.querySelectorAll('.ri-evt-bar').forEach(bar => {
+        bar.style.transition = 'width 1s cubic-bezier(.4,0,.2,1)';
+        bar.style.width = bar.dataset.pct + '%';
+      });
+    }, 80);
+  });
+}
+
+function riFilterEvtCards(query) {
+  const q = (query || '').toLowerCase();
+  document.querySelectorAll('#riEvtList .ri-evt-card').forEach(card => {
+    const name = (card.querySelector('.ri-evt-name')?.textContent || '').toLowerCase();
+    card.style.display = !q || name.includes(q) ? '' : 'none';
+  });
+}
+
+function riFilterEvent(eventId, eventName) {
+  // Switch to deals page and filter by this event
+  navigate('deals');
+  setTimeout(() => {
+    const sel = document.getElementById('dealEventFilter');
+    if (sel) {
+      sel.value = String(eventId);
+      setDealEvent(String(eventId));
+    }
+  }, 300);
 }
 
 function renderContractExpiryPanel(expiring, miniCardsHtml) {
@@ -540,52 +806,67 @@ function renderContractExpiryPanel(expiring, miniCardsHtml) {
 function renderHeadcountPanel(activeEmps, payrollCount, seCount, totalHeadcount, year) {
   var el = document.getElementById('headcountPanel');
   if (!el) return;
-  var depts = {};
-  activeEmps.forEach(function(e) {
-    var d = e.department || 'Unassigned';
-    depts[d] = (depts[d] || 0) + 1;
+  const depts = {};
+  activeEmps.forEach(e => {
+    const d = e.department || 'Unassigned';
+    if (!depts[d]) depts[d] = { count: 0, payroll: 0, se: 0, emps: [] };
+    depts[d].count++;
+    if (e.employment_type === 'self_employed') depts[d].se++;
+    else depts[d].payroll++;
+    depts[d].emps.push(e);
   });
-  var total = totalHeadcount || activeEmps.length;
-  var sorted = Object.entries(depts).sort(function(a,b){ return b[1]-a[1]; });
+  const sorted = Object.entries(depts).sort((a,b) => b[1].count - a[1].count);
+  if (!sorted.length) { el.innerHTML = ''; return; }
 
-  var deptRows = sorted.map(function(entry) {
-    var dept = entry[0], count = entry[1];
-    var pct = Math.round((count / total) * 100);
-    return '<div style="margin-bottom:14px">' +
-      '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">' +
-        '<div style="font:600 13px/1 var(--font-sans);color:var(--text)">' + esc(dept) + '</div>' +
-        '<div style="font:600 11px/1 var(--font-mono);color:var(--muted)">' +
-          String(count).padStart(2,'0') + ' &middot; ' + pct + '%' +
-        '</div>' +
-      '</div>' +
-      '<div style="height:3px;background:var(--border);border-radius:2px">' +
-        '<div style="height:100%;width:' + pct + '%;background:#8b5cf6;border-radius:2px"></div>' +
-      '</div>' +
-    '</div>';
-  }).join('');
+  function deptColor(i) {
+    const colors = ['#4f46e5','#0891b2','#16a34a','#d97706','#dc2626','#7c3aed','#be185d'];
+    return colors[i % colors.length];
+  }
 
-  el.innerHTML =
-    '<div class="card" style="height:100%">' +
-      // Hero stats section
-      '<div style="padding:22px 22px 18px;border-bottom:1px solid var(--border)">' +
-        '<div style="font:600 10px/1 var(--font-mono);text-transform:uppercase;letter-spacing:1.2px;color:var(--muted);margin-bottom:10px">Active Headcount</div>' +
-        '<div style="font:800 42px/1 var(--font-mono);color:var(--text);letter-spacing:-2px;margin-bottom:12px">' + total + '</div>' +
-        '<div style="display:flex;gap:8px">' +
-          '<span style="background:rgba(59,130,246,0.12);color:#60a5fa;border:1px solid rgba(59,130,246,0.2);border-radius:6px;padding:4px 10px;font:600 11px/1 var(--font-mono)">' + (payrollCount||0) + ' PAYROLL</span>' +
-          '<span style="background:rgba(245,158,11,0.12);color:#fbbf24;border:1px solid rgba(245,158,11,0.2);border-radius:6px;padding:4px 10px;font:600 11px/1 var(--font-mono)">' + (seCount||0) + ' SELF-EMP</span>' +
-        '</div>' +
-        '<div style="font:500 11px/1 var(--font-mono);color:var(--muted);margin-top:12px">Total workforce &middot; ' + (year||new Date().getFullYear()) + '</div>' +
-      '</div>' +
-      // Dept breakdown section
-      '<div class="card-header" style="padding:14px 20px 10px">' +
-        '<span class="card-title" style="display:flex;align-items:center;gap:7px">' +
-          '<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>' +
-          'By department' +
-        '</span>' +
-        '<span style="font:700 11px/1 var(--font-mono);color:var(--muted)">' + total + ' TOTAL</span>' +
-      '</div>' +
-      '<div style="padding:4px 20px 16px">' + (deptRows || '<div style="color:var(--muted);font-size:0.8rem">No department data</div>') + '</div>' +
-    '</div>';
+  el.innerHTML = `
+    <div class="dash-panel hc-panel">
+      <div class="dash-panel-header">
+        <span class="dash-panel-icon">🏢</span>
+        <span class="dash-panel-title">Headcount by Department</span>
+        <span class="dash-panel-count">${activeEmps.length} total</span>
+      </div>
+      <div class="dash-panel-body hc-body">
+        ${sorted.map(([dept, info], idx) => {
+          const color = deptColor(idx);
+          const pct = Math.round((info.count / activeEmps.length) * 100);
+          return `
+          <div class="hc-dept" onclick="this.classList.toggle('hc-open')">
+            <div class="hc-dept-hd">
+              <div class="hc-dept-bar" style="background:${color}"></div>
+              <div class="hc-dept-name">${esc(dept)}</div>
+              <div class="hc-dept-badges">
+                ${info.payroll ? `<span class="badge badge-blue">${info.payroll} payroll</span>` : ''}
+                ${info.se ? `<span class="badge badge-yellow">${info.se} self-emp</span>` : ''}
+              </div>
+              <div class="hc-dept-pct">${pct}%</div>
+              <div class="hc-dept-chevron">›</div>
+            </div>
+            <div class="hc-dept-track"><div class="hc-dept-fill" style="width:${pct}%;background:${color}"></div></div>
+            <div class="hc-emp-list">
+              ${info.emps.map(e => {
+                const initials = (e.name||'?').split(' ').map(w=>w[0]).join('').slice(0,2).toUpperCase();
+                const isSE = e.employment_type === 'self_employed';
+                const avatarBg = isSE ? '#d97706' : color;
+                const role = e.job_title || (isSE ? 'Self-Employed' : 'Payroll');
+                return `<div class="hc-emp-row" onclick="event.stopPropagation();goToTracking(${e.id})">
+                  <div class="hc-emp-av" style="background:${avatarBg}">${initials}</div>
+                  <div class="hc-emp-info">
+                    <div class="hc-emp-name">${esc(e.name)}</div>
+                    <div class="hc-emp-role">${esc(role)}</div>
+                  </div>
+                  <span class="badge ${isSE ? 'badge-yellow' : 'badge-blue'}" style="font-size:0.6rem">${isSE ? 'SE' : 'PR'}</span>
+                </div>`;
+              }).join('')}
+            </div>
+          </div>`;
+        }).join('')}
+      </div>
+    </div>`;
 }
 
 function renderDashUpcoming(upcoming, dayOffs) {
@@ -684,7 +965,7 @@ function renderDashActivity(summary, expiring, hotelData, salaryData) {
 
   // Hotel events
   hotelData.filter(h => h.status !== 'paid').slice(0,2).forEach(h => {
-    const sym = hotelCurrencySymbol(h.paid_currency || 'USD');
+    const sym = hotelCurrencySymbol(h.currency || h.paid_currency || 'USD');
     const amtStr = h.paid_amount ? sym + parseFloat(h.paid_amount).toLocaleString('en-GB') + ' &middot; ' : '';
     items.push({ icon: ICONS.hotel, tone: 'info', title: 'Hotel expense', detail: esc(h.event_name) + ' &middot; ' + amtStr + h.status });
   });
@@ -847,7 +1128,7 @@ async function loadEmployeeRecords() {
     });
   }
 
-  // Payments are managed in the Salary page — keep this section hidden
+  // Payments section kept hidden — salary management is in the Salary page
   document.getElementById('paymentsSection')?.classList.add('hidden');
 }
 
@@ -1452,6 +1733,19 @@ function setSalaryTab(btn) {
   loadSalaryPage();
 }
 
+function pbFilter(btn, filter) {
+  document.querySelectorAll('.pb-filter').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  document.querySelectorAll('#pbList .pb-row').forEach(row => {
+    row.style.display = (filter === 'unpaid' && row.classList.contains('pb-row--settled')) ? 'none' : '';
+  });
+  // Hide section headers if all their rows are hidden
+  document.querySelectorAll('#pbList .pb-section').forEach(sec => {
+    const visible = [...sec.querySelectorAll('.pb-row')].some(r => r.style.display !== 'none');
+    sec.style.display = visible ? '' : 'none';
+  });
+}
+
 function activeSalaryTab() {
   return document.querySelector('.salary-tab.active')?.dataset.tab || 'all';
 }
@@ -1543,50 +1837,131 @@ async function loadSalaryPage() {
     // AED → GBP approximate rate (shown clearly to user)
     const AED_TO_GBP = 1 / 4.67;
 
-    // Aggregate GBP totals across all currencies for stat tiles
-    const totalPaidGBP = groups.reduce((sum, g) => {
-      const v = g.rows.reduce((a, b) => a + (parseFloat(b.total_paid) || 0), 0);
-      return sum + (g.currency === 'AED' ? v * AED_TO_GBP : v);
-    }, 0);
-    const totalDueGBP = groups.reduce((sum, g) => {
-      const v = g.rows.reduce((a, b) => a + (parseFloat(b.salary_target ?? b.annual_salary) || 0), 0);
-      return sum + (g.currency === 'AED' ? v * AED_TO_GBP : v);
-    }, 0);
-    const totalOutstandingGBP = groups.reduce((sum, g) => {
-      const v = g.rows.reduce((a, b) => a + (parseFloat(b.net_remaining) || 0), 0);
-      return sum + (g.currency === 'AED' ? v * AED_TO_GBP : v);
-    }, 0);
-    const totalBonusGBP = groups.reduce((sum, g) => {
-      const v = g.rows.reduce((a, b) => a + (parseFloat(b.total_bonuses) || 0), 0);
-      return sum + (g.currency === 'AED' ? v * AED_TO_GBP : v);
-    }, 0);
-    const paidPct = totalDueGBP > 0 ? (totalPaidGBP / totalDueGBP * 100) : 0;
-    const unpaidCount = activeRows.filter(r => (parseFloat(r.net_remaining) || 0) > 0).length;
-    const fmtGBP = v => v >= 1000 ? `£${(v/1000).toFixed(1)}k` : `£${v.toFixed(0)}`;
+    const groupCards = groups.map(g => {
+      const s        = currencySymbol(g.currency);
+      const tTarget  = g.rows.reduce((a, b) => a + (parseFloat(b.salary_target ?? b.annual_salary) || 0), 0);
+      const tPaid    = g.rows.reduce((a, b) => a + (parseFloat(b.total_paid)    || 0), 0);
+      const tDeduct  = g.rows.reduce((a, b) => a + (parseFloat(b.excess_deduction) || 0) + (parseFloat(b.total_office_deductions) || 0), 0);
+      const tRemain  = g.rows.reduce((a, b) => a + (parseFloat(b.net_remaining) || 0), 0);
+      const typeLabel = groups.length > 1 ? `${TYPE_LABEL[g.type]} · ${g.currency}` : TYPE_LABEL[g.type];
+      const empName   = g.rows.length === 1 ? g.rows[0].name : null;
+      const header    = empName ? `${empName} · ${typeLabel}` : typeLabel;
+      const remainClass = tRemain < 0 ? 'overpaid' : tRemain === 0 ? 'clear' : '';
+      const paidPct   = tTarget > 0 ? Math.min(100, Math.round(tPaid / tTarget * 100)) : 0;
+      const isPayroll = g.type === 'payroll';
+      const accentClass = isPayroll ? 'payroll' : 'self-employed';
+      const icon = isPayroll ? '💼' : '🧾';
+      const aedConversion = g.currency === 'AED' && tRemain > 0
+        ? `<div class="soc-conversion">≈ £${(tRemain * AED_TO_GBP).toLocaleString('en-GB',{maximumFractionDigits:0})} at 4.67 AED/GBP</div>`
+        : '';
+      return `
+        <div class="salary-overview-card ${accentClass}">
+          <div class="soc-accent-bar"></div>
+          <div class="soc-header">
+            <span class="soc-icon">${icon}</span>
+            <div class="soc-header-text">
+              <div class="soc-title">${header}</div>
+              <div class="soc-subtitle">${g.rows.length} employee${g.rows.length !== 1 ? 's' : ''}</div>
+            </div>
+            <div class="soc-pct-badge">${paidPct}%</div>
+          </div>
+          <div class="soc-hero">
+            <div class="soc-hero-block">
+              <div class="soc-hero-label">Annual Target</div>
+              <div class="soc-hero-val soc-col-target">${s}${fmtK(tTarget)}</div>
+            </div>
+            <div class="soc-hero-divider"></div>
+            <div class="soc-hero-block">
+              <div class="soc-hero-label">Paid So Far</div>
+              <div class="soc-hero-val soc-col-paid">${s}${fmtK(tPaid)}</div>
+            </div>
+          </div>
+          <div class="soc-progress-wrap">
+            <div class="soc-progress-bar ${accentClass}" style="width:${paidPct}%"></div>
+          </div>
+          <div class="soc-footer">
+            ${tDeduct > 0 ? `<div class="soc-footer-item"><span class="soc-footer-label">Deductions</span><span class="soc-footer-val soc-col-deduct">−${s}${fmtK(tDeduct)}</span></div>` : ''}
+            <div class="soc-footer-item soc-footer-item--outstanding">
+              <span class="soc-footer-label">Outstanding</span>
+              <span class="soc-footer-val soc-col-outstanding ${remainClass}">${tRemain < 0 ? 'Overpaid ' : ''}${tRemain < 0 ? '' : ''}${s}${fmtK(Math.abs(tRemain))}</span>
+            </div>
+          </div>
+          ${aedConversion}
+        </div>`;
+    });
 
-    const salaryTotalsEl = document.getElementById('salaryTotals');
-    salaryTotalsEl.style.cssText = 'display:grid;grid-template-columns:repeat(4,1fr);gap:1px;background:var(--border);border:1px solid var(--border);border-radius:var(--radius);overflow:hidden;margin-bottom:24px';
-    const outstandingColor = totalOutstandingGBP > 0 ? 'var(--negative)' : 'var(--positive)';
-    const unpaidLabel = unpaidCount > 0 ? (unpaidCount + ' employee' + (unpaidCount !== 1 ? 's' : '') + ' unpaid') : 'all paid up';
+    // Grand total card — all currencies converted to GBP, with full breakdown
+    const allActive = activeRows; // alias for clarity
+    const gtTarget  = allActive.reduce((s, e) => {
+      const t = parseFloat(e.salary_target ?? e.annual_salary) || 0;
+      const c = e.currency || 'GBP';
+      return s + (c === 'AED' ? t * AED_TO_GBP : c === 'GBP' ? t : 0);
+    }, 0);
+    const gtPaid    = allActive.reduce((s, e) => {
+      const p = parseFloat(e.total_paid) || 0;
+      const c = e.currency || 'GBP';
+      return s + (c === 'AED' ? p * AED_TO_GBP : c === 'GBP' ? p : 0);
+    }, 0);
+    const gtDayOff  = allActive.reduce((s, e) => {
+      const d = parseFloat(e.excess_deduction) || 0;
+      const c = e.currency || 'GBP';
+      return s + (c === 'AED' ? d * AED_TO_GBP : c === 'GBP' ? d : 0);
+    }, 0);
+    const gtOffice  = allActive.reduce((s, e) => {
+      const d = parseFloat(e.total_office_deductions) || 0;
+      const c = e.currency || 'GBP';
+      return s + (c === 'AED' ? d * AED_TO_GBP : c === 'GBP' ? d : 0);
+    }, 0);
+    const gtDeduct  = gtDayOff + gtOffice;
+    // Remaining = max(0) per employee so overpaid don't cancel owed amounts
+    const gtRemain  = allActive.reduce((s, e) => {
+      const r = parseFloat(e.net_remaining) || 0;
+      const c = e.currency || 'GBP';
+      const converted = c === 'AED' ? r * AED_TO_GBP : c === 'GBP' ? r : 0;
+      return s + Math.max(0, converted);
+    }, 0);
+    const hasMultiCurrency = groups.some(g => g.currency !== 'GBP');
+    const gtPaidPct = gtTarget > 0 ? Math.min(100, Math.round(gtPaid / gtTarget * 100)) : 0;
+    const gbpCard = `
+      <div class="salary-overview-card soc-gbp-total">
+        <div class="soc-accent-bar"></div>
+        <div class="soc-header">
+          <span class="soc-icon">📊</span>
+          <div class="soc-header-text">
+            <div class="soc-title">Total · GBP${hasMultiCurrency ? ' <span style="font-size:0.68rem;font-weight:500;opacity:0.6">AED @ 4.67</span>' : ''}</div>
+            <div class="soc-subtitle">All groups combined</div>
+          </div>
+          <div class="soc-pct-badge soc-pct-badge--green">${gtPaidPct}%</div>
+        </div>
+        <div class="soc-hero">
+          <div class="soc-hero-block">
+            <div class="soc-hero-label">Annual Target</div>
+            <div class="soc-hero-val soc-col-target">£${fmtK(gtTarget)}</div>
+          </div>
+          <div class="soc-hero-divider"></div>
+          <div class="soc-hero-block">
+            <div class="soc-hero-label">Paid So Far</div>
+            <div class="soc-hero-val soc-col-paid">£${fmtK(gtPaid)}</div>
+          </div>
+        </div>
+        <div class="soc-progress-wrap">
+          <div class="soc-progress-bar soc-gbp-total" style="width:${gtPaidPct}%"></div>
+        </div>
+        <div class="soc-footer">
+          ${gtDayOff > 0 ? `<div class="soc-footer-item"><span class="soc-footer-label">Day-Off Deductions</span><span class="soc-footer-val soc-col-deduct">−£${fmtK(gtDayOff)}</span></div>` : ''}
+          ${gtOffice > 0 ? `<div class="soc-footer-item"><span class="soc-footer-label">Office Deductions</span><span class="soc-footer-val soc-col-deduct">−£${fmtK(gtOffice)}</span></div>` : ''}
+          <div class="soc-footer-item soc-footer-item--outstanding">
+            <span class="soc-footer-label">Remaining to Pay</span>
+            <span class="soc-footer-val soc-col-outstanding soc-col-outstanding--green">£${gtRemain.toLocaleString('en-GB',{minimumFractionDigits:2,maximumFractionDigits:2})}</span>
+          </div>
+        </div>
+        ${hasMultiCurrency ? `<div class="soc-conversion">Includes AED converted · ${year}</div>` : ''}
+      </div>`;
 
-    // Store rows for breakdown modal access
-    window._salaryRows = rows;
-    window._salaryAedRate = AED_TO_GBP;
+    document.getElementById('salaryTotals').innerHTML = (groupCards.join('') + gbpCard) || '';
 
-    const statBox = (label, value, sub, subColor, key) =>
-      '<div style="background:var(--surface);padding:20px 24px;display:flex;flex-direction:column;gap:12px;cursor:pointer;transition:background .15s" ' +
-        'onmouseenter="this.style.background=\'var(--surface-2)\'" onmouseleave="this.style.background=\'var(--surface)\'" ' +
-        'onclick="showSalaryBreakdown(\'' + key + '\')">' +
-        '<div style="font:600 10px/1 var(--font-mono);text-transform:uppercase;letter-spacing:1.2px;color:var(--muted)">' + label + '</div>' +
-        '<div style="font:700 32px/1 var(--font-mono);color:' + (key === 'outstanding' ? outstandingColor : 'var(--text)') + ';letter-spacing:-1.5px">' + value + '</div>' +
-        '<div style="font:500 11px/1 var(--font-mono);color:' + subColor + '">' + sub + '</div>' +
-      '</div>';
-
-    salaryTotalsEl.innerHTML =
-      statBox('Total Salaries ' + year, fmtGBP(totalDueGBP),                'annual target · click for breakdown',  'var(--muted)',    'due') +
-      statBox('Total Paid',             fmtGBP(totalPaidGBP),                paidPct.toFixed(0) + '% of target',     'var(--positive)', 'paid') +
-      statBox('Outstanding',            fmtGBP(Math.abs(totalOutstandingGBP)), unpaidLabel,                           'var(--muted)',    'outstanding') +
-      statBox('Total Bonuses',          fmtGBP(totalBonusGBP),               totalBonusGBP > 0 ? 'across all staff' : 'none logged yet', 'var(--muted)', 'bonuses');
+    // Payment Board removed — salary reminder panel handles categorized view
+    document.getElementById('salaryBoard').innerHTML = '';
 
     // ── Per-employee cards ──
     if (!rows.length) {
@@ -1668,7 +2043,7 @@ async function loadSalaryPage() {
       const avatarTypeClass = isTerminated ? '' : emp.employment_type === 'self_employed' ? ' sc-self-emp-type' : '';
       const accentClass = isTerminated ? 'sc-term-accent' : emp.employment_type === 'self_employed' ? 'sc-self-emp' : 'sc-payroll';
 
-      return `<div class="sc-card${isTerminated ? ' sc-terminated' : ''}${avatarTypeClass}">
+      return `<div class="sc-card${isTerminated ? ' sc-terminated' : ''}${avatarTypeClass}" id="sc-emp-${emp.employee_id}">
         <div class="sc-accent ${accentClass}"></div>
 
         ${isTerminated ? `<div class="sc-term-banner">
@@ -2452,19 +2827,21 @@ async function loadCalendar() {
   renderCalSummary(byDate, empFilter);
 }
 
-function renderCalSummary(byDate, empFilter) {
+async function renderCalSummary(byDate, empFilter) {
   const summary = document.getElementById('calSummary');
+  const CAT_ICONS = { rent:'🏠', subscription:'📦', deposit:'💳', utility:'⚡', other:'📌' };
+
+  // Fetch upcoming reminders (next 60 days)
+  let reminders = [];
+  try {
+    const r = await fetch('/api/calendar-reminders/upcoming?days=60');
+    if (r.ok) reminders = await r.json();
+  } catch {}
+
   const dates = Object.keys(byDate).sort();
-
-  // Compute stats
-  let fullDaysTotal = 0;
-  let halfDaysTotal = 0;
-  let calendarHtml = '';
-
+  let daysHtml = '';
   dates.forEach(date => {
-    const entries = byDate[date].filter(r =>
-      !empFilter || String(r.employee_id) === empFilter
-    );
+    const entries = byDate[date].filter(r => !empFilter || String(r.employee_id) === empFilter);
     if (!entries.length) return;
     entries.forEach(r => {
       const v = parseFloat(r.is_day_off);
@@ -2474,42 +2851,28 @@ function renderCalSummary(byDate, empFilter) {
     const chips = entries.map(r => {
       const cls = parseFloat(r.is_day_off) === 1 ? 'chip-full' : 'chip-half';
       const label = parseFloat(r.is_day_off) === 1 ? 'Full' : 'Half';
-      return `<span class="cal-off-item"><span class="cal-chip ${cls}">${label}</span> ${esc(r.employee_name)}</span>`;
+      return `<div class="cal-sum-row"><span class="cal-chip ${cls}">${label}</span><span class="cal-sum-name">${esc(r.employee_name)}</span></div>`;
     }).join('');
-    calendarHtml += `<div class="cal-summary-card">
-      <h4>${formatDate(date)}</h4>
-      <div class="cal-off-list">${chips}</div>
+    daysHtml += `<div class="cal-sum-item"><div class="cal-sum-date">${formatDate(date)}</div>${chips}</div>`;
+  });
+
+  let remHtml = '';
+  reminders.forEach(r => {
+    const sym = r.currency === 'AED' ? 'AED ' : r.currency === 'EUR' ? '€' : '£';
+    const amt = r.amount ? `<span class="cal-sum-amt">${sym}${parseFloat(r.amount).toLocaleString('en-GB',{minimumFractionDigits:2})}</span>` : '';
+    remHtml += `<div class="cal-sum-item">
+      <div class="cal-sum-date">${r.virtual_date}</div>
+      <div class="cal-sum-row">${CAT_ICONS[r.category] || '📌'} <span class="cal-sum-name">${esc(r.title)}</span>${amt}</div>
     </div>`;
   });
 
-  const reminderCount = calReminders.length;
-  const hasSomething = calendarHtml || fullDaysTotal || halfDaysTotal || reminderCount;
-  if (!hasSomething) { summary.classList.add('hidden'); return; }
+  if (!daysHtml && !remHtml) { summary.classList.add('hidden'); return; }
 
-  const statTiles = `
-    <div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:1px;background:var(--border);border:1px solid var(--border);border-radius:var(--radius);overflow:hidden;margin-bottom:16px">
-      <div style="background:var(--surface);padding:16px 18px;display:flex;flex-direction:column;gap:8px">
-        <div style="font:600 10px/1 var(--font-mono);text-transform:uppercase;letter-spacing:1px;color:var(--muted)">Full Days Off</div>
-        <div style="font:600 28px/1 var(--font-mono);color:var(--text);letter-spacing:-1px">${String(fullDaysTotal).padStart(2,'0')}</div>
-        <div style="font:500 11px/1 var(--font-mono);color:var(--negative)">this month</div>
-      </div>
-      <div style="background:var(--surface);padding:16px 18px;display:flex;flex-direction:column;gap:8px">
-        <div style="font:600 10px/1 var(--font-mono);text-transform:uppercase;letter-spacing:1px;color:var(--muted)">Half Days</div>
-        <div style="font:600 28px/1 var(--font-mono);color:var(--text);letter-spacing:-1px">${String(halfDaysTotal).padStart(2,'0')}</div>
-        <div style="font:500 11px/1 var(--font-mono);color:var(--warning)">this month</div>
-      </div>
-      <div style="background:var(--surface);padding:16px 18px;display:flex;flex-direction:column;gap:8px">
-        <div style="font:600 10px/1 var(--font-mono);text-transform:uppercase;letter-spacing:1px;color:var(--muted)">Expense Reminders</div>
-        <div style="font:600 28px/1 var(--font-mono);color:var(--text);letter-spacing:-1px">${String(reminderCount).padStart(2,'0')}</div>
-        <div style="font:500 11px/1 var(--font-mono);color:var(--info)">this month</div>
-      </div>
-    </div>`;
+  let html = '';
+  if (daysHtml) html += `<div class="cal-sum-section"><div class="cal-sum-section-title">🏖 Days Off This Month</div>${daysHtml}</div>`;
+  if (remHtml)  html += `<div class="cal-sum-section"><div class="cal-sum-section-title">🔔 Upcoming Reminders</div>${remHtml}</div>`;
 
-  if (calendarHtml) {
-    summary.innerHTML = statTiles + `<h3 style="margin-bottom:12px;font-size:0.95rem;color:var(--muted)">Days Off This Month</h3>` + calendarHtml;
-  } else {
-    summary.innerHTML = statTiles;
-  }
+  summary.innerHTML = html;
   summary.classList.remove('hidden');
 }
 
@@ -2812,30 +3175,46 @@ async function renderSalaryReminderPanel() {
 
     panel.classList.remove('hidden');
     const monthName = MONTHS[month];
-    const isOpen = localStorage.getItem('salaryReminderOpen') === '1';
-    const rows = unpaid.map(emp => {
+
+    const seList      = unpaid.filter(e => e.employment_type === 'self_employed' && (e.currency || 'GBP') === 'GBP');
+    const payrollList = unpaid.filter(e => e.employment_type === 'payroll'       && (e.currency || 'GBP') === 'GBP');
+    const intlList    = unpaid.filter(e => (e.currency || 'GBP') !== 'GBP');
+
+    function buildReminderRow(emp) {
       const sym = currencySymbol(emp.currency || 'GBP');
       const grossMonthly = (parseFloat(emp.annual_salary) || 0) / 12;
       const netMo = emp.net_monthly ? parseFloat(emp.net_monthly) : null;
       const displayAmount = netMo ?? grossMonthly;
-      const taxLabel = netMo ? ' <span style="font-size:0.72rem;color:var(--muted)">(net take-home)</span>' : '';
-      return '<div class="salary-reminder-row">' +
-        '<div class="salary-reminder-name">' + esc(emp.name) + '</div>' +
-        '<div class="salary-reminder-amount">' + sym + displayAmount.toLocaleString('en-GB',{minimumFractionDigits:2}) + ' /mo' + taxLabel + '</div>' +
-        '<div class="salary-reminder-actions">' +
-          '<button class="btn btn-ghost btn-sm" onclick="skipSalaryReminder(' + emp.employee_id + ',' + year + ',' + month + ')">Skip</button>' +
-          '<button class="btn btn-primary btn-sm" onclick="openSalaryPaymentModal(' + emp.employee_id + ')">Log Payment</button>' +
-        '</div></div>';
-    }).join('');
-    panel.innerHTML =
-      '<div class="salary-reminder-header" style="cursor:pointer" onclick="toggleSalaryReminder()">' +
-        '<span>&#128179; ' + unpaid.length + ' employee' + (unpaid.length > 1 ? 's' : '') + ' not yet paid for ' + monthName + ' ' + year + '</span>' +
-        '<div style="display:flex;gap:8px;align-items:center">' +
-          '<button class="btn btn-ghost btn-sm" onclick="event.stopPropagation();dismissAllReminders()">Dismiss all</button>' +
-          '<button class="btn btn-ghost btn-sm" id="salaryReminderToggleBtn" style="font-size:11px;padding:4px 8px">' + (isOpen ? '&#9650; Hide' : '&#9660; Show ' + unpaid.length) + '</button>' +
-        '</div>' +
-      '</div>' +
-      '<div id="salaryReminderBody" style="' + (isOpen ? '' : 'display:none') + '">' + rows + '</div>';
+      const taxLabel = netMo ? ` <span class="sr-net-label">(net take-home)</span>` : '';
+      return `<div class="salary-reminder-row">
+        <div class="salary-reminder-name">${esc(emp.name)}</div>
+        <div class="salary-reminder-amount">${sym}${displayAmount.toLocaleString('en-GB',{minimumFractionDigits:2})} /mo${taxLabel}</div>
+        <div class="salary-reminder-actions">
+          <button class="btn btn-ghost btn-sm" onclick="skipSalaryReminder(${emp.employee_id},${year},${month})">Skip</button>
+          <button class="btn btn-primary btn-sm" onclick="openSalaryPaymentModal(${emp.employee_id})">Log Payment</button>
+        </div>
+      </div>`;
+    }
+
+    function buildReminderSection(label, color, emps) {
+      if (!emps.length) return '';
+      return `<div class="sr-section">
+        <div class="sr-section-hd" style="border-left:3px solid ${color}">
+          <span class="sr-section-title" style="color:${color}">${label}</span>
+          <span class="sr-section-count">${emps.length} to pay</span>
+        </div>
+        ${emps.map(buildReminderRow).join('')}
+      </div>`;
+    }
+
+    panel.innerHTML = `
+      <div class="salary-reminder-header">
+        <span>💳 ${unpaid.length} employee${unpaid.length > 1 ? 's' : ''} not yet paid for ${monthName} ${year}</span>
+        <button class="btn btn-ghost btn-sm" onclick="dismissAllReminders()">Dismiss all</button>
+      </div>
+      ${buildReminderSection('Self-Employed', '#d97706', seList)}
+      ${buildReminderSection('Payroll', '#4f46e5', payrollList)}
+      ${buildReminderSection('Internationals', '#0891b2', intlList)}`;
   } catch(e) {
     panel.classList.add('hidden');
   }
@@ -2941,6 +3320,7 @@ function renderUpcomingWidget(upcoming) {
 // ─── HOTEL EXPENSES ──────────────────────────────────────────────────────────
 
 let hotelData = [];
+let _hotelYearFilter = 'all';
 
 async function loadHotelExpenses() {
   const res = await fetch('/api/hotel-expenses');
@@ -2948,6 +3328,19 @@ async function loadHotelExpenses() {
   hotelData = await res.json();
   renderHotelSummary();
   renderHotelTable();
+}
+
+function setHotelYear(btn, yr) {
+  _hotelYearFilter = yr;
+  document.querySelectorAll('#hotelYearFilters .deal-q-btn').forEach(b => b.classList.toggle('active', b.dataset.hyr === yr));
+  renderHotelSummary();
+  renderHotelTable();
+}
+
+function hotelYearFiltered() {
+  if (_hotelYearFilter === 'all') return hotelData;
+  const yr = parseInt(_hotelYearFilter);
+  return hotelData.filter(r => r.event_year === yr || r.event_year === String(yr));
 }
 
 function hotelCurrencySymbol(c) {
@@ -2970,45 +3363,74 @@ function fmtHotelAmount(v) {
 }
 
 function renderHotelSummary() {
-  const total       = hotelData.length;
-  const paidCount   = hotelData.filter(r => r.status === 'paid').length;
-  const partialCount = hotelData.filter(r => r.status === 'partial').length;
-  const pendingCount = hotelData.filter(r => r.status === 'pending').length;
-  const outstandingCount = partialCount + pendingCount;
+  const yearData = hotelYearFiltered();
 
-  // Use paid_amount (numeric) as the reliable money field
-  const totalPaid = hotelData.reduce((s, r) => s + (parseFloat(r.paid_amount) || 0), 0);
-  const paidEventsPaid = hotelData.filter(r => r.status === 'paid').reduce((s, r) => s + (parseFloat(r.paid_amount) || 0), 0);
-  const paidPct = total > 0 ? Math.round(paidCount / total * 100) : 0;
+  // Parse cost field as number (strips currency symbols, commas, spaces)
+  function parseCost(str) {
+    if (!str) return 0;
+    return parseFloat(String(str).replace(/[^0-9.]/g, '')) || 0;
+  }
 
-  // Detect dominant currency for display
-  const currencies = hotelData.map(r => r.paid_currency || 'USD');
-  const domCur = currencies.sort((a,b) => currencies.filter(c=>c===b).length - currencies.filter(c=>c===a).length)[0] || 'USD';
-  const sym = hotelCurrencySymbol(domCur);
+  const byCur = {};
+  yearData.forEach(r => {
+    const c = r.currency || r.paid_currency || 'USD';
+    byCur[c] = byCur[c] || { paid: 0, av: 0, cost: 0 };
+    if (r.paid_amount != null) byCur[c].paid += parseFloat(r.paid_amount) || 0;
+    if (r.av_amount != null && r.av_billing !== 'included') {
+      byCur[c].av += parseFloat(r.av_amount) || 0;
+    }
+    // Accumulate cost (from text cost field) per row currency
+    const costNum = parseCost(r.cost);
+    if (costNum > 0) byCur[c].cost += costNum;
+  });
 
-  const hotelSub = document.getElementById('hotelSub');
-  if (hotelSub) hotelSub.textContent = '// ' + total + ' event' + (total !== 1 ? 's' : '') + ' · ' + paidCount + ' paid · ' + (outstandingCount > 0 ? outstandingCount + ' outstanding' : 'all settled');
+  const total  = yearData.length;
+  const unpaid = yearData.filter(r => r.status !== 'paid').length;
 
-  const tile = (label, icon, value, delta, deltaColor) =>
-    '<div style="background:var(--surface);padding:18px 20px;display:flex;flex-direction:column;gap:8px">' +
-      '<div style="font:600 10px/1 var(--font-mono);text-transform:uppercase;letter-spacing:1px;color:var(--muted)">' + icon + ' ' + label + '</div>' +
-      '<div style="font:700 28px/1 var(--font-mono);color:var(--text);letter-spacing:-1px">' + value + '</div>' +
-      '<div style="font:500 11px/1 var(--font-mono);color:' + deltaColor + '">' + delta + '</div>' +
-    '</div>';
+  const currencyCards = Object.entries(byCur).map(([cur, sums]) => {
+    const sym = hotelCurrencySymbol(cur);
+    const total_spent = sums.paid + sums.av;
+    const outstanding = sums.cost > 0 ? Math.max(0, sums.cost - sums.paid) : null;
+    return `
+      <div class="hotel-fin-card">
+        <div class="hotel-fin-currency">${cur}</div>
+        <div class="hotel-fin-row">
+          <span class="hotel-fin-lbl">Venue / Hotel Paid</span>
+          <span class="hotel-fin-val hotel-fin-green">${sym}${sums.paid.toLocaleString('en-GB',{minimumFractionDigits:2,maximumFractionDigits:2})}</span>
+        </div>
+        <div class="hotel-fin-row">
+          <span class="hotel-fin-lbl">AV (separate charges)</span>
+          <span class="hotel-fin-val hotel-fin-blue">${sym}${sums.av.toLocaleString('en-GB',{minimumFractionDigits:2,maximumFractionDigits:2})}</span>
+        </div>
+        <div class="hotel-fin-row hotel-fin-total-row">
+          <span class="hotel-fin-lbl">Total Spent</span>
+          <span class="hotel-fin-val">${sym}${total_spent.toLocaleString('en-GB',{minimumFractionDigits:2,maximumFractionDigits:2})}</span>
+        </div>
+        ${outstanding !== null ? `<div class="hotel-fin-row" style="margin-top:6px;border-top:1px solid rgba(255,255,255,0.08);padding-top:6px">
+          <span class="hotel-fin-lbl">Outstanding</span>
+          <span class="hotel-fin-val ${outstanding > 0 ? 'hotel-fin-red' : 'hotel-fin-green'}">${outstanding > 0 ? sym+outstanding.toLocaleString('en-GB',{minimumFractionDigits:2,maximumFractionDigits:2}) : '✓ Settled'}</span>
+        </div>` : ''}
+      </div>`;
+  }).join('');
 
-  // Set directly on the element so tiles stretch full width (overrides stats-grid class)
-  const el = document.getElementById('hotelSummary');
-  el.style.cssText = 'display:grid;grid-template-columns:repeat(3,1fr);gap:1px;background:var(--border);border:1px solid var(--border);border-radius:var(--radius);overflow:hidden;margin-bottom:20px';
-  el.innerHTML =
-    tile('Total events', '&#128197;', String(total).padStart(2,'0'), total + ' tracked · ' + outstandingCount + ' outstanding', outstandingCount > 0 ? 'var(--negative)' : 'var(--positive)') +
-    tile('Paid so far', '&#10003;', sym + fmtHotelAmount(totalPaid), paidPct + '% of events paid', paidPct >= 80 ? 'var(--positive)' : 'var(--warning)') +
-    tile('Pending', '&#9201;', String(outstandingCount).padStart(2,'0'), partialCount + ' partial · ' + pendingCount + ' pending', outstandingCount > 0 ? 'var(--negative)' : 'var(--muted)');
+  document.getElementById('hotelSummary').innerHTML = `
+    <div class="hotel-fin-strip">
+      ${currencyCards}
+      <div class="hotel-fin-card hotel-fin-card--status">
+        <div class="hotel-fin-currency">STATUS${_hotelYearFilter !== 'all' ? ` · ${_hotelYearFilter}` : ''}</div>
+        <div class="hotel-fin-row"><span class="hotel-fin-lbl">Total Events</span><span class="hotel-fin-val">${total}</span></div>
+        <div class="hotel-fin-row"><span class="hotel-fin-lbl">Fully Paid</span><span class="hotel-fin-val hotel-fin-green">${total - unpaid}</span></div>
+        <div class="hotel-fin-row hotel-fin-total-row"><span class="hotel-fin-lbl">Still Outstanding</span><span class="hotel-fin-val ${unpaid > 0 ? 'hotel-fin-red' : 'hotel-fin-green'}">${unpaid > 0 ? unpaid : '✓ All clear'}</span></div>
+      </div>
+    </div>
+  `;
 }
 
 function renderHotelTable() {
   const search = (document.getElementById('hotelSearch')?.value || '').toLowerCase();
   const statusF = document.getElementById('hotelStatusFilter')?.value || '';
-  const filtered = hotelData.filter(r => {
+  const yearData = hotelYearFiltered();
+  const filtered = yearData.filter(r => {
     const matchSearch = !search || r.event_name.toLowerCase().includes(search) || (r.hotel||'').toLowerCase().includes(search);
     const matchStatus = !statusF || r.status === statusF;
     return matchSearch && matchStatus;
@@ -3031,39 +3453,69 @@ function renderHotelTable() {
     pending: '<span class="badge badge-grey">Pending</span>'
   };
 
+  const CURRENCIES = ['USD','GBP','EUR','CHF','AED','CAD','AUD'];
+  const curOpts = CURRENCIES.map(c => `<option>${c}</option>`).join('');
+
   tbody.innerHTML = filtered.map(r => {
     const rowClass = r.status === 'paid' ? 'hotel-row-paid' : r.status === 'partial' ? 'hotel-row-partial' : '';
-    const avSym   = hotelCurrencySymbol(r.av_currency || 'USD');
-    const paidSym = hotelCurrencySymbol(r.paid_currency || 'USD');
-    const avBillingBadge = r.av_billing === 'included' ? ' <span class="hotel-incl-badge">incl.</span>' : '';
-    const avStr   = r.av_amount != null ? `${avSym}${fmtHotelNum(r.av_amount)}${avBillingBadge}` : '—';
-    const paidStr = r.paid_amount != null ? `${paidSym}${fmtHotelNum(r.paid_amount)}` : '—';
-    const shStr   = r.staff_hotel != null ? `${fmtHotelNum(r.staff_hotel)}` : '—';
-    const flStr   = r.flights    != null ? `${fmtHotelNum(r.flights)}` : '—';
-    const prStr   = r.printing   != null ? `${fmtHotelNum(r.printing)}` : '—';
-    const hasNotes = !!(r.notes && r.notes.trim());
-    const chevron = '<span id="hotel-chev-'+r.id+'" style="font-size:10px;color:var(--muted);margin-left:4px;transition:transform .2s;display:inline-block">›</span>';
-    const notesContent = hasNotes
-      ? `<div style="font:600 9px/1 var(--font-mono);text-transform:uppercase;letter-spacing:1px;color:var(--muted);margin-bottom:6px">Notes</div><div style="font:500 12px/1.5 var(--font-mono);color:var(--text)">${esc(r.notes)}</div>`
-      : `<div style="font:500 12px/1.5 var(--font-mono);color:var(--dim);font-style:italic">No notes added</div>`;
-    const detailRow = `<tr id="hotel-detail-${r.id}" style="display:none"><td colspan="10" style="padding:0 20px 14px 20px;background:#0d1220;border-bottom:1px solid var(--border)">${notesContent}</td></tr>`;
-    return `<tr class="${rowClass}" style="cursor:pointer" onclick="toggleHotelDetail(${r.id})">
-      <td><strong>${esc(r.event_name)}</strong>${chevron}</td>
-      <td style="font-size:0.82rem">${esc(r.hotel||'—')}</td>
-      <td style="font-size:0.82rem;color:var(--text-2)">${esc(r.cost||'—')}</td>
-      <td style="font-size:0.82rem">${avStr}</td>
-      <td style="font-size:0.82rem;font-weight:600">${paidStr}</td>
-      <td style="font-size:0.82rem;color:var(--muted)">${shStr}</td>
-      <td style="font-size:0.82rem;color:var(--muted)">${flStr}</td>
-      <td style="font-size:0.82rem;color:var(--muted)">${prStr}</td>
-      <td>${STATUS_BADGE[r.status] || ''}</td>
-      <td>
-        <div style="display:flex;gap:4px" onclick="event.stopPropagation()">
-          <button class="btn btn-ghost btn-sm" onclick="openHotelModal(${r.id})">Edit</button>
-          <button class="btn btn-danger btn-sm" onclick="deleteHotelExpense(${r.id})">×</button>
-        </div>
+    const rowCur  = r.currency || r.paid_currency || 'USD';
+    const avSym   = hotelCurrencySymbol(rowCur);
+    const paidSym = hotelCurrencySymbol(rowCur);
+
+    function cellText(field, val, style='') {
+      const display = val != null && val !== '' ? esc(String(val)) : '<span class="ht-empty">—</span>';
+      return `<td class="ht-cell" data-id="${r.id}" data-field="${field}" data-val="${val != null ? esc(String(val)) : ''}" onclick="htEditCell(this)" style="${style}">${display}</td>`;
+    }
+    function cellNum(field, val, style='') {
+      const display = val != null ? fmtHotelNum(val) : '<span class="ht-empty">—</span>';
+      return `<td class="ht-cell ht-num" data-id="${r.id}" data-field="${field}" data-val="${val != null ? val : ''}" onclick="htEditCell(this)" style="${style}">${display}</td>`;
+    }
+    function cellCur(field, val) {
+      return `<td class="ht-cell ht-cur-sel" data-id="${r.id}" data-field="${field}" data-val="${val||'USD'}">
+        <select class="ht-select" onchange="htPatchField(${r.id},'${field}',this.value)" onclick="event.stopPropagation()">
+          ${CURRENCIES.map(c=>`<option${c===(val||'USD')?' selected':''}>${c}</option>`).join('')}
+        </select>
+      </td>`;
+    }
+
+    const avBilling = r.av_billing === 'included'
+      ? `<span class="hotel-incl-badge" style="margin-left:4px">incl.</span>`
+      : '';
+
+    const hasInvoice = !!r.invoice_name;
+    const invoiceCell = hasInvoice
+      ? `<div style="display:flex;gap:4px;align-items:center">
+           <a href="/api/hotel-expenses/${r.id}/invoice" target="_blank" class="btn btn-ghost btn-sm" style="font-size:0.72rem;padding:3px 7px" title="${esc(r.invoice_name)}">📄 View</a>
+           <button class="btn btn-danger btn-sm" style="padding:3px 6px" onclick="htDeleteInvoice(${r.id})" title="Remove invoice">×</button>
+         </div>`
+      : `<label class="ht-upload-btn" title="Upload invoice">
+           📎 Upload
+           <input type="file" accept=".pdf,.png,.jpg,.jpeg" style="display:none" onchange="htUploadInvoice(${r.id},this)">
+         </label>`;
+
+    return `<tr class="${rowClass}" id="htr-${r.id}">
+      ${cellText('event_name', r.event_name, 'font-weight:700')}
+      ${cellText('hotel', r.hotel||'')}
+      ${cellText('cost', r.cost||'')}
+      ${cellCur('currency', r.currency || r.paid_currency || 'USD')}
+      ${cellNum('av_amount', r.av_amount)}
+      <td class="ht-cell ht-cur-sel" data-id="${r.id}" data-field="av_billing" data-val="${r.av_billing||'separate'}">
+        <select class="ht-select" onchange="htPatchField(${r.id},'av_billing',this.value)" onclick="event.stopPropagation()">
+          <option value="separate"${(r.av_billing||'separate')==='separate'?' selected':''}>Sep.</option>
+          <option value="included"${r.av_billing==='included'?' selected':''}>Incl.</option>
+        </select>
       </td>
-    </tr>${detailRow}`;
+      ${cellNum('paid_amount', r.paid_amount, 'font-weight:600')}
+      <td class="ht-cell ht-cur-sel" data-id="${r.id}" data-field="status">
+        <select class="ht-select ht-status-sel" onchange="htPatchField(${r.id},'status',this.value);htUpdateRowClass(${r.id},this.value)" onclick="event.stopPropagation()">
+          <option value="pending"${(r.status||'pending')==='pending'?' selected':''}>Pending</option>
+          <option value="partial"${r.status==='partial'?' selected':''}>Partial</option>
+          <option value="paid"${r.status==='paid'?' selected':''}>Paid</option>
+        </select>
+      </td>
+      <td style="padding:4px 8px">${invoiceCell}</td>
+      <td><button class="btn btn-danger btn-sm" onclick="deleteHotelExpense(${r.id})">×</button></td>
+    </tr>`;
   }).join('');
 }
 
@@ -3084,15 +3536,15 @@ function openHotelModal(id) {
   document.getElementById('hotelHotelName').value  = r ? (r.hotel || '') : '';
   document.getElementById('hotelCost').value        = r ? (r.cost || '') : '';
   document.getElementById('hotelStatus').value      = r ? r.status : 'pending';
-  document.getElementById('hotelAvCurrency').value  = r ? (r.av_currency || 'USD') : 'USD';
+  document.getElementById('hotelRowCurrency').value = r ? (r.currency || r.paid_currency || 'USD') : 'USD';
   document.getElementById('hotelAvAmount').value    = r && r.av_amount != null ? r.av_amount : '';
   document.getElementById('hotelAvBilling').value   = r ? (r.av_billing || 'separate') : 'separate';
-  document.getElementById('hotelPaidCurrency').value= r ? (r.paid_currency || 'USD') : 'USD';
   document.getElementById('hotelPaidAmount').value  = r && r.paid_amount != null ? r.paid_amount : '';
   document.getElementById('hotelStaffHotel').value  = r && r.staff_hotel != null ? r.staff_hotel : '';
   document.getElementById('hotelFlights').value     = r && r.flights    != null ? r.flights    : '';
   document.getElementById('hotelPrinting').value    = r && r.printing   != null ? r.printing   : '';
   document.getElementById('hotelNotes').value       = r ? (r.notes || '') : '';
+  document.getElementById('hotelEventYear').value   = r && r.event_year ? String(r.event_year) : '';
   document.getElementById('hotelModal').classList.add('open');
 }
 
@@ -3107,15 +3559,15 @@ async function saveHotelExpense() {
     hotel:         document.getElementById('hotelHotelName').value.trim(),
     cost:          document.getElementById('hotelCost').value.trim(),
     status:        document.getElementById('hotelStatus').value,
-    av_currency:   document.getElementById('hotelAvCurrency').value,
+    currency:      document.getElementById('hotelRowCurrency').value,
     av_amount:     document.getElementById('hotelAvAmount').value || null,
     av_billing:    document.getElementById('hotelAvBilling').value,
-    paid_currency: document.getElementById('hotelPaidCurrency').value,
     paid_amount:   document.getElementById('hotelPaidAmount').value || null,
-    staff_hotel:   document.getElementById('hotelStaffHotel').value || null,
-    flights:       document.getElementById('hotelFlights').value || null,
-    printing:      document.getElementById('hotelPrinting').value || null,
-    notes:         document.getElementById('hotelNotes').value.trim()
+    staff_hotel:    document.getElementById('hotelStaffHotel').value || null,
+    flights:        document.getElementById('hotelFlights').value || null,
+    printing:       document.getElementById('hotelPrinting').value || null,
+    notes:          document.getElementById('hotelNotes').value.trim(),
+    event_year:     document.getElementById('hotelEventYear').value || null
   };
   if (!payload.event_name) { showToast('Event name is required', 'error'); return; }
   const method = id ? 'PUT' : 'POST';
@@ -3133,6 +3585,775 @@ async function deleteHotelExpense(id) {
   if (!res.ok) { showToast('Delete failed', 'error'); return; }
   showToast('Deleted', 'success');
   loadHotelExpenses();
+}
+
+// ─── Hotel inline editing ─────────────────────────────────────────────────────
+
+function htEditCell(td) {
+  if (td.querySelector('input')) return; // already editing
+  const id    = td.dataset.id;
+  const field = td.dataset.field;
+  const val   = td.dataset.val;
+  const isNum = td.classList.contains('ht-num');
+
+  const input = document.createElement('input');
+  input.type  = isNum ? 'number' : 'text';
+  input.value = val;
+  input.className = 'ht-input';
+  if (isNum) { input.step = '0.01'; input.min = '0'; }
+  td.innerHTML = '';
+  td.appendChild(input);
+  input.focus();
+  input.select();
+
+  function commit() {
+    const newVal = input.value.trim();
+    if (newVal !== val) htPatchField(parseInt(id), field, newVal === '' ? null : (isNum ? parseFloat(newVal) : newVal));
+    td.dataset.val = newVal;
+    td.innerHTML = newVal !== '' ? esc(isNum ? fmtHotelNum(newVal) : newVal) : '<span class="ht-empty">—</span>';
+  }
+  input.addEventListener('blur', commit);
+  input.addEventListener('keydown', e => { if (e.key === 'Enter') input.blur(); if (e.key === 'Escape') { td.innerHTML = val !== '' ? esc(isNum ? fmtHotelNum(val) : val) : '<span class="ht-empty">—</span>'; } });
+}
+
+async function htPatchField(id, field, value) {
+  try {
+    const res = await fetch(`/api/hotel-expenses/${id}`, {
+      method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ [field]: value })
+    });
+    if (!res.ok) { showToast('Save failed', 'error'); return; }
+    // Update local data
+    const updated = await res.json();
+    const idx = hotelData.findIndex(r => r.id === id);
+    if (idx !== -1) hotelData[idx] = updated;
+    renderHotelSummary();
+    if (field === 'cost' || field === 'paid_amount' || field === 'currency') {
+      renderHotelTable();
+    }
+  } catch { showToast('Save failed', 'error'); }
+}
+
+function htUpdateRowClass(id, status) {
+  const tr = document.getElementById(`htr-${id}`);
+  if (!tr) return;
+  tr.className = status === 'paid' ? 'hotel-row-paid' : status === 'partial' ? 'hotel-row-partial' : '';
+}
+
+async function htUploadInvoice(id, input) {
+  const file = input.files[0];
+  if (!file) return;
+  if (file.size > 8 * 1024 * 1024) { showToast('File must be under 8 MB', 'error'); return; }
+  const reader = new FileReader();
+  reader.onload = async e => {
+    const base64 = e.target.result.split(',')[1];
+    const res = await fetch(`/api/hotel-expenses/${id}/invoice`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ invoice_name: file.name, invoice_data: base64 })
+    });
+    if (!res.ok) { showToast('Upload failed', 'error'); return; }
+    showToast('Invoice saved', 'success');
+    const idx = hotelData.findIndex(r => r.id === id);
+    if (idx !== -1) hotelData[idx].invoice_name = file.name;
+    renderHotelTable();
+  };
+  reader.readAsDataURL(file);
+}
+
+async function htDeleteInvoice(id) {
+  if (!confirm('Remove stored invoice?')) return;
+  const res = await fetch(`/api/hotel-expenses/${id}/invoice`, { method: 'DELETE' });
+  if (!res.ok) { showToast('Failed', 'error'); return; }
+  showToast('Invoice removed', 'success');
+  const idx = hotelData.findIndex(r => r.id === id);
+  if (idx !== -1) { hotelData[idx].invoice_name = null; hotelData[idx].invoice_data = null; }
+  renderHotelTable();
+}
+
+// ─── HOLIDAY REQUEST NOTIFICATIONS ───────────────────────────────────────────
+
+async function refreshNotifBadge() {
+  try {
+    const res = await fetch('/api/holiday-requests/count');
+    if (!res.ok) return;
+    const { count } = await res.json();
+    const badge = document.getElementById('notifBadge');
+    badge.textContent = count;
+    badge.classList.toggle('hidden', count === 0);
+    document.getElementById('notifBellBtn').classList.toggle('notif-has-pending', count > 0);
+  } catch {}
+}
+
+function toggleNotifPanel() {
+  const panel = document.getElementById('notifPanel');
+  const isHidden = panel.classList.toggle('hidden');
+  if (!isHidden) loadNotifPanel();
+}
+
+document.addEventListener('click', e => {
+  const wrap = document.getElementById('notifBellWrap');
+  if (wrap && !wrap.contains(e.target)) {
+    document.getElementById('notifPanel')?.classList.add('hidden');
+  }
+});
+
+async function loadNotifPanel() {
+  const list = document.getElementById('notifList');
+  list.innerHTML = '<div class="notif-empty">Loading…</div>';
+  try {
+    const res = await fetch('/api/holiday-requests?status=pending');
+    const items = await res.json();
+    if (!items.length) { list.innerHTML = '<div class="notif-empty">No pending requests</div>'; return; }
+    list.innerHTML = items.map(r => {
+      const d = new Date(r.request_date);
+      const dateStr = d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
+      const typeStr = r.day_type === 'half' ? 'Half Day' : 'Full Day';
+      const since = new Date(r.created_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
+      return `<div class="notif-item" id="notif-item-${r.id}">
+        <div class="notif-item-name">${esc(r.employee_name)}</div>
+        <div class="notif-item-meta">${dateStr} · ${typeStr} · Requested ${since}</div>
+        ${r.note ? `<div class="notif-item-note">"${esc(r.note)}"</div>` : ''}
+        <div class="notif-item-actions">
+          <button class="notif-approve-btn" onclick="reviewHolidayRequest(${r.id},'approve')">✓ Approve</button>
+          <button class="notif-deny-btn" onclick="reviewHolidayRequest(${r.id},'deny')">✕ Deny</button>
+        </div>
+      </div>`;
+    }).join('');
+  } catch { list.innerHTML = '<div class="notif-empty">Failed to load</div>'; }
+}
+
+async function reviewHolidayRequest(id, action) {
+  const res = await fetch(`/api/holiday-requests/${id}/${action}`, { method: 'PUT' });
+  if (!res.ok) { const e = await res.json(); showToast(e.error || 'Failed', 'error'); return; }
+  showToast(action === 'approve' ? 'Request approved' : 'Request denied', action === 'approve' ? 'success' : 'error');
+  document.getElementById(`notif-item-${id}`)?.remove();
+  const remaining = document.querySelectorAll('#notifList .notif-item').length;
+  if (!remaining) document.getElementById('notifList').innerHTML = '<div class="notif-empty">No pending requests</div>';
+  refreshNotifBadge();
+}
+
+// ─── SUBSCRIPTIONS ────────────────────────────────────────────────────────────
+
+const SUB_FX = { GBP: 1, USD: 0.79, AED: 1/4.67, PHP: 0.014 };
+const CYCLE_MONTHS = { monthly: 1, quarterly: 3, annually: 12, one_off: 0 };
+let subsData = [];
+
+function subToGBPPerMonth(s) {
+  const rate = SUB_FX[s.currency] || 1;
+  const months = CYCLE_MONTHS[s.billing_cycle];
+  if (!months) return 0;
+  return (parseFloat(s.amount) * rate) / months;
+}
+
+async function loadSubscriptions() {
+  try {
+    const res = await fetch('/api/subscriptions');
+    subsData = await res.json();
+    renderSubTotals();
+    renderSubTable();
+  } catch { showToast('Failed to load subscriptions', 'error'); }
+}
+
+function renderSubTotals() {
+  const active = subsData.filter(s => s.active);
+  const perMonth = active.reduce((a, s) => a + subToGBPPerMonth(s), 0);
+  const perYear = active.reduce((a, s) => {
+    const rate = SUB_FX[s.currency] || 1;
+    const months = CYCLE_MONTHS[s.billing_cycle];
+    return a + (months ? parseFloat(s.amount) * rate * (12 / months) : parseFloat(s.amount) * rate);
+  }, 0);
+  document.getElementById('subTotals').innerHTML = `
+    <div style="display:flex;gap:14px;flex-wrap:wrap">
+      <div class="dash-mini-card dash-mini--indigo" style="flex:1;min-width:160px">
+        <div class="dash-mini-label">Total / Month (GBP)</div>
+        <div class="dash-mini-value">£${fmt(perMonth)}</div>
+      </div>
+      <div class="dash-mini-card dash-mini--green" style="flex:1;min-width:160px">
+        <div class="dash-mini-label">Total / Year (GBP)</div>
+        <div class="dash-mini-value">£${fmt(perYear)}</div>
+      </div>
+      <div class="dash-mini-card" style="flex:1;min-width:160px">
+        <div class="dash-mini-label">Active Subscriptions</div>
+        <div class="dash-mini-value">${active.length}</div>
+      </div>
+    </div>`;
+}
+
+function renderSubTable() {
+  const tbody = document.getElementById('subTableBody');
+  const empty = document.getElementById('subEmpty');
+  const count = document.getElementById('subCount');
+  count.textContent = `${subsData.length} subscription${subsData.length !== 1 ? 's' : ''}`;
+  if (!subsData.length) { tbody.innerHTML = ''; empty.classList.remove('hidden'); return; }
+  empty.classList.add('hidden');
+  const symMap = { GBP:'£', USD:'$', AED:'AED ', PHP:'₱' };
+  tbody.innerHTML = subsData.map(s => {
+    const sym = symMap[s.currency] || '';
+    const perMonth = subToGBPPerMonth(s);
+    const months = CYCLE_MONTHS[s.billing_cycle];
+    const perYear = months ? perMonth * 12 : parseFloat(s.amount) * (SUB_FX[s.currency] || 1);
+    const cycleLabel = { monthly:'Monthly', quarterly:'Quarterly', annually:'Annually', one_off:'One-Off' }[s.billing_cycle] || s.billing_cycle;
+    const renewal = s.renewal_date ? new Date(s.renewal_date).toLocaleDateString('en-GB',{day:'numeric',month:'short',year:'numeric'}) : '—';
+    const activeDot = s.active ? '<span style="color:var(--success)">●</span>' : '<span style="color:var(--muted)">●</span>';
+    return `<tr class="${s.active ? '' : 'sub-inactive'}">
+      <td>${activeDot} ${esc(s.name)}</td>
+      <td>${sym}${fmt(parseFloat(s.amount))}</td>
+      <td>${cycleLabel}</td>
+      <td>£${fmt(perMonth)}</td>
+      <td>£${fmt(perYear)}</td>
+      <td>${renewal}</td>
+      <td style="max-width:160px;white-space:normal;font-size:0.8rem;color:var(--muted)">${esc(s.notes||'')}</td>
+      <td>
+        <button class="btn-icon" title="Edit" onclick="openSubModal(${s.id})">✏️</button>
+        <button class="btn-icon" title="${s.active ? 'Deactivate' : 'Activate'}" onclick="toggleSubActive(${s.id},${!s.active})">
+          ${s.active ? '⏸️' : '▶️'}
+        </button>
+        <button class="btn-icon btn-icon--danger" title="Delete" onclick="deleteSub(${s.id})">🗑️</button>
+      </td>
+    </tr>`;
+  }).join('');
+}
+
+function openSubModal(id) {
+  document.getElementById('subEditId').value = id || '';
+  document.getElementById('subModalTitle').textContent = id ? 'Edit Subscription' : 'Add Subscription';
+  if (id) {
+    const s = subsData.find(x => x.id === id);
+    if (!s) return;
+    document.getElementById('subName').value = s.name;
+    document.getElementById('subCurrency').value = s.currency;
+    document.getElementById('subAmount').value = s.amount;
+    document.getElementById('subCycle').value = s.billing_cycle;
+    document.getElementById('subRenewal').value = s.renewal_date ? s.renewal_date.split('T')[0] : '';
+    document.getElementById('subNotes').value = s.notes || '';
+  } else {
+    document.getElementById('subName').value = '';
+    document.getElementById('subCurrency').value = 'GBP';
+    document.getElementById('subAmount').value = '';
+    document.getElementById('subCycle').value = 'monthly';
+    document.getElementById('subRenewal').value = '';
+    document.getElementById('subNotes').value = '';
+  }
+  openModal('subModal');
+}
+
+async function saveSub() {
+  const id = document.getElementById('subEditId').value;
+  const name = document.getElementById('subName').value.trim();
+  if (!name) { showToast('Name is required', 'error'); return; }
+  const amount = parseFloat(document.getElementById('subAmount').value);
+  if (isNaN(amount) || amount < 0) { showToast('Enter a valid amount', 'error'); return; }
+  const body = {
+    name, vendor: '',
+    currency: document.getElementById('subCurrency').value,
+    amount, billing_cycle: document.getElementById('subCycle').value,
+    renewal_date: document.getElementById('subRenewal').value || null,
+    notes: document.getElementById('subNotes').value.trim()
+  };
+  const method = id ? 'PUT' : 'POST';
+  const url = id ? `/api/subscriptions/${id}` : '/api/subscriptions';
+  const res = await fetch(url, { method, headers: {'Content-Type':'application/json'}, body: JSON.stringify(body) });
+  if (!res.ok) { const e = await res.json(); showToast(e.error || 'Save failed', 'error'); return; }
+  showToast(id ? 'Subscription updated' : 'Subscription added', 'success');
+  closeModal('subModal');
+  loadSubscriptions();
+}
+
+async function toggleSubActive(id, active) {
+  const res = await fetch(`/api/subscriptions/${id}`, { method: 'PUT', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ active }) });
+  if (!res.ok) { showToast('Update failed', 'error'); return; }
+  const idx = subsData.findIndex(s => s.id === id);
+  if (idx !== -1) subsData[idx].active = active;
+  renderSubTotals();
+  renderSubTable();
+}
+
+async function deleteSub(id) {
+  if (!confirm('Delete this subscription?')) return;
+  const res = await fetch(`/api/subscriptions/${id}`, { method: 'DELETE' });
+  if (!res.ok) { showToast('Delete failed', 'error'); return; }
+  showToast('Subscription deleted', 'success');
+  loadSubscriptions();
+}
+
+// ─── PORTFOLIO ────────────────────────────────────────────────────────────────
+
+let portfolioData = [];
+
+async function loadPortfolio() {
+  try {
+    const res = await fetch('/api/portfolio-events');
+    portfolioData = await res.json();
+    renderPortfolioGrid();
+  } catch { showToast('Failed to load portfolio', 'error'); }
+}
+
+function renderPortfolioGrid() {
+  const grid = document.getElementById('portfolioGrid');
+  const empty = document.getElementById('portfolioEmpty');
+  if (!portfolioData.length) { grid.innerHTML = ''; empty.classList.remove('hidden'); return; }
+  empty.classList.add('hidden');
+  grid.innerHTML = portfolioData.map(ev => {
+    const dateStr = ev.event_date ? new Date(ev.event_date).toLocaleDateString('en-GB',{day:'numeric',month:'short',year:'numeric'}) : 'TBD';
+    const won = parseFloat(ev.total_won) || 0;
+    const pipeline = parseFloat(ev.total_pipeline) || 0;
+    return `<div class="port-card">
+      <div class="port-card-header">
+        <div class="port-card-title">${esc(ev.name)}</div>
+        <div style="display:flex;gap:6px">
+          <button class="btn-icon" title="Edit" onclick="openPortfolioModal(${ev.id})">✏️</button>
+          <button class="btn-icon btn-icon--danger" title="Delete" onclick="deletePortfolioEvent(${ev.id})">🗑️</button>
+        </div>
+      </div>
+      <div class="port-card-meta">
+        ${ev.event_date ? `<span>📅 ${dateStr}</span>` : ''}
+        ${ev.location ? `<span>📍 ${esc(ev.location)}</span>` : ''}
+      </div>
+      <div class="port-card-stats">
+        <div class="port-stat">
+          <div class="port-stat-label">Won Revenue</div>
+          <div class="port-stat-val port-stat--green">£${fmt(won)}</div>
+        </div>
+        <div class="port-stat">
+          <div class="port-stat-label">Pipeline</div>
+          <div class="port-stat-val">£${fmt(pipeline)}</div>
+        </div>
+      </div>
+      ${ev.notes ? `<div class="port-card-notes">${esc(ev.notes)}</div>` : ''}
+      ${ev.companies ? `<div class="port-card-companies"><span style="font-size:0.72rem;color:var(--muted)">Companies: </span>${esc(ev.companies)}</div>` : ''}
+    </div>`;
+  }).join('');
+}
+
+function openPortfolioModal(id) {
+  document.getElementById('portEditId').value = id || '';
+  document.getElementById('portfolioModalTitle').textContent = id ? 'Edit Event' : 'Add Event';
+  if (id) {
+    const ev = portfolioData.find(x => x.id === id);
+    if (!ev) return;
+    document.getElementById('portName').value = ev.name;
+    document.getElementById('portDate').value = ev.event_date ? ev.event_date.split('T')[0] : '';
+    document.getElementById('portLocation').value = ev.location || '';
+    document.getElementById('portNotes').value = ev.notes || '';
+  } else {
+    document.getElementById('portName').value = '';
+    document.getElementById('portDate').value = '';
+    document.getElementById('portLocation').value = '';
+    document.getElementById('portNotes').value = '';
+  }
+  openModal('portfolioModal');
+}
+
+async function savePortfolioEvent() {
+  const id = document.getElementById('portEditId').value;
+  const name = document.getElementById('portName').value.trim();
+  if (!name) { showToast('Event name is required', 'error'); return; }
+  const body = {
+    name, event_date: document.getElementById('portDate').value || null,
+    location: document.getElementById('portLocation').value.trim(),
+    notes: document.getElementById('portNotes').value.trim()
+  };
+  const method = id ? 'PUT' : 'POST';
+  const url = id ? `/api/portfolio-events/${id}` : '/api/portfolio-events';
+  const res = await fetch(url, { method, headers: {'Content-Type':'application/json'}, body: JSON.stringify(body) });
+  if (!res.ok) { const e = await res.json(); showToast(e.error || 'Save failed', 'error'); return; }
+  showToast(id ? 'Event updated' : 'Event added', 'success');
+  closeModal('portfolioModal');
+  loadPortfolio();
+}
+
+async function deletePortfolioEvent(id) {
+  if (!confirm('Delete this event? Associated deal allocations will also be removed.')) return;
+  const res = await fetch(`/api/portfolio-events/${id}`, { method: 'DELETE' });
+  if (!res.ok) { showToast('Delete failed', 'error'); return; }
+  showToast('Event deleted', 'success');
+  loadPortfolio();
+}
+
+// ─── DEAL TRACKER ─────────────────────────────────────────────────────────────
+
+const DEAL_STAGES = ['Prospect','Qualified','Proposal','Negotiation','Won','Lost'];
+const DEAL_STAGE_COLOR = { Prospect:'#64748b', Qualified:'#7c3aed', Proposal:'#2563eb', Negotiation:'#d97706', Won:'#16a34a', Lost:'#dc2626' };
+const DEAL_VAT_QUARTERS = {
+  Q1: [11, 12, 1],   // Nov, Dec, Jan
+  Q2: [2, 3, 4],     // Feb, Mar, Apr
+  Q3: [5, 6, 7],     // May, Jun, Jul
+  Q4: [8, 9, 10]     // Aug, Sep, Oct
+};
+let dealsData = [];
+let _dealInv1 = null;
+let _dealInv2 = null;
+let _dealQFilter = 'all';
+let _dealYearFilter = 'all';
+let _dealEventFilter = '';
+let _lastInvoiceId = null;
+let _nextInvoiceNum = null;
+let _importRows = [];
+
+async function loadDeals() {
+  try {
+    const [dealsRes, invRes] = await Promise.all([
+      fetch('/api/deals'),
+      fetch('/api/deals/last-invoice')
+    ]);
+    dealsData = await dealsRes.json();
+    // Populate event filter dropdown from deals' events arrays
+    const evtSel = document.getElementById('dealEventFilter');
+    if (evtSel) {
+      const evtMap = {};
+      dealsData.forEach(d => (d.events||[]).forEach(ev => { if (ev.event_id) evtMap[ev.event_id] = ev.event_name; }));
+      const current = evtSel.value;
+      evtSel.innerHTML = '<option value="">All Events</option>' +
+        Object.entries(evtMap).map(([id,name]) => `<option value="${id}"${String(id)===current?'selected':''}>${esc(name)}</option>`).join('');
+    }
+    const invData = await invRes.json();
+    _lastInvoiceId = invData.id;
+    _nextInvoiceNum = invData.next_number;
+    // Update last invoice banner
+    const banner = document.getElementById('dealLastInvoice');
+    const link = document.getElementById('dealLastInvLink');
+    const nextEl = document.getElementById('dealNextInvNum');
+    if (invData.invoice_number) {
+      banner.style.display = 'flex';
+      link.textContent = invData.invoice_number;
+      link.dataset.dealId = invData.id;
+      // Build prefix + next
+      const prefix = invData.invoice_number.replace(/\d+$/, '');
+      const nextNum = invData.next_number;
+      nextEl.textContent = prefix + String(nextNum).padStart(3, '0');
+      document.getElementById('dealNextInvNum').dataset.prefix = prefix;
+      document.getElementById('dealNextInvNum').dataset.num = nextNum;
+    } else {
+      banner.style.display = 'none';
+    }
+    renderDealsTable();
+  } catch { showToast('Failed to load deals', 'error'); }
+}
+
+function scrollToLastInvoice(e) {
+  e.preventDefault();
+  if (!_lastInvoiceId) return;
+  const row = document.getElementById(`deal-row-${_lastInvoiceId}`);
+  if (row) {
+    row.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    row.classList.add('deal-row-highlight');
+    setTimeout(() => row.classList.remove('deal-row-highlight'), 2000);
+  }
+}
+
+function copyNextInvoice() {
+  const el = document.getElementById('dealNextInvNum');
+  if (!el) return;
+  navigator.clipboard.writeText(el.textContent).then(() => showToast('Copied!', 'success'));
+}
+
+function setDealYear(btn, yr) {
+  _dealYearFilter = yr;
+  document.querySelectorAll('#dealYearFilters .deal-q-btn').forEach(b => b.classList.toggle('active', b.dataset.yr === yr));
+  renderDealsTable();
+}
+
+function addDealYear() {
+  const yr = prompt('Enter year (e.g. 2028):');
+  if (!yr || !/^\d{4}$/.test(yr.trim())) return;
+  const container = document.getElementById('dealYearFilters');
+  const addBtn = container.querySelector('.deal-q-add');
+  const btn = document.createElement('button');
+  btn.className = 'deal-q-btn';
+  btn.dataset.yr = yr.trim();
+  btn.textContent = yr.trim();
+  btn.onclick = () => setDealYear(btn, yr.trim());
+  container.insertBefore(btn, addBtn);
+}
+
+function setDealQ(btn, q) {
+  _dealQFilter = q;
+  document.querySelectorAll('[data-q]').forEach(b => b.classList.toggle('active', b.dataset.q === q));
+  renderDealsTable();
+}
+
+function setDealEvent(eventId) {
+  _dealEventFilter = eventId;
+  renderDealsTable();
+}
+
+function dealPassesFilter(d) {
+  const q = _dealQFilter;
+  const yr = _dealYearFilter;
+  const search = (document.getElementById('dealSearch')?.value || '').trim().toLowerCase();
+  const stageFilter = document.getElementById('dealStageFilter')?.value || '';
+  if (search && ![(d.company||''),(d.title||''),(d.contact_name||''),(d.invoice_number||'')].some(s => s.toLowerCase().includes(search))) return false;
+  if (stageFilter && d.stage !== stageFilter) return false;
+  if (_dealEventFilter) {
+    const evtId = String(_dealEventFilter);
+    if (!Array.isArray(d.events) || !d.events.some(ev => String(ev.event_id) === evtId)) return false;
+  }
+  const date = d.invoice_date ? new Date(d.invoice_date) : null;
+  if (yr !== 'all') {
+    if (!date || String(date.getFullYear()) !== yr) return false;
+  }
+  if (q !== 'all') {
+    const months = DEAL_VAT_QUARTERS[q];
+    if (!date) return false;
+    if (!months.includes(date.getMonth() + 1)) return false;
+  }
+  return true;
+}
+
+function renderDealsTable() {
+  const filtered = dealsData.filter(dealPassesFilter);
+  const tbody = document.getElementById('dealsTableBody');
+  const empty = document.getElementById('dealsEmpty');
+  const tfoot = document.getElementById('dealsTfoot');
+
+  if (!filtered.length) {
+    tbody.innerHTML = ''; tfoot.innerHTML = '';
+    empty.classList.remove('hidden');
+    renderDealTotals([], tfoot);
+    return;
+  }
+  empty.classList.add('hidden');
+
+  const symMap = { GBP:'£', USD:'$', AED:'AED ', PHP:'₱', EUR:'€' };
+  tbody.innerHTML = filtered.map(d => {
+    const sym = symMap[d.currency] || '£';
+    const invMonth = d.invoice_date ? (() => {
+      const dt = new Date(d.invoice_date);
+      return `${String(dt.getFullYear()).slice(2)}-${dt.toLocaleDateString('en-GB',{month:'short'})}`;
+    })() : '';
+    const invDateStr = d.invoice_date ? new Date(d.invoice_date).toLocaleDateString('en-GB',{day:'2-digit',month:'2-digit',year:'2-digit'}) : '';
+
+    // Auto-colour logic based on payment
+    const paidAmt  = parseFloat(d.paid_inc_vat) || 0;
+    const dealAmt  = parseFloat(d.amount) || 0;
+    const hasPaid  = d.paid_inc_vat != null && paidAmt > 0;
+    const isPartial = hasPaid && paidAmt < dealAmt;
+    const rowClass = hasPaid ? 'deal-row-paid' : '';
+
+    const inv1 = d.invoice1_name ? `<a class="deal-inv-link" href="/api/deals/${d.id}/invoice/1" target="_blank" title="${esc(d.invoice1_name)}" onclick="event.stopPropagation()">📄</a>` : '';
+    const inv2 = d.invoice2_name ? `<a class="deal-inv-link" href="/api/deals/${d.id}/invoice/2" target="_blank" title="${esc(d.invoice2_name)}" onclick="event.stopPropagation()">📄</a>` : '';
+
+    // Editable cell helper
+    const ec = (field, type, val, display, extra='') => {
+      const hlKey = `dhl:${d.id}-${field}`;
+      const isHl = localStorage.getItem(hlKey) === '1';
+      const hlCls = isHl ? ' deal-cell-orange' : '';
+      return `<td class="deal-cell-edit${hlCls}" data-id="${d.id}" data-field="${field}" data-type="${type}" data-val="${String(val??'').replace(/"/g,'&quot;')}" data-hlkey="${hlKey}" onclick="dealCellClick(this)" ${extra}>${display}</td>`;
+    };
+
+    // Paid cell: orange background if partial payment
+    const paidDisplay = hasPaid ? `${sym}${fmt(paidAmt)}` : '<span style="color:var(--muted)">—</span>';
+    const paidExtra = `class="deal-num" style="text-align:right${isPartial ? ';background:rgba(234,88,12,.28)' : ''}"`;
+
+    // Notes: truncated display
+    const notesDisplay = d.notes
+      ? `<span class="deal-notes-cell" title="${esc(d.notes)}">${esc(d.notes)}</span>`
+      : '<span style="color:var(--muted);font-size:0.8rem">—</span>';
+
+    const coHlKey = `dhl:${d.id}-company`;
+    const coHl = localStorage.getItem(coHlKey) === '1';
+
+    return `<tr id="deal-row-${d.id}" class="${rowClass}">
+      ${ec('invoice_date','date',d.invoice_date||'', `<span class="deal-month-disp">${invMonth||'<span style="color:var(--muted)">—</span>'}</span>`)}
+      <td class="deal-cell-company${coHl?' deal-cell-orange':''}" data-id="${d.id}" data-hlkey="${coHlKey}" onclick="dealCompanyClick(event,${d.id},this)" title="Click to open deal · Shift+click to highlight"><strong class="deal-co-link">${esc(d.company||d.title)}</strong>${d.initials?` <span class="deal-initials-badge">${esc(d.initials)}</span>`:''}</td>
+      ${ec('paid_inc_vat','number',d.paid_inc_vat??'', paidDisplay, paidExtra)}
+      ${ec('amount','number',d.amount||0, `${sym}${fmt(dealAmt)}`, 'class="deal-num" style="text-align:right"')}
+      ${ec('tax_vat','number',d.tax_vat??'', d.tax_vat ? `${sym}${fmt(parseFloat(d.tax_vat))}` : '<span style="color:var(--muted)">—</span>', 'class="deal-num" style="text-align:right"')}
+      ${ec('invoice_date','date',d.invoice_date||'', `<span style="font-size:0.78rem">${invDateStr||'<span style="color:var(--muted)">—</span>'}</span>`)}
+      ${ec('bank','select-bank',d.bank||'', `<span style="font-size:0.78rem">${esc(d.bank||'')||'<span style="color:var(--muted)">—</span>'}</span>`)}
+      ${ec('invoice_number','text',d.invoice_number||'', `<span style="font-family:monospace;font-size:0.72rem">${esc(d.invoice_number||'')}</span>${inv1}${inv2}`)}
+      <td class="deal-cell-toggle" onclick="dealToggleBool(${d.id},'signature_received',${!!d.signature_received})" style="text-align:center;cursor:pointer" title="Click to toggle">${d.signature_received ? '✅' : '<span style="color:var(--muted)">—</span>'}</td>
+      ${ec('initials','text',d.initials||'', d.initials ? `<span class="deal-initials-badge">${esc(d.initials)}</span>` : '<span style="color:var(--muted)">—</span>', 'style="text-align:center"')}
+      ${ec('notes','textarea',d.notes||'', notesDisplay)}
+      <td style="text-align:center">
+        <button class="btn-icon btn-icon--danger" title="Delete" onclick="deleteDeal(${d.id})">🗑️</button>
+      </td>
+    </tr>`;
+  }).join('');
+
+  renderDealTotals(filtered, tfoot);
+  renderDealsByInitials(filtered);
+}
+
+function dealCompanyClick(evt, id, td) {
+  if (evt.shiftKey) {
+    const hlKey = td.dataset.hlkey || `dhl:${id}-company`;
+    const isHl = localStorage.getItem(hlKey) === '1';
+    if (isHl) { localStorage.removeItem(hlKey); td.classList.remove('deal-cell-orange'); }
+    else { localStorage.setItem(hlKey, '1'); td.classList.add('deal-cell-orange'); }
+    return;
+  }
+  openDealModal(id);
+}
+
+function dealCellClick(td) {
+  // Don't open editor if clicking a link/button inside the cell
+  if (event.target.tagName === 'A' || event.target.tagName === 'BUTTON' || event.target.closest('a,button')) return;
+  // Shift+click = toggle orange highlight
+  if (event.shiftKey) {
+    const hlKey = td.dataset.hlkey;
+    if (hlKey) {
+      const isHl = localStorage.getItem(hlKey) === '1';
+      if (isHl) { localStorage.removeItem(hlKey); td.classList.remove('deal-cell-orange'); }
+      else { localStorage.setItem(hlKey, '1'); td.classList.add('deal-cell-orange'); }
+    }
+    return;
+  }
+  // Already editing
+  if (td.querySelector('input,select')) return;
+  const id = parseInt(td.dataset.id);
+  const field = td.dataset.field;
+  const type = td.dataset.type;
+  const val = td.dataset.val;
+  const originalHTML = td.innerHTML;
+
+  let input;
+  if (type === 'select') {
+    input = document.createElement('select');
+    input.className = 'deal-inline-select';
+    DEAL_STAGES.forEach(s => {
+      const opt = document.createElement('option');
+      opt.value = s; opt.textContent = s;
+      if (s === val) opt.selected = true;
+      input.appendChild(opt);
+    });
+  } else if (type === 'select-bank') {
+    input = document.createElement('select');
+    input.className = 'deal-inline-select';
+    ['','HSBC','Stripe','Barclays','Other'].forEach(s => {
+      const opt = document.createElement('option');
+      opt.value = s; opt.textContent = s || '—';
+      if (s === val) opt.selected = true;
+      input.appendChild(opt);
+    });
+  } else if (type === 'textarea') {
+    input = document.createElement('textarea');
+    input.className = 'deal-inline-input';
+    input.value = val;
+    input.rows = 2;
+    input.style.resize = 'vertical';
+    input.style.minHeight = '48px';
+  } else {
+    input = document.createElement('input');
+    input.className = 'deal-inline-input';
+    input.type = type === 'number' ? 'number' : type === 'date' ? 'date' : 'text';
+    input.value = val;
+    if (type === 'number') { input.step = '0.01'; input.min = '0'; }
+    if (field === 'initials') { input.maxLength = 5; input.style.textTransform = 'uppercase'; input.style.width = '52px'; }
+    if (field === 'invoice_number') input.style.fontFamily = 'monospace';
+  }
+
+  td.innerHTML = '';
+  td.appendChild(input);
+  input.focus();
+  if (input.tagName !== 'TEXTAREA' && (input.type === 'text' || input.type === 'number')) input.select();
+
+  const commit = async () => {
+    let newVal = input.value;
+    if (field === 'initials') newVal = newVal.toUpperCase();
+    if (type === 'number') newVal = newVal === '' ? null : parseFloat(newVal);
+    if (type === 'date') newVal = newVal || null;
+    td.innerHTML = originalHTML; // restore immediately for snappy feel
+    const ok = await dealPatchField(id, field, newVal);
+    if (ok) {
+      const idx = dealsData.findIndex(d => d.id === id);
+      if (idx !== -1) dealsData[idx][field] = newVal;
+      renderDealsTable();
+    }
+  };
+
+  const cancel = () => { td.innerHTML = originalHTML; };
+  input.addEventListener('blur', commit);
+  input.addEventListener('keydown', e => {
+    if (e.key === 'Enter' && (type !== 'textarea' || e.ctrlKey || e.metaKey)) { e.preventDefault(); input.blur(); }
+    if (e.key === 'Escape') { input.removeEventListener('blur', commit); cancel(); }
+  });
+}
+
+async function dealToggleBool(id, field, currentVal) {
+  const newVal = !currentVal;
+  const ok = await dealPatchField(id, field, newVal);
+  if (ok) {
+    const idx = dealsData.findIndex(d => d.id === id);
+    if (idx !== -1) dealsData[idx][field] = newVal;
+    renderDealsTable();
+  }
+}
+
+async function dealPatchField(id, field, value) {
+  try {
+    const res = await fetch(`/api/deals/${id}/field`, {
+      method: 'PATCH', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ field, value })
+    });
+    if (!res.ok) { const e = await res.json(); showToast(e.error || 'Save failed', 'error'); return false; }
+    return true;
+  } catch { showToast('Save failed', 'error'); return false; }
+}
+
+function showDealColorPicker(e, id) {
+  e.stopPropagation();
+  document.querySelectorAll('.deal-color-picker').forEach(el => el.remove());
+  const colors = [
+    { status:'none',    label:'Clear',   bg:'transparent', border:'#aaa', icon:'⬜' },
+    { status:'paid',    label:'Paid',    bg:'#16a34a',      icon:'🟢' },
+    { status:'flagged', label:'Flag',    bg:'#ca8a04',      icon:'🚩' },
+    { status:'issue',   label:'Issue',   bg:'#ea580c',      icon:'🟠' },
+    { status:'urgent',  label:'Urgent',  bg:'#dc2626',      icon:'🔴' },
+  ];
+  const picker = document.createElement('div');
+  picker.className = 'deal-color-picker';
+  picker.innerHTML = colors.map(c => `
+    <button class="dcp-btn" title="${c.label}"
+      style="background:${c.bg};border:2px solid ${c.border||c.bg}"
+      onclick="cycleDealStatus(${id},'${c.status}');document.querySelectorAll('.deal-color-picker').forEach(el=>el.remove())">
+      <span>${c.icon}</span>
+      <span class="dcp-label">${c.label}</span>
+    </button>`).join('');
+  const rect = e.currentTarget.getBoundingClientRect();
+  picker.style.position = 'fixed';
+  picker.style.top = (rect.bottom + 6) + 'px';
+  picker.style.left = Math.max(4, rect.left - 60) + 'px';
+  document.body.appendChild(picker);
+  setTimeout(() => document.addEventListener('click', () => document.querySelectorAll('.deal-color-picker').forEach(el=>el.remove()), { once: true }), 10);
+}
+
+function renderDealTotals(filtered, tfoot) {
+  const totalPaid = filtered.reduce((a,d) => a + (parseFloat(d.paid_inc_vat)||0), 0);
+  const totalDeal = filtered.reduce((a,d) => a + (parseFloat(d.amount)||0), 0);
+  const totalTax = filtered.reduce((a,d) => a + (parseFloat(d.tax_vat)||0), 0);
+  const remaining = totalDeal - totalPaid;
+  // Columns: Month | Company | Title | Paid | Deal | Tax | InvDate | Bank | Inv# | Signed | By | Notes | Del = 13
+  tfoot.innerHTML = `<tr class="deal-totals-row">
+    <td colspan="3" style="font-weight:700;font-size:0.82rem">Totals (${filtered.length} deals)</td>
+    <td style="text-align:right;font-weight:700">£${fmt(totalPaid)}</td>
+    <td style="text-align:right;font-weight:700">£${fmt(totalDeal)}</td>
+    <td style="text-align:right;font-weight:700">£${fmt(totalTax)}</td>
+    <td colspan="7" style="font-size:0.8rem;color:var(--muted)">
+      Outstanding: <strong style="color:${remaining > 0 ? 'var(--danger)' : 'var(--success)'}">£${fmt(Math.abs(remaining))}</strong>
+      ${_dealQFilter !== 'all' ? `&nbsp;·&nbsp; VAT: <strong>£${fmt(totalTax)}</strong>` : ''}
+    </td>
+  </tr>`;
+  // Also update the top totals summary
+  document.getElementById('dealTotals').innerHTML = `
+    <div style="display:flex;gap:10px;flex-wrap:wrap">
+      <div class="dash-mini-card" style="flex:1;min-width:130px">
+        <div class="dash-mini-label">Total Paid</div>
+        <div class="dash-mini-value">£${fmt(totalPaid)}</div>
+      </div>
+      <div class="dash-mini-card dash-mini--green" style="flex:1;min-width:130px">
+        <div class="dash-mini-label">Total Revenue</div>
+        <div class="dash-mini-value">£${fmt(totalDeal)}</div>
+      </div>
+      <div class="dash-mini-card dash-mini--alert" style="flex:1;min-width:130px">
+        <div class="dash-mini-label">Outstanding</div>
+        <div class="dash-mini-value">£${fmt(Math.max(0,remaining))}</div>
+      </div>
+      <div class="dash-mini-card dash-mini--indigo" style="flex:1;min-width:130px">
+        <div class="dash-mini-label">VAT${_dealQFilter !== 'all' ? ' '+_dealQFilter : ' Total'}</div>
+        <div class="dash-mini-value">£${fmt(totalTax)}</div>
+      </div>
+    </div>`;
 }
 
 // ─── EMPLOYEE PORTAL ──────────────────────────────────────────────────────────
@@ -4679,6 +5900,348 @@ function renderAdminPortfolioPage() {
         </div>
       </div>
     </div>`;
+}
+
+function renderDealsByInitials(filtered) {
+  // Build summary by initials — shown in totals if any
+}
+
+async function cycleDealStatus(id, newStatus) {
+  const res = await fetch(`/api/deals/${id}/row-status`, {
+    method: 'PATCH', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ row_status: newStatus })
+  });
+  if (!res.ok) { showToast('Failed', 'error'); return; }
+  const idx = dealsData.findIndex(d => d.id === id);
+  if (idx !== -1) dealsData[idx].row_status = newStatus;
+  renderDealsTable();
+}
+
+async function openDealModal(id, defaultStage) {
+  _dealInv1 = null; _dealInv2 = null;
+  document.getElementById('dealEditId').value = id || '';
+  document.getElementById('dealModalTitle').textContent = id ? 'Edit Deal' : 'Add Deal';
+  document.getElementById('dealInv1Preview').textContent = '';
+  document.getElementById('dealInv2Preview').textContent = '';
+  document.getElementById('dealInv1File').value = '';
+  document.getElementById('dealInv2File').value = '';
+
+  // Load events into select
+  const sel = document.getElementById('dealEvents');
+  try {
+    const evRes = await fetch('/api/portfolio-events');
+    const evs = await evRes.json();
+    sel.innerHTML = evs.map(ev => `<option value="${ev.id}">${esc(ev.name)}${ev.event_date ? ' ('+new Date(ev.event_date).toLocaleDateString('en-GB',{month:'short',year:'numeric'})+')' : ''}</option>`).join('');
+  } catch { sel.innerHTML = '<option>Failed to load events</option>'; }
+
+  if (id) {
+    const d = dealsData.find(x => x.id === id);
+    if (!d) return;
+    document.getElementById('dealTitle').value = d.title;
+    document.getElementById('dealCompany').value = d.company || '';
+    document.getElementById('dealInitials').value = d.initials || '';
+    document.getElementById('dealStage').value = d.stage;
+    document.getElementById('dealCurrency').value = d.currency || 'GBP';
+    document.getElementById('dealAmount').value = d.amount;
+    document.getElementById('dealPaidIncVat').value = d.paid_inc_vat || '';
+    document.getElementById('dealTaxVat').value = d.tax_vat || '';
+    document.getElementById('dealInvoiceNumber').value = d.invoice_number || '';
+    document.getElementById('dealInvoiceDate').value = d.invoice_date ? d.invoice_date.split('T')[0] : '';
+    document.getElementById('dealPaidDate').value = d.paid_date ? d.paid_date.split('T')[0] : '';
+    document.getElementById('dealBank').value = d.bank || '';
+    document.getElementById('dealInvSent').value = d.invoice_agreement_sent ? 'true' : 'false';
+    document.getElementById('dealSigReceived').value = d.signature_received ? 'true' : 'false';
+    document.getElementById('dealNotes').value = d.notes || '';
+    const evIds = Array.isArray(d.events) ? d.events.map(e => e.event_id).filter(Boolean) : [];
+    Array.from(sel.options).forEach(o => { o.selected = evIds.includes(parseInt(o.value)); });
+    if (d.invoice1_name) document.getElementById('dealInv1Preview').textContent = `Current: ${d.invoice1_name}`;
+    if (d.invoice2_name) document.getElementById('dealInv2Preview').textContent = `Current: ${d.invoice2_name}`;
+  } else {
+    document.getElementById('dealTitle').value = '';
+    document.getElementById('dealCompany').value = '';
+    document.getElementById('dealInitials').value = '';
+    document.getElementById('dealStage').value = defaultStage || 'Prospect';
+    document.getElementById('dealCurrency').value = 'GBP';
+    document.getElementById('dealAmount').value = '';
+    document.getElementById('dealPaidIncVat').value = '';
+    document.getElementById('dealTaxVat').value = '';
+    document.getElementById('dealInvoiceNumber').value = '';
+    document.getElementById('dealInvoiceDate').value = '';
+    document.getElementById('dealPaidDate').value = '';
+    document.getElementById('dealBank').value = '';
+    document.getElementById('dealInvSent').value = 'false';
+    document.getElementById('dealSigReceived').value = 'false';
+    document.getElementById('dealNotes').value = '';
+    Array.from(sel.options).forEach(o => o.selected = false);
+  }
+  updateDealSplitPreview();
+  openModal('dealModal');
+}
+
+function fillNextInvoiceNumber() {
+  const el = document.getElementById('dealNextInvNum');
+  if (!el) return;
+  document.getElementById('dealInvoiceNumber').value = el.textContent;
+}
+
+function updateDealSplitPreview() {
+  const sel = document.getElementById('dealEvents');
+  const selected = Array.from(sel.selectedOptions);
+  const amount = parseFloat(document.getElementById('dealAmount').value) || 0;
+  const sym = { GBP:'£', USD:'$', AED:'AED ', PHP:'₱', EUR:'€' }[document.getElementById('dealCurrency')?.value] || '';
+  const preview = document.getElementById('dealSplitPreview');
+  if (selected.length > 1 && amount > 0) {
+    const each = amount / selected.length;
+    preview.textContent = `${sym}${fmt(each)} allocated to each of ${selected.length} events`;
+  } else if (selected.length === 1 && amount > 0) {
+    preview.textContent = `${sym}${fmt(amount)} allocated to ${selected[0].text}`;
+  } else {
+    preview.textContent = '';
+  }
+}
+
+function dealFilePreview(n, input) {
+  const file = input.files[0];
+  const previewEl = document.getElementById(`dealInv${n}Preview`);
+  if (!file) { previewEl.textContent = ''; return; }
+  if (file.size > 8 * 1024 * 1024) { showToast('File must be under 8 MB', 'error'); input.value = ''; return; }
+  previewEl.textContent = `Selected: ${file.name}`;
+  const reader = new FileReader();
+  reader.onload = e => {
+    const base64 = e.target.result.split(',')[1];
+    if (n === 1) _dealInv1 = { name: file.name, data: base64 };
+    else _dealInv2 = { name: file.name, data: base64 };
+  };
+  reader.readAsDataURL(file);
+}
+
+async function saveDeal() {
+  const id = document.getElementById('dealEditId').value;
+  const title = document.getElementById('dealTitle').value.trim();
+  if (!title) { showToast('Deal title is required', 'error'); return; }
+  const amount = parseFloat(document.getElementById('dealAmount').value);
+  if (isNaN(amount) || amount < 0) { showToast('Enter a valid amount', 'error'); return; }
+  const sel = document.getElementById('dealEvents');
+  const event_ids = Array.from(sel.selectedOptions).map(o => parseInt(o.value)).filter(Boolean);
+  const paidIncVat = document.getElementById('dealPaidIncVat').value;
+  const taxVat = document.getElementById('dealTaxVat').value;
+  const body = {
+    title, company: document.getElementById('dealCompany').value.trim(),
+    contact_name: '', initials: document.getElementById('dealInitials').value.trim().toUpperCase(),
+    currency: document.getElementById('dealCurrency').value,
+    amount, stage: document.getElementById('dealStage').value,
+    paid_inc_vat: paidIncVat ? parseFloat(paidIncVat) : null,
+    tax_vat: taxVat ? parseFloat(taxVat) : null,
+    invoice_number: document.getElementById('dealInvoiceNumber').value.trim(),
+    invoice_date: document.getElementById('dealInvoiceDate').value || null,
+    paid_date: document.getElementById('dealPaidDate').value || null,
+    bank: document.getElementById('dealBank').value,
+    invoice_agreement_sent: document.getElementById('dealInvSent').value === 'true',
+    signature_received: document.getElementById('dealSigReceived').value === 'true',
+    notes: document.getElementById('dealNotes').value.trim(),
+    event_ids
+  };
+  if (_dealInv1) { body.invoice1_name = _dealInv1.name; body.invoice1_data = _dealInv1.data; }
+  if (_dealInv2) { body.invoice2_name = _dealInv2.name; body.invoice2_data = _dealInv2.data; }
+
+  const method = id ? 'PUT' : 'POST';
+  const url = id ? `/api/deals/${id}` : '/api/deals';
+  const res = await fetch(url, { method, headers: {'Content-Type':'application/json'}, body: JSON.stringify(body) });
+  if (!res.ok) { const e = await res.json(); showToast(e.error || 'Save failed', 'error'); return; }
+  showToast(id ? 'Deal updated' : 'Deal added', 'success');
+  closeModal('dealModal');
+  loadDeals();
+  loadPortfolio();
+}
+
+async function deleteDeal(id) {
+  if (!confirm('Delete this deal?')) return;
+  const res = await fetch(`/api/deals/${id}`, { method: 'DELETE' });
+  if (!res.ok) { showToast('Delete failed', 'error'); return; }
+  showToast('Deal deleted', 'success');
+  loadDeals();
+  loadPortfolio();
+}
+
+// ─── DEAL CSV IMPORT ──────────────────────────────────────────────────────────
+
+function openDealImport() {
+  _importRows = [];
+  document.getElementById('dealImportFile').value = '';
+  document.getElementById('dealImportPreview').innerHTML = '';
+  document.getElementById('dealImportBtn').disabled = true;
+  openModal('dealImportModal');
+}
+
+function previewDealImport(input) {
+  const file = input.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = e => {
+    const text = e.target.result;
+    _importRows = parseDealCSV(text);
+    const preview = document.getElementById('dealImportPreview');
+    const btn = document.getElementById('dealImportBtn');
+    if (!_importRows.length) {
+      preview.innerHTML = '<span style="color:var(--danger)">No valid rows found. Make sure the CSV has a Company or Title column.</span>';
+      btn.disabled = true;
+      return;
+    }
+    preview.innerHTML = `<div style="color:var(--success);margin-bottom:8px">✓ Found <strong>${_importRows.length}</strong> deals to import.</div>
+      <div style="max-height:160px;overflow-y:auto;border:1px solid var(--border);border-radius:8px;font-size:0.75rem">
+        <table style="width:100%"><thead><tr style="background:var(--bg-2)">
+          <th style="padding:4px 8px">Company</th><th style="padding:4px 8px">Title</th>
+          <th style="padding:4px 8px">Amount</th><th style="padding:4px 8px">Stage</th><th style="padding:4px 8px">Invoice #</th>
+        </tr></thead><tbody>
+          ${_importRows.slice(0,20).map(r=>`<tr>
+            <td style="padding:3px 8px">${esc(r.company||'')}</td>
+            <td style="padding:3px 8px">${esc(r.title||'')}</td>
+            <td style="padding:3px 8px">${r.amount||'—'}</td>
+            <td style="padding:3px 8px">${r.stage||'Prospect'}</td>
+            <td style="padding:3px 8px;font-size:0.7rem;font-family:monospace">${esc(r.invoice_number||'')}</td>
+          </tr>`).join('')}
+          ${_importRows.length > 20 ? `<tr><td colspan="5" style="padding:4px 8px;color:var(--muted)">...and ${_importRows.length-20} more</td></tr>` : ''}
+        </tbody></table>
+      </div>`;
+    btn.disabled = false;
+  };
+  reader.readAsText(file);
+}
+
+function parseDealCSV(text) {
+  const lines = text.split(/\r?\n/).filter(l => l.trim());
+  if (lines.length < 2) return [];
+  // Parse header row (handle quoted fields)
+  const parseRow = row => {
+    const cols = []; let cur = ''; let inQ = false;
+    for (let i = 0; i < row.length; i++) {
+      const c = row[i];
+      if (c === '"') { inQ = !inQ; }
+      else if (c === ',' && !inQ) { cols.push(cur.trim()); cur = ''; }
+      else cur += c;
+    }
+    cols.push(cur.trim());
+    return cols;
+  };
+  const headers = parseRow(lines[0]).map(h => h.toLowerCase().replace(/[^a-z0-9]/g,'_').replace(/_+/g,'_').replace(/^_|_$/g,''));
+  // Map known column names
+  const colMap = {
+    company: ['company','company_name','client','client_name'],
+    title: ['title','deal_title','deal','name','description'],
+    stage: ['stage','status','deal_stage'],
+    amount: ['amount','deal_value','value','deal_amount','contract_value'],
+    currency: ['currency','ccy'],
+    paid_inc_vat: ['paid_inc_vat','paid','paid_amount','payment','paid_inc_vat_'],
+    tax_vat: ['tax_vat','vat','tax','vat_amount','tax_amount'],
+    invoice_number: ['invoice_number','invoice_no','invoice','invoice_num','lpgp'],
+    invoice_date: ['invoice_date','date_invoice','inv_date','invoice_issued','date_invoice_issued'],
+    paid_date: ['paid_date','date_paid','payment_date'],
+    bank: ['bank','payment_method','method'],
+    invoice_agreement_sent: ['invoice_agreement_sent','sent','agreement_sent','inv_sent'],
+    signature_received: ['signature_received','signed','signature','sig'],
+    initials: ['initials','by','sales','rep'],
+    notes: ['notes','note','comments','comment']
+  };
+  const findCol = (aliases) => {
+    for (const a of aliases) {
+      const idx = headers.indexOf(a);
+      if (idx !== -1) return idx;
+    }
+    // Partial match
+    for (const a of aliases) {
+      const idx = headers.findIndex(h => h.includes(a) || a.includes(h));
+      if (idx !== -1) return idx;
+    }
+    return -1;
+  };
+  const idxMap = {};
+  for (const [field, aliases] of Object.entries(colMap)) idxMap[field] = findCol(aliases);
+
+  const VALID_STAGES = new Set(['Prospect','Qualified','Proposal','Negotiation','Won','Lost']);
+  const results = [];
+  for (let i = 1; i < lines.length; i++) {
+    const cols = parseRow(lines[i]);
+    const get = field => (idxMap[field] >= 0 ? (cols[idxMap[field]] || '').trim() : '');
+    const company = get('company');
+    const title = get('title') || company;
+    if (!company && !title) continue;
+    const stageRaw = get('stage');
+    // Normalize stage
+    const stage = VALID_STAGES.has(stageRaw) ? stageRaw
+      : stageRaw.toLowerCase().includes('won') ? 'Won'
+      : stageRaw.toLowerCase().includes('lost') ? 'Lost'
+      : stageRaw.toLowerCase().includes('prop') ? 'Proposal'
+      : stageRaw.toLowerCase().includes('neg') ? 'Negotiation'
+      : stageRaw.toLowerCase().includes('qual') ? 'Qualified'
+      : 'Prospect';
+    const parseDate = s => {
+      if (!s) return null;
+      // Try DD/MM/YYYY or DD/MM/YY
+      const m = s.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{2,4})$/);
+      if (m) {
+        const yr = m[3].length === 2 ? '20'+m[3] : m[3];
+        return `${yr}-${m[2].padStart(2,'0')}-${m[1].padStart(2,'0')}`;
+      }
+      // Try YYYY-MM-DD
+      if (/^\d{4}-\d{2}-\d{2}/.test(s)) return s.slice(0,10);
+      return null;
+    };
+    const parseBool = s => ['yes','true','1','y','✓','✅'].includes((s||'').toLowerCase());
+    results.push({
+      company, title, stage,
+      amount: get('amount').replace(/[£$€,\s]/g,'') || '0',
+      currency: get('currency').toUpperCase() || 'GBP',
+      paid_inc_vat: get('paid_inc_vat').replace(/[£$€,\s]/g,'') || null,
+      tax_vat: get('tax_vat').replace(/[£$€,\s]/g,'') || null,
+      invoice_number: get('invoice_number'),
+      invoice_date: parseDate(get('invoice_date')),
+      paid_date: parseDate(get('paid_date')),
+      bank: get('bank'),
+      invoice_agreement_sent: parseBool(get('invoice_agreement_sent')),
+      signature_received: parseBool(get('signature_received')),
+      initials: get('initials').toUpperCase(),
+      notes: get('notes')
+    });
+  }
+  return results;
+}
+
+async function runDealImport() {
+  if (!_importRows.length) return;
+  const btn = document.getElementById('dealImportBtn');
+  btn.disabled = true;
+  btn.textContent = 'Importing…';
+  let ok = 0, fail = 0;
+  for (const row of _importRows) {
+    const body = {
+      title: row.title || row.company,
+      company: row.company,
+      contact_name: '',
+      initials: row.initials || '',
+      stage: row.stage || 'Prospect',
+      currency: row.currency || 'GBP',
+      amount: parseFloat(row.amount) || 0,
+      paid_inc_vat: row.paid_inc_vat ? parseFloat(row.paid_inc_vat) : null,
+      tax_vat: row.tax_vat ? parseFloat(row.tax_vat) : null,
+      invoice_number: row.invoice_number || '',
+      invoice_date: row.invoice_date || null,
+      paid_date: row.paid_date || null,
+      bank: row.bank || '',
+      invoice_agreement_sent: !!row.invoice_agreement_sent,
+      signature_received: !!row.signature_received,
+      notes: row.notes || '',
+      event_ids: []
+    };
+    // Auto-set row_status for Won deals
+    if (row.stage === 'Won' && row.paid_inc_vat) body.row_status = 'paid';
+    try {
+      const res = await fetch('/api/deals', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(body) });
+      if (res.ok) ok++; else fail++;
+    } catch { fail++; }
+  }
+  btn.textContent = 'Import';
+  closeModal('dealImportModal');
+  showToast(`Imported ${ok} deal${ok !== 1 ? 's' : ''}${fail ? ` (${fail} failed)` : ''}`, ok > 0 ? 'success' : 'error');
+  if (ok > 0) loadDeals();
 }
 
 function adminPortfolioFilter(val) {

@@ -37,7 +37,7 @@
       <div id="userLabel"></div>
     </div>
     <div class="sidebar-nav">
-      <div class="nav-section-label">Workspace</div>
+      <div class="nav-section-label">Main</div>
       <div class="nav-item active" data-page="dashboard">
         <span class="icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="9"/><rect x="14" y="3" width="7" height="5"/><rect x="14" y="12" width="7" height="9"/><rect x="3" y="16" width="7" height="5"/></svg></span>
         <span class="nav-label">Dashboard</span>
@@ -50,8 +50,8 @@
         <span class="icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg></span>
         <span class="nav-label">Calendar</span><span id="calNavBadge" class="nav-badge hidden"></span>
       </div>
-      <div class="nav-section-label">Finance</div>
-      <div class="nav-item" data-page="salary">
+      <div class="nav-section-label">Management</div>
+      <div class="nav-item admin-only hidden" data-page="salary">
         <span class="icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="6" width="20" height="12" rx="2"/><circle cx="12" cy="12" r="2"/><path d="M6 12h.01M18 12h.01"/></svg></span>
         <span class="nav-label">Salary</span><span id="salaryNavBadge" class="nav-badge hidden"></span>
       </div>
@@ -64,28 +64,40 @@
         <span class="nav-label">Hotel Expenses</span>
       </div>
       <div class="nav-item" data-page="reports">
-        <span class="icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg></span>
+        <span class="icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg></span>
         <span class="nav-label">Reports</span>
       </div>
-      <div class="nav-item" data-page="portfolio">
-        <span class="icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="7" width="20" height="14" rx="2" ry="2"/><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/></svg></span>
-        <span class="nav-label">Portfolio</span>
-      </div>
-      <div class="nav-item" data-page="deals">
+      <div class="nav-section-label admin-manager-only hidden">Business</div>
+      <div class="nav-item admin-manager-only hidden" data-page="deals">
         <span class="icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg></span>
         <span class="nav-label">Deal Tracker</span>
       </div>
-      <div class="nav-section-label">Admin</div>
+      <div class="nav-item admin-manager-only hidden" data-page="portfolio">
+        <span class="icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="7" width="20" height="14" rx="2" ry="2"/><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/></svg></span>
+        <span class="nav-label">Portfolio</span>
+      </div>
+      <div class="nav-item admin-manager-only hidden" data-page="subscriptions">
+        <span class="icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="5" width="20" height="14" rx="2"/><line x1="2" y1="10" x2="22" y2="10"/></svg></span>
+        <span class="nav-label">Subscriptions</span>
+      </div>
       <div class="nav-item admin-only hidden" data-page="admins">
         <span class="icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg></span>
         <span class="nav-label">Admin Users</span>
       </div>
     </div>
     <div class="sidebar-footer">
+      <button class="sidebar-collapse-btn" id="sidebarCollapseBtn" onclick="toggleSidebar()" title="Collapse sidebar">
+        <span class="sidebar-collapse-icon">◀</span>
+        <span class="sidebar-collapse-label">Collapse</span>
+      </button>
       <div class="sidebar-footer-info">
         Shift: 8 hrs · Break: 40 min<br>
         Payroll: 20 days/yr · Self-Emp: 5 days/yr
       </div>
+      <button class="theme-toggle-btn" id="themeToggleBtn" onclick="toggleTheme()">
+        <span id="themeToggleIcon">🌙</span>
+        <span id="themeToggleLabel">Dark Mode</span>
+      </button>
       <button class="btn btn-ghost btn-sm" id="logoutBtn" style="width:100%;justify-content:center">
         <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
         <span class="nav-label">Sign Out</span>
@@ -104,19 +116,22 @@
         <div id="pageTitle">Dashboard</div>
       </div>
       <div class="topbar-right">
-        <input type="search" class="topbar-search" placeholder="Search…" autocomplete="off">
         <div class="topbar-date">
           <span class="topbar-pulse"></span>
           <span id="todayDate"></span>
         </div>
-        <button id="themeToggleBtn" onclick="toggleTheme()" title="Toggle light/dark mode">
-          <svg id="themeIcon" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>
-          <span id="themeLabel">Light</span>
-        </button>
-        <button class="topbar-icon-btn" aria-label="Notifications" style="position:relative" onclick="navigate('calendar')">
-          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
-          <span id="calBellBadge" class="nav-badge hidden" style="position:absolute;top:-4px;right:-4px;min-width:16px;height:16px;font-size:9px;padding:0 4px;line-height:16px;border-radius:8px"></span>
-        </button>
+        <div class="notif-bell-wrap" id="notifBellWrap" style="display:none">
+          <button class="notif-bell-btn" id="notifBellBtn" onclick="toggleNotifPanel()" aria-label="Notifications">
+            🔔<span class="notif-badge hidden" id="notifBadge">0</span>
+          </button>
+          <div class="notif-panel hidden" id="notifPanel">
+            <div class="notif-panel-header">
+              <span>Holiday Requests</span>
+              <button class="notif-panel-close" onclick="toggleNotifPanel()">✕</button>
+            </div>
+            <div id="notifList"><div class="notif-empty">No pending requests</div></div>
+          </div>
+        </div>
       </div>
     </div>
     <div class="content">
@@ -134,18 +149,8 @@
           </div>
         </div>
         <div id="dashStats"></div>
-
-        <!-- Two-column layout: left = mini cards + upcoming, right = headcount + activity -->
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;align-items:start;margin-bottom:24px">
-          <div style="display:flex;flex-direction:column;gap:16px">
-            <div id="contractExpiryPanel"></div>
-            <div id="upcomingPanel"></div>
-          </div>
-          <div style="display:flex;flex-direction:column;gap:16px">
-            <div id="headcountPanel"></div>
-            <div id="activityPanel"></div>
-          </div>
-        </div>
+        <div id="headcountPanel" style="margin-bottom:20px"></div>
+        <div id="contractExpiryPanel" style="margin-bottom:20px"></div>
 
         <div class="card">
           <div class="card-header"><span class="card-title">Employee Summary</span></div>
@@ -219,25 +224,11 @@
           </div>
         </div>
 
-        <!-- Monthly Payments -->
+        <!-- Monthly Payments hidden from tracking view — managed in Salary section -->
         <div id="paymentsSection" class="hidden">
-          <div class="card">
-            <div class="card-header">
-              <span class="card-title">Salary &amp; Monthly Payments</span>
-            </div>
-            <div id="salaryInfo" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:16px;margin-bottom:20px"></div>
-            <div class="table-wrap">
-              <table>
-                <thead>
-                  <tr><th>Month</th><th>Amount</th><th>Notes</th><th></th></tr>
-                </thead>
-                <tbody id="paymentsTable"></tbody>
-              </table>
-            </div>
-            <div id="paymentsEmpty" class="empty-state hidden">
-              <div class="icon">💰</div><div>No payments logged yet.</div>
-            </div>
-          </div>
+          <div id="salaryInfo"></div>
+          <tbody id="paymentsTable"></tbody>
+          <div id="paymentsEmpty"></div>
         </div>
       </div>
 
@@ -299,6 +290,7 @@
         </div>
 
         <!-- Per-employee cards -->
+        <div id="salaryBoard"></div>
         <div id="salaryCards"></div>
       </div>
 
@@ -338,7 +330,7 @@
           <div class="table-wrap">
             <table>
               <thead>
-                <tr><th>Name</th><th>Department / Title</th><th>Type</th><th>Annual Salary</th><th>Start Date</th><th>Contract End</th><th>Status</th><th></th></tr>
+                <tr><th>Name</th><th>Department / Title</th><th>Type</th><th>Annual Salary</th><th>Start Date</th><th>Status</th><th></th></tr>
               </thead>
               <tbody id="empTable"></tbody>
             </table>
@@ -444,31 +436,27 @@
 
       <!-- ══ HOTEL EXPENSES ══ -->
       <div class="page" id="page-hotels">
-        <div class="page-head">
-          <div>
-            <h1>Hotel Expenses <span class="tag">FY26</span></h1>
-            <div class="sub" id="hotelSub">// Events &amp; multi-currency payments</div>
+        <div class="filter-bar" style="align-items:center;gap:10px;flex-wrap:wrap">
+          <!-- Year filter -->
+          <div class="deal-q-filters" id="hotelYearFilters">
+            <button class="deal-q-btn active" data-hyr="all" onclick="setHotelYear(this,'all')">All Years</button>
+            <button class="deal-q-btn" data-hyr="2025" onclick="setHotelYear(this,'2025')">2025</button>
+            <button class="deal-q-btn" data-hyr="2026" onclick="setHotelYear(this,'2026')">2026</button>
+            <button class="deal-q-btn" data-hyr="2027" onclick="setHotelYear(this,'2027')">2027</button>
           </div>
-          <div class="actions">
-            <button class="btn"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg> Export</button>
-            <button class="btn btn-primary" onclick="openHotelModal()"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg> Add event</button>
-          </div>
-        </div>
-        <div class="filter-bar" style="align-items:center">
-          <div class="form-group" style="margin:0">
-            <label>Status Filter</label>
-            <select id="hotelStatusFilter" onchange="renderHotelTable()">
-              <option value="">All</option>
-              <option value="pending">Pending</option>
-              <option value="partial">Partial</option>
-              <option value="paid">Paid</option>
-            </select>
-          </div>
-          <input type="search" id="hotelSearch" placeholder="Search events or hotels…" oninput="renderHotelTable()" style="border:1.5px solid var(--border);border-radius:9px;padding:9px 13px;font-size:0.875rem;font-family:inherit;outline:none;background:var(--bg-2);color:var(--text);min-width:220px" />
+          <!-- Status filter -->
+          <select id="hotelStatusFilter" onchange="renderHotelTable()" style="border:1.5px solid var(--border);border-radius:9px;padding:8px 12px;font-size:0.85rem;font-family:inherit;background:var(--bg-2);color:var(--text)">
+            <option value="">All Status</option>
+            <option value="pending">Pending</option>
+            <option value="partial">Partial</option>
+            <option value="paid">Paid</option>
+          </select>
+          <input type="search" id="hotelSearch" placeholder="Search events or hotels…" oninput="renderHotelTable()" style="border:1.5px solid var(--border);border-radius:9px;padding:8px 13px;font-size:0.85rem;font-family:inherit;outline:none;background:var(--bg-2);color:var(--text);min-width:180px" />
+          <button class="btn btn-primary" style="margin-left:auto" onclick="openHotelModal()">+ Add Event</button>
         </div>
 
         <!-- Summary cards -->
-        <div id="hotelSummary" class="stats-grid" style="margin-bottom:20px"></div>
+        <div id="hotelSummary" style="margin-bottom:20px"></div>
 
         <div class="card" style="padding:0;overflow:hidden">
           <div class="card-header" style="padding:16px 20px;margin:0;border-radius:var(--radius) var(--radius) 0 0">
@@ -479,16 +467,16 @@
             <table id="hotelTable">
               <thead>
                 <tr>
-                  <th style="width:160px">Event</th>
-                  <th style="min-width:200px">Hotel</th>
-                  <th style="min-width:180px">Cost</th>
-                  <th style="width:130px">AV</th>
-                  <th style="width:140px">Paid So Far</th>
-                  <th style="width:90px">Staff Hotel</th>
-                  <th style="width:80px">Flights</th>
-                  <th style="width:80px">Printing</th>
-                  <th style="width:90px">Status</th>
-                  <th style="width:80px"></th>
+                  <th style="width:140px">Event</th>
+                  <th style="width:140px">Hotel</th>
+                  <th style="width:110px">Cost</th>
+                  <th style="width:62px">Cur</th>
+                  <th style="width:90px">AV Amt</th>
+                  <th style="width:55px">AV Billing</th>
+                  <th style="width:100px">Paid So Far</th>
+                  <th style="width:78px">Status</th>
+                  <th style="width:80px">Invoice</th>
+                  <th style="width:36px"></th>
                 </tr>
               </thead>
               <tbody id="hotelTableBody"></tbody>
@@ -501,13 +489,125 @@
         </div>
       </div>
 
-      <div class="page" id="page-portfolio">
-        <!-- Populated by loadAdminPortfolio() or loadEmployeePortfolio() -->
+      <!-- ══ SUBSCRIPTIONS ══ -->
+      <div class="page" id="page-subscriptions">
+        <div class="filter-bar" style="align-items:center">
+          <button class="btn btn-primary" style="margin-left:auto" onclick="openSubModal()">+ Add Subscription</button>
+        </div>
+        <div id="subTotals" style="margin-bottom:20px"></div>
+        <div class="card" style="padding:0;overflow:hidden">
+          <div class="card-header" style="padding:14px 20px;margin:0;border-radius:var(--radius) var(--radius) 0 0">
+            <span class="card-title">Subscriptions</span>
+            <span id="subCount" style="font-size:0.78rem;color:var(--muted)"></span>
+          </div>
+          <div class="table-wrap">
+            <table id="subTable">
+              <thead><tr>
+                <th>Name</th><th>Amount</th><th>Cycle</th><th>Per Month (GBP)</th><th>Per Year (GBP)</th><th>Renewal</th><th>Notes</th><th></th>
+              </tr></thead>
+              <tbody id="subTableBody"></tbody>
+            </table>
+          </div>
+          <div id="subEmpty" class="empty-state hidden"><div class="icon">💳</div><div>No subscriptions yet.</div></div>
+        </div>
       </div>
 
-      <div class="page" id="page-deals">
-        <!-- Populated by loadDealTracker() -->
+      <!-- ══ PORTFOLIO ══ -->
+      <div class="page" id="page-portfolio">
+        <div class="filter-bar" style="align-items:center">
+          <button class="btn btn-primary" style="margin-left:auto" onclick="openPortfolioModal()">+ Add Event</button>
+        </div>
+        <div id="portfolioGrid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:16px;margin-top:4px"></div>
+        <div id="portfolioEmpty" class="empty-state hidden"><div class="icon">🎯</div><div>No events yet. Add your first event.</div></div>
       </div>
+
+      <!-- ══ DEAL TRACKER ══ -->
+<div class="page" id="page-deals">
+  <!-- Last invoice banner -->
+  <div id="dealLastInvoice" style="display:none;background:var(--bg-2);border:1.5px solid var(--border);border-radius:10px;padding:10px 16px;margin-bottom:12px;font-size:0.85rem;display:flex;align-items:center;gap:10px">
+    <span style="color:var(--muted)">Last invoice:</span>
+    <a id="dealLastInvLink" href="#" style="font-weight:700;color:var(--primary);text-decoration:none" onclick="scrollToLastInvoice(event)"></a>
+    <span style="color:var(--muted)">→ Next suggested:</span>
+    <span id="dealNextInvNum" style="font-weight:700;font-family:monospace"></span>
+    <button class="btn btn-ghost" style="margin-left:4px;padding:3px 10px;font-size:0.78rem" onclick="copyNextInvoice()">Copy</button>
+  </div>
+  <!-- Year + Quarter filters -->
+  <div class="filter-bar" style="align-items:center;gap:8px;flex-wrap:wrap">
+    <div class="deal-q-filters" id="dealYearFilters">
+      <button class="deal-q-btn active" data-yr="all" onclick="setDealYear(this,'all')">All Years</button>
+      <button class="deal-q-btn" data-yr="2025" onclick="setDealYear(this,'2025')">2025</button>
+      <button class="deal-q-btn" data-yr="2026" onclick="setDealYear(this,'2026')">2026</button>
+      <button class="deal-q-btn" data-yr="2027" onclick="setDealYear(this,'2027')">2027</button>
+      <button class="deal-q-btn deal-q-add" onclick="addDealYear()" title="Add year">+</button>
+    </div>
+    <div class="deal-q-filters">
+      <button class="deal-q-btn active" data-q="all" onclick="setDealQ(this,'all')">All Qtrs</button>
+      <button class="deal-q-btn" data-q="Q1" onclick="setDealQ(this,'Q1')" title="Nov · Dec · Jan">Q1</button>
+      <button class="deal-q-btn" data-q="Q2" onclick="setDealQ(this,'Q2')" title="Feb · Mar · Apr">Q2</button>
+      <button class="deal-q-btn" data-q="Q3" onclick="setDealQ(this,'Q3')" title="May · Jun · Jul">Q3</button>
+      <button class="deal-q-btn" data-q="Q4" onclick="setDealQ(this,'Q4')" title="Aug · Sep · Oct">Q4</button>
+    </div>
+  </div>
+  <div class="filter-bar" style="align-items:center;gap:8px;flex-wrap:wrap;margin-top:-8px">
+    <input type="search" id="dealSearch" placeholder="Search company, title, invoice…" oninput="renderDealsTable()" style="border:1.5px solid var(--border);border-radius:9px;padding:8px 12px;font-size:0.85rem;font-family:inherit;outline:none;background:var(--bg-2);color:var(--text);min-width:200px" />
+    <select id="dealStageFilter" onchange="renderDealsTable()" style="border:1.5px solid var(--border);border-radius:9px;padding:8px 12px;font-size:0.85rem;font-family:inherit;background:var(--bg-2);color:var(--text)">
+      <option value="">All Stages</option>
+      <option>Prospect</option><option>Qualified</option><option>Proposal</option>
+      <option>Negotiation</option><option>Won</option><option>Lost</option>
+    </select>
+    <select id="dealEventFilter" onchange="setDealEvent(this.value)" style="border:1.5px solid var(--border);border-radius:9px;padding:8px 12px;font-size:0.85rem;font-family:inherit;background:var(--bg-2);color:var(--text)">
+      <option value="">All Events</option>
+    </select>
+    <button class="btn btn-ghost" onclick="openDealImport()">⬆ Import CSV</button>
+    <button class="btn btn-primary" style="margin-left:auto" onclick="openDealModal()">+ Add Deal</button>
+  </div>
+  <!-- Totals summary -->
+  <div id="dealTotals" style="margin-bottom:12px"></div>
+  <!-- Table -->
+  <div class="card" style="padding:0;overflow:hidden">
+    <div class="table-wrap" style="overflow-x:auto">
+      <table id="dealsTable" style="min-width:1000px">
+        <thead><tr>
+          <th style="width:72px">Month</th>
+          <th>Company</th>
+          <th style="width:108px">Paid inc VAT</th>
+          <th style="width:96px">Deal Value</th>
+          <th style="width:78px">Tax/VAT</th>
+          <th style="width:92px">Invoice Date</th>
+          <th style="width:68px">Bank</th>
+          <th style="width:148px">Invoice #</th>
+          <th style="width:52px">Signed</th>
+          <th style="width:48px">By</th>
+          <th>Notes</th>
+          <th style="width:36px"></th>
+        </tr></thead>
+        <tbody id="dealsTableBody"></tbody>
+        <tfoot id="dealsTfoot"></tfoot>
+      </table>
+    </div>
+    <div id="dealsEmpty" class="empty-state hidden"><div class="icon">🤝</div><div>No deals yet.</div></div>
+  </div>
+
+  <!-- Cancelled deals section -->
+  <div id="cancelledSection" style="margin-top:24px">
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;cursor:pointer" onclick="toggleCancelledSection()">
+      <span style="font-size:0.7rem;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:var(--muted)">Cancelled Deals</span>
+      <span id="cancelledCount" style="background:rgba(239,68,68,0.15);color:#ef4444;border:1px solid rgba(239,68,68,0.3);border-radius:4px;padding:1px 7px;font-size:0.7rem;font-weight:700">0</span>
+      <span style="flex:1;height:1px;background:var(--border)"></span>
+      <span id="cancelledChevron" style="color:var(--muted);font-size:0.8rem;transition:transform 0.2s">▼</span>
+    </div>
+    <div id="cancelledTableWrap" class="hidden">
+      <div class="table-wrap" style="border:1px solid rgba(239,68,68,0.2);border-radius:10px;overflow:hidden">
+        <table id="cancelledTable" style="min-width:800px">
+          <thead><tr>
+            <th>Month</th><th>Company</th><th>Amount</th><th>Invoice #</th><th>Cancelled Reason</th><th style="width:80px"></th>
+          </tr></thead>
+          <tbody id="cancelledTableBody"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
 
     </div>
   </div>
@@ -690,6 +790,17 @@
           <label>Reason (e.g. "Promotion to Senior Dev")</label>
           <input type="text" id="empSalaryReason" placeholder="Optional note">
         </div>
+      </div>
+    </div>
+    <!-- Employee PIN -->
+    <div class="modal-section-label" style="margin-top:12px">Employee Portal PIN</div>
+    <div class="form-row" style="grid-template-columns:160px 1fr;align-items:start">
+      <div class="form-group">
+        <label>PIN (4–6 digits)</label>
+        <input type="text" id="empPin" maxlength="6" placeholder="e.g. 1234" inputmode="numeric" pattern="[0-9]*">
+      </div>
+      <div style="padding-top:26px;font-size:0.75rem;color:var(--muted);line-height:1.5">
+        Employees use this PIN on the self-service portal to view their pay info &amp; submit holiday requests.
       </div>
     </div>
     <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:20px">
@@ -1058,12 +1169,30 @@
             <input type="text" id="hotelHotelName" placeholder="Hotel name" />
           </div>
         </div>
-        <div class="form-row hm-2col" style="margin-bottom:0">
+        <div class="form-row hm-3col" style="margin-bottom:0">
           <div class="form-group">
-            <label>Cost (display)</label>
-            <input type="text" id="hotelCost" placeholder="e.g. $18k ++ or £23,076" />
+            <label>Cost</label>
+            <input type="text" id="hotelCost" placeholder="e.g. 18000 or 23,076" />
           </div>
           <div class="form-group">
+            <label>Currency (applies to all)</label>
+            <select id="hotelRowCurrency">
+              <option>USD</option><option>GBP</option><option>EUR</option><option>CHF</option><option>AED</option><option>CAD</option><option>AUD</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>Event Year</label>
+            <select id="hotelEventYear">
+              <option value="">— Unset —</option>
+              <option value="2025">2025</option>
+              <option value="2026" selected>2026</option>
+              <option value="2027">2027</option>
+              <option value="2028">2028</option>
+            </select>
+          </div>
+        </div>
+        <div class="form-row hm-2col" style="margin-bottom:0">
+          <div class="form-group" style="margin-bottom:0">
             <label>Status</label>
             <select id="hotelStatus">
               <option value="pending">Pending</option>
@@ -1083,12 +1212,6 @@
       <div class="hm-body" style="margin-bottom:10px">
         <div class="hm-col-title">AV Cost</div>
         <div class="hm-pay-fields">
-          <div class="form-group hm-currency-sel">
-            <label>Currency</label>
-            <select id="hotelAvCurrency">
-              <option>USD</option><option>GBP</option><option>EUR</option><option>CHF</option><option>AED</option>
-            </select>
-          </div>
           <div class="form-group hm-currency-amt">
             <label>Amount</label>
             <input type="number" id="hotelAvAmount" placeholder="0.00" step="0.01" min="0" />
@@ -1107,12 +1230,6 @@
       <div class="hm-body">
         <div class="hm-col-title">Paid So Far</div>
         <div class="hm-pay-fields">
-          <div class="form-group hm-currency-sel">
-            <label>Currency</label>
-            <select id="hotelPaidCurrency">
-              <option>USD</option><option>GBP</option><option>EUR</option><option>CHF</option><option>AED</option>
-            </select>
-          </div>
           <div class="form-group hm-currency-amt">
             <label>Amount</label>
             <input type="number" id="hotelPaidAmount" placeholder="0.00" step="0.01" min="0" />
@@ -1165,12 +1282,190 @@
   <div class="bottom-nav-item active" data-page="dashboard"><span class="bottom-nav-icon">📊</span><span class="bottom-nav-label">Dashboard</span></div>
   <div class="bottom-nav-item" data-page="tracking"><span class="bottom-nav-icon">⏱️</span><span class="bottom-nav-label">Tracking</span></div>
   <div class="bottom-nav-item" data-page="calendar"><span class="bottom-nav-icon">📅</span><span class="bottom-nav-label">Calendar</span></div>
-  <div class="bottom-nav-item" data-page="salary" style="position:relative"><span class="bottom-nav-icon">💰</span><span class="bottom-nav-label">Salary</span><span id="salaryBottomBadge" class="nav-badge nav-badge-bottom hidden"></span></div>
+  <div class="bottom-nav-item admin-only hidden" data-page="salary" style="position:relative"><span class="bottom-nav-icon">💰</span><span class="bottom-nav-label">Salary</span><span id="salaryBottomBadge" class="nav-badge nav-badge-bottom hidden"></span></div>
   <div class="bottom-nav-item" data-page="employees"><span class="bottom-nav-icon">👥</span><span class="bottom-nav-label">Staff</span></div>
 </nav>
 
 <!-- Toast container -->
 <div id="toastContainer" aria-live="polite" aria-atomic="false"></div>
+
+<!-- ══ MODAL: Subscription ══ -->
+<div class="modal-overlay" id="subModal">
+  <div class="modal">
+    <div class="modal-header">
+      <h2 id="subModalTitle">Add Subscription</h2>
+      <button class="modal-close" onclick="closeModal('subModal')">✕</button>
+    </div>
+    <input type="hidden" id="subEditId">
+    <div class="form-row">
+      <div class="form-group"><label>Name *</label><input type="text" id="subName" placeholder="e.g. Slack, Adobe CC"></div>
+    </div>
+    <div class="form-row">
+      <div class="form-group">
+        <label>Currency</label>
+        <select id="subCurrency">
+          <option value="GBP">GBP £</option>
+          <option value="USD">USD $</option>
+          <option value="AED">AED</option>
+          <option value="PHP">PHP ₱</option>
+        </select>
+      </div>
+      <div class="form-group"><label>Amount *</label><input type="number" id="subAmount" min="0" step="0.01" placeholder="0.00"></div>
+      <div class="form-group">
+        <label>Billing Cycle</label>
+        <select id="subCycle">
+          <option value="monthly">Monthly</option>
+          <option value="quarterly">Quarterly</option>
+          <option value="annually">Annually</option>
+          <option value="one_off">One-Off</option>
+        </select>
+      </div>
+    </div>
+    <div class="form-row">
+      <div class="form-group"><label>Renewal Date</label><input type="date" id="subRenewal"></div>
+      <div class="form-group"><label>Notes</label><input type="text" id="subNotes" placeholder="Optional notes"></div>
+    </div>
+    <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:20px">
+      <button class="btn btn-ghost" onclick="closeModal('subModal')">Cancel</button>
+      <button class="btn btn-primary" onclick="saveSub()">Save</button>
+    </div>
+  </div>
+</div>
+
+<!-- ══ MODAL: Portfolio Event ══ -->
+<div class="modal-overlay" id="portfolioModal">
+  <div class="modal">
+    <div class="modal-header">
+      <h2 id="portfolioModalTitle">Add Event</h2>
+      <button class="modal-close" onclick="closeModal('portfolioModal')">✕</button>
+    </div>
+    <input type="hidden" id="portEditId">
+    <div class="form-row">
+      <div class="form-group"><label>Event Name *</label><input type="text" id="portName" placeholder="e.g. CFO Summit NYC"></div>
+      <div class="form-group"><label>Date</label><input type="date" id="portDate"></div>
+    </div>
+    <div class="form-row">
+      <div class="form-group"><label>Location</label><input type="text" id="portLocation" placeholder="City / Venue"></div>
+    </div>
+    <div class="form-group"><label>Notes</label><textarea id="portNotes" rows="2" placeholder="Any notes…"></textarea></div>
+    <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:20px">
+      <button class="btn btn-ghost" onclick="closeModal('portfolioModal')">Cancel</button>
+      <button class="btn btn-primary" onclick="savePortfolioEvent()">Save</button>
+    </div>
+  </div>
+</div>
+
+<!-- ══ MODAL: Deal ══ -->
+<!-- ══ MODAL: Deal ══ -->
+<div class="modal-overlay" id="dealModal">
+  <div class="modal" style="max-width:660px">
+    <div class="modal-header">
+      <h2 id="dealModalTitle">Add Deal</h2>
+      <button class="modal-close" onclick="closeModal('dealModal')">✕</button>
+    </div>
+    <input type="hidden" id="dealEditId">
+    <div class="form-row">
+      <div class="form-group" style="flex:2"><label>Company *</label><input type="text" id="dealCompany" placeholder="Company name"></div>
+      <div class="form-group"><label>Initials</label><input type="text" id="dealInitials" placeholder="MR" maxlength="5" style="text-transform:uppercase"></div>
+    </div>
+    <div class="form-row">
+      <div class="form-group" style="flex:2"><label>Deal Title *</label><input type="text" id="dealTitle" placeholder="Sponsorship – Company X"></div>
+      <div class="form-group">
+        <label>Stage</label>
+        <select id="dealStage">
+          <option>Prospect</option><option>Qualified</option><option>Proposal</option>
+          <option>Negotiation</option><option>Won</option><option>Lost</option>
+        </select>
+      </div>
+    </div>
+    <div class="form-row">
+      <div class="form-group">
+        <label>Currency</label>
+        <select id="dealCurrency">
+          <option value="GBP">GBP £</option><option value="USD">USD $</option>
+          <option value="AED">AED</option><option value="PHP">PHP ₱</option><option value="EUR">EUR €</option>
+        </select>
+      </div>
+      <div class="form-group"><label>Deal Value *</label><input type="number" id="dealAmount" min="0" step="0.01" placeholder="0.00" oninput="updateDealSplitPreview()"></div>
+      <div class="form-group"><label>Paid inc VAT</label><input type="number" id="dealPaidIncVat" min="0" step="0.01" placeholder="0.00"></div>
+      <div class="form-group"><label>Tax/VAT</label><input type="number" id="dealTaxVat" min="0" step="0.01" placeholder="0.00"></div>
+    </div>
+    <div class="form-row">
+      <div class="form-group" style="flex:2">
+        <label>Invoice Number</label>
+        <div style="display:flex;gap:6px;align-items:center">
+          <input type="text" id="dealInvoiceNumber" placeholder="LPGPCONNECTCOMLTD001" style="flex:1;min-width:0">
+          <button type="button" class="btn btn-ghost" style="padding:6px 10px;font-size:0.78rem;white-space:nowrap;flex-shrink:0" onclick="fillNextInvoiceNumber()">Use Next</button>
+        </div>
+      </div>
+      <div class="form-group"><label>Invoice Date</label><input type="date" id="dealInvoiceDate"></div>
+      <div class="form-group"><label>Date Paid</label><input type="date" id="dealPaidDate"></div>
+    </div>
+    <div class="form-row">
+      <div class="form-group">
+        <label>Bank / Payment</label>
+        <select id="dealBank">
+          <option value="">—</option>
+          <option value="HSBC">HSBC</option>
+          <option value="Stripe">Stripe</option>
+          <option value="Barclays">Barclays</option>
+          <option value="Other">Other</option>
+        </select>
+      </div>
+    </div>
+    <input type="hidden" id="dealInvSent" value="false">
+    <input type="hidden" id="dealSigReceived" value="false">
+    <div class="form-group">
+      <label>Events (hold Ctrl/Cmd for multiple — amount splits equally)</label>
+      <select id="dealEvents" multiple style="min-height:72px;border:1px solid var(--border);border-radius:9px;padding:8px;background:var(--bg);color:var(--text);font-family:inherit;width:100%" onchange="updateDealSplitPreview()">
+        <option value="">Loading events…</option>
+      </select>
+      <div id="dealSplitPreview" style="font-size:0.75rem;color:var(--muted);margin-top:4px"></div>
+    </div>
+    <div class="form-group"><label>Notes</label><textarea id="dealNotes" rows="2" placeholder="Deal notes…"></textarea></div>
+    <div class="modal-section-label" style="margin-top:14px">Invoices (PDF or Word, max 8 MB each)</div>
+    <div class="form-row">
+      <div class="form-group">
+        <label>Invoice 1</label>
+        <div id="dealInv1Preview" style="font-size:0.78rem;color:var(--muted);margin-bottom:4px"></div>
+        <label class="ht-upload-btn">📎 Upload<input type="file" id="dealInv1File" accept=".pdf,.doc,.docx" style="display:none" onchange="dealFilePreview(1,this)"></label>
+      </div>
+      <div class="form-group">
+        <label>Invoice 2</label>
+        <div id="dealInv2Preview" style="font-size:0.78rem;color:var(--muted);margin-bottom:4px"></div>
+        <label class="ht-upload-btn">📎 Upload<input type="file" id="dealInv2File" accept=".pdf,.doc,.docx" style="display:none" onchange="dealFilePreview(2,this)"></label>
+      </div>
+    </div>
+    <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:20px">
+      <button class="btn btn-ghost" onclick="closeModal('dealModal')">Cancel</button>
+      <button class="btn btn-primary" onclick="saveDeal()">Save Deal</button>
+    </div>
+  </div>
+</div>
+
+<!-- ══ MODAL: Deal CSV Import ══ -->
+<div class="modal-overlay" id="dealImportModal">
+  <div class="modal" style="max-width:560px">
+    <div class="modal-header">
+      <h2>Import Deals from CSV</h2>
+      <button class="modal-close" onclick="closeModal('dealImportModal')">✕</button>
+    </div>
+    <p style="font-size:0.85rem;color:var(--muted);margin:0 0 12px">
+      Upload a CSV file. Required column: <strong>Company</strong> or <strong>Title</strong>. Optional columns:
+      <em>Title, Stage, Amount, Currency, Paid inc VAT, Tax VAT, Invoice Number, Invoice Date, Paid Date, Bank, Sent, Signed, Initials, Notes</em>.
+      First row must be headers.
+    </p>
+    <div class="form-group">
+      <label>CSV File</label>
+      <input type="file" id="dealImportFile" accept=".csv" onchange="previewDealImport(this)">
+    </div>
+    <div id="dealImportPreview" style="font-size:0.82rem;margin-top:8px"></div>
+    <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:20px">
+      <button class="btn btn-ghost" onclick="closeModal('dealImportModal')">Cancel</button>
+      <button class="btn btn-primary" id="dealImportBtn" onclick="runDealImport()" disabled>Import</button>
+    </div>
+  </div>
+</div>
 
 <script src="app.js"></script>
 </body>

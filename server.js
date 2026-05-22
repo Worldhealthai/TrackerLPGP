@@ -3,7 +3,31 @@ const cookieParser = require('cookie-parser');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const path = require('path');
+const nodemailer = require('nodemailer');
 const { sql, initDb } = require('./database');
+
+// Email transporter — configured via env vars; silently disabled if not set
+function createMailTransport() {
+  if (!process.env.SMTP_HOST) return null;
+  return nodemailer.createTransport({
+    host: process.env.SMTP_HOST,
+    port: parseInt(process.env.SMTP_PORT || '587'),
+    secure: process.env.SMTP_SECURE === 'true',
+    auth: { user: process.env.SMTP_USER, pass: process.env.SMTP_PASS }
+  });
+}
+
+async function sendAdminEmail(subject, html) {
+  const to = process.env.ADMIN_EMAIL;
+  if (!to) return;
+  try {
+    const transport = createMailTransport();
+    if (!transport) return;
+    await transport.sendMail({ from: process.env.SMTP_FROM || process.env.SMTP_USER, to, subject, html });
+  } catch (e) {
+    console.warn('Email send failed:', e.message);
+  }
+}
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -122,9 +146,7 @@ function requireAuth(req, res, next) {
 }
 
 function requireAdmin(req, res, next) {
-  if (!req.user || req.user.role === 'employee') {
-    return res.status(403).json({ error: 'Admin access required' });
-  }
+  if (req.admin?.role !== 'admin') return res.status(403).json({ error: 'Access restricted to admins' });
   next();
 }
 
@@ -428,7 +450,8 @@ app.post('/api/employees', requireAuth, async (req, res) => {
 
 app.put('/api/employees/:id', requireAuth, async (req, res) => {
   const { name, active, employment_type, annual_salary, currency, salary_reason, salary_effective,
-          start_date, pension_rate, job_title, department, phone, email, contract_end_date } = req.body;
+          start_date, pension_rate, job_title, department, phone, email, contract_end_date,
+          portal_pin } = req.body;
   const annualSal = parseFloat(annual_salary) || 0;
   const daily_rate = parseFloat((annualSal / 260).toFixed(4));
   const cur = ['GBP','AED'].includes(currency) ? currency : 'GBP';
@@ -446,17 +469,29 @@ app.put('/api/employees/:id', requireAuth, async (req, res) => {
     );
   }
 
+  const pinVal = portal_pin ? String(portal_pin).replace(/\D/g,'').slice(0,6) || null : null;
+
   await q(
     `UPDATE employees SET name=?, daily_rate=?, active=?, employment_type=?, annual_salary=?,
      currency=?, start_date=?, pension_rate=?,
-     job_title=?, department=?, phone=?, email=?, contract_end_date=?
+     job_title=?, department=?, phone=?, email=?, contract_end_date=?, portal_pin=?
      WHERE id=?`,
     [name, daily_rate, active !== undefined ? active : 1, employment_type || 'payroll',
      annualSal, cur, start_date || null, pensionRate,
      job_title || '', department || '', phone || '', email || '',
-     contract_end_date || null, req.params.id]
+     contract_end_date || null, pinVal, req.params.id]
   );
   res.json({ success: true });
+});
+
+app.patch('/api/employees/:id', requireAuth, async (req, res) => {
+  try {
+    const { portal_pin } = req.body;
+    const pinVal = portal_pin ? String(portal_pin).replace(/\D/g,'').slice(0,6) || null : null;
+    const { rows } = await q('UPDATE employees SET portal_pin=? WHERE id=? RETURNING id', [pinVal, req.params.id]);
+    if (!rows.length) return res.status(404).json({ error: 'Not found' });
+    res.json({ ok: true });
+  } catch(e) { res.status(500).json({ error: e.message }); }
 });
 
 app.post('/api/employees/:id/terminate', requireAuth, async (req, res) => {
@@ -821,7 +856,7 @@ app.delete('/api/adjustments/:id', requireAuth, async (req, res) => {
 
 // ─── MONTHLY PAYMENTS ────────────────────────────────────────────────────────
 
-app.get('/api/payments/:employeeId', requireAuth, async (req, res) => {
+app.get('/api/payments/:employeeId', requireAuth, requireAdmin, async (req, res) => {
   const { year } = req.query;
   let sql = 'SELECT * FROM monthly_payments WHERE employee_id = ?';
   const params = [req.params.employeeId];
@@ -831,7 +866,7 @@ app.get('/api/payments/:employeeId', requireAuth, async (req, res) => {
   res.json(rows);
 });
 
-app.post('/api/payments', requireAuth, async (req, res) => {
+app.post('/api/payments', requireAuth, requireAdmin, async (req, res) => {
   const { employee_id, payment_year, payment_month, amount, notes } = req.body;
   if (!employee_id || !payment_year || !payment_month || !amount)
     return res.status(400).json({ error: 'employee_id, year, month, amount required' });
@@ -842,14 +877,14 @@ app.post('/api/payments', requireAuth, async (req, res) => {
   res.json({ id: rows[0].id });
 });
 
-app.delete('/api/payments/:id', requireAuth, async (req, res) => {
+app.delete('/api/payments/:id', requireAuth, requireAdmin, async (req, res) => {
   await q('DELETE FROM monthly_payments WHERE id = ?', [req.params.id]);
   res.json({ success: true });
 });
 
 // ─── SALARY OVERVIEW ─────────────────────────────────────────────────────────
 
-app.get('/api/salary-overview', requireAuth, async (req, res) => {
+app.get('/api/salary-overview', requireAuth, requireAdmin, async (req, res) => {
   try {
     const year = parseInt(req.query.year) || new Date().getFullYear();
     // Include terminated employees so their final summary still shows
@@ -964,7 +999,8 @@ app.get('/api/salary-overview', requireAuth, async (req, res) => {
         excess_deduction:    dayCalc.excess_deduction,
         breakdown:           dayCalc.breakdown,
         net_remaining:       netRemaining,
-        pct_paid:            pctPaid
+        pct_paid:            pctPaid,
+        has_pin:             !!emp.portal_pin
       };
     }));
 
@@ -1125,7 +1161,7 @@ app.delete('/api/bonuses/:id', requireAuth, async (req, res) => {
 
 // ─── SALARY HISTORY ──────────────────────────────────────────────────────────
 
-app.get('/api/salary-history/:employeeId', requireAuth, async (req, res) => {
+app.get('/api/salary-history/:employeeId', requireAuth, requireAdmin, async (req, res) => {
   const { rows } = await q(
     `SELECT sh.*, sh.effective_from::TEXT AS effective_from, ad.username AS created_by_name
      FROM salary_history sh LEFT JOIN admins ad ON ad.id = sh.created_by
@@ -1135,7 +1171,7 @@ app.get('/api/salary-history/:employeeId', requireAuth, async (req, res) => {
   res.json(rows);
 });
 
-app.post('/api/salary-history', requireAuth, async (req, res) => {
+app.post('/api/salary-history', requireAuth, requireAdmin, async (req, res) => {
   const { employee_id, annual_salary, currency, effective_from, reason } = req.body;
   if (!employee_id || !annual_salary) return res.status(400).json({ error: 'employee_id and annual_salary required' });
   const cur = ['GBP','AED'].includes(currency) ? currency : 'GBP';
@@ -1146,7 +1182,7 @@ app.post('/api/salary-history', requireAuth, async (req, res) => {
   res.json({ id: rows[0].id });
 });
 
-app.delete('/api/salary-history/:id', requireAuth, async (req, res) => {
+app.delete('/api/salary-history/:id', requireAuth, requireAdmin, async (req, res) => {
   await q('DELETE FROM salary_history WHERE id = ?', [req.params.id]);
   res.json({ success: true });
 });
@@ -1302,7 +1338,7 @@ app.get('/api/contracts/expiring', requireAuth, async (req, res) => {
 
 // ─── PAYROLL CSV EXPORT ───────────────────────────────────────────────────────
 
-app.get('/api/export/payroll-csv', requireAuth, async (req, res) => {
+app.get('/api/export/payroll-csv', requireAuth, requireAdmin, async (req, res) => {
   try {
     const year = parseInt(req.query.year) || new Date().getFullYear();
     const { rows: employees } = await q('SELECT * FROM employees WHERE active = 1 ORDER BY department, name');
@@ -1372,11 +1408,14 @@ app.get('/api/hotel-expenses', requireAuth, async (req, res) => {
 
 app.post('/api/hotel-expenses', requireAuth, async (req, res) => {
   try {
-    const { event_name, hotel, cost, av_amount, av_currency, av_billing, paid_amount, paid_currency, staff_hotel, flights, printing, status, notes } = req.body;
+    const { event_name, hotel, cost, av_amount, av_billing, paid_amount,
+            currency, staff_hotel, flights, printing, status, notes, event_year } = req.body;
     const { rows } = await q(
-      `INSERT INTO hotel_expenses (event_name, hotel, cost, av_amount, av_currency, av_billing, paid_amount, paid_currency, staff_hotel, flights, printing, status, notes, created_by)
+      `INSERT INTO hotel_expenses (event_name, hotel, cost, av_amount, av_billing, paid_amount, currency, staff_hotel, flights, printing, status, notes, event_year, created_by)
        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?) RETURNING *`,
-      [event_name, hotel||'', cost||'', av_amount||null, av_currency||'USD', av_billing||'separate', paid_amount||null, paid_currency||'USD', staff_hotel||null, flights||null, printing||null, status||'pending', notes||'', req.user?.id||null]
+      [event_name, hotel||'', cost||'', av_amount||null, av_billing||'separate',
+       paid_amount||null, currency||'USD', staff_hotel||null, flights||null, printing||null,
+       status||'pending', notes||'', event_year||null, req.user?.id||null]
     );
     res.json(rows[0]);
   } catch (e) { res.status(500).json({ error: e.message }); }
@@ -1384,14 +1423,56 @@ app.post('/api/hotel-expenses', requireAuth, async (req, res) => {
 
 app.put('/api/hotel-expenses/:id', requireAuth, async (req, res) => {
   try {
-    const { event_name, hotel, cost, av_amount, av_currency, av_billing, paid_amount, paid_currency, staff_hotel, flights, printing, status, notes } = req.body;
+    const { event_name, hotel, cost, av_amount, av_billing, paid_amount,
+            currency, staff_hotel, flights, printing, status, notes, event_year } = req.body;
     const { rows } = await q(
-      `UPDATE hotel_expenses SET event_name=?, hotel=?, cost=?, av_amount=?, av_currency=?, av_billing=?, paid_amount=?, paid_currency=?, staff_hotel=?, flights=?, printing=?, status=?, notes=?
+      `UPDATE hotel_expenses SET event_name=?, hotel=?, cost=?, av_amount=?,
+       av_billing=?, paid_amount=?, currency=?, staff_hotel=?, flights=?, printing=?,
+       status=?, notes=?, event_year=?
        WHERE id=? RETURNING *`,
-      [event_name, hotel||'', cost||'', av_amount||null, av_currency||'USD', av_billing||'separate', paid_amount||null, paid_currency||'USD', staff_hotel||null, flights||null, printing||null, status||'pending', notes||'', req.params.id]
+      [event_name, hotel||'', cost||'', av_amount||null, av_billing||'separate',
+       paid_amount||null, currency||'USD', staff_hotel||null, flights||null, printing||null,
+       status||'pending', notes||'', event_year||null, req.params.id]
     );
     if (!rows.length) return res.status(404).json({ error: 'Not found' });
     res.json(rows[0]);
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// Upload invoice (base64) for a hotel expense
+app.post('/api/hotel-expenses/:id/invoice', requireAuth, async (req, res) => {
+  try {
+    const { invoice_name, invoice_data } = req.body;
+    if (!invoice_name || !invoice_data) return res.status(400).json({ error: 'invoice_name and invoice_data required' });
+    const { rows } = await q(
+      `UPDATE hotel_expenses SET invoice_name=?, invoice_data=? WHERE id=? RETURNING id, invoice_name`,
+      [invoice_name, invoice_data, req.params.id]
+    );
+    if (!rows.length) return res.status(404).json({ error: 'Not found' });
+    res.json(rows[0]);
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// Download invoice
+app.get('/api/hotel-expenses/:id/invoice', requireAuth, async (req, res) => {
+  try {
+    const { rows } = await q(`SELECT invoice_name, invoice_data FROM hotel_expenses WHERE id=?`, [req.params.id]);
+    const r = rows[0];
+    if (!r || !r.invoice_data) return res.status(404).json({ error: 'No invoice stored' });
+    const buf = Buffer.from(r.invoice_data, 'base64');
+    const ext = (r.invoice_name || '').split('.').pop().toLowerCase();
+    const mime = ext === 'pdf' ? 'application/pdf' : ext === 'png' ? 'image/png' : ext === 'jpg' || ext === 'jpeg' ? 'image/jpeg' : 'application/octet-stream';
+    res.setHeader('Content-Type', mime);
+    res.setHeader('Content-Disposition', `inline; filename="${r.invoice_name}"`);
+    res.send(buf);
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// Delete invoice
+app.delete('/api/hotel-expenses/:id/invoice', requireAuth, async (req, res) => {
+  try {
+    await q(`UPDATE hotel_expenses SET invoice_name=NULL, invoice_data=NULL WHERE id=?`, [req.params.id]);
+    res.json({ ok: true });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
@@ -1399,6 +1480,148 @@ app.delete('/api/hotel-expenses/:id', requireAuth, async (req, res) => {
   try {
     await q('DELETE FROM hotel_expenses WHERE id = ?', [req.params.id]);
     res.json({ ok: true });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// PATCH: update individual fields of a hotel expense row
+app.patch('/api/hotel-expenses/:id', requireAuth, async (req, res) => {
+  try {
+    const allowed = ['event_name','hotel','cost','currency','av_amount','av_billing','paid_amount','staff_hotel','flights','printing','status','notes','invoice_name','event_year'];
+    const fields = Object.keys(req.body).filter(k => allowed.includes(k));
+    if (!fields.length) return res.status(400).json({ error: 'No valid fields' });
+    const sets = fields.map(f => `${f}=?`).join(', ');
+    const vals = fields.map(f => req.body[f] === '' ? null : req.body[f]);
+    const { rows } = await q(`UPDATE hotel_expenses SET ${sets} WHERE id=? RETURNING *`, [...vals, req.params.id]);
+    if (!rows.length) return res.status(404).json({ error: 'Not found' });
+    // Refresh in-memory for summary recalc (client will re-fetch)
+    res.json(rows[0]);
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// ─── Middleware: admin OR manager ─────────────────────────────────────────────
+function requireAdminOrManager(req, res, next) {
+  const r = req.admin?.role;
+  if (r !== 'admin' && r !== 'manager') return res.status(403).json({ error: 'Access restricted' });
+  next();
+}
+
+// ─── SUBSCRIPTIONS ────────────────────────────────────────────────────────────
+app.get('/api/subscriptions', requireAuth, requireAdminOrManager, async (req, res) => {
+  try {
+    const { rows } = await q('SELECT * FROM subscriptions ORDER BY created_at DESC');
+    res.json(rows);
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+app.post('/api/subscriptions', requireAuth, requireAdminOrManager, async (req, res) => {
+  try {
+    const { name, vendor, amount, currency, billing_cycle, renewal_date, notes } = req.body;
+    const { rows } = await q(
+      `INSERT INTO subscriptions (name, vendor, amount, currency, billing_cycle, renewal_date, notes, created_by)
+       VALUES (?,?,?,?,?,?,?,?) RETURNING *`,
+      [name, vendor||'', parseFloat(amount)||0, currency||'GBP', billing_cycle||'monthly', renewal_date||null, notes||'', req.admin.id]
+    );
+    res.json(rows[0]);
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+app.put('/api/subscriptions/:id', requireAuth, requireAdminOrManager, async (req, res) => {
+  try {
+    const { name, vendor, amount, currency, billing_cycle, renewal_date, notes, active } = req.body;
+    const { rows } = await q(
+      `UPDATE subscriptions SET name=?, vendor=?, amount=?, currency=?, billing_cycle=?, renewal_date=?, notes=?, active=? WHERE id=? RETURNING *`,
+      [name, vendor||'', parseFloat(amount)||0, currency||'GBP', billing_cycle||'monthly', renewal_date||null, notes||'', active !== false, req.params.id]
+    );
+    if (!rows.length) return res.status(404).json({ error: 'Not found' });
+    res.json(rows[0]);
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+app.delete('/api/subscriptions/:id', requireAuth, requireAdminOrManager, async (req, res) => {
+  try { await q('DELETE FROM subscriptions WHERE id=?', [req.params.id]); res.json({ ok: true }); }
+  catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// ─── PORTFOLIO EVENTS ─────────────────────────────────────────────────────────
+app.get('/api/portfolio-events', requireAuth, requireAdminOrManager, async (req, res) => {
+  try {
+    const { rows } = await q(`
+      SELECT pe.*,
+        COALESCE(SUM(CASE WHEN d.stage='Won' THEN de.allocated_amount ELSE 0 END),0) AS total_won,
+        COALESCE(SUM(de.allocated_amount),0) AS total_pipeline,
+        string_agg(DISTINCT NULLIF(COALESCE(NULLIF(d.company,''), d.title),''), ', ') AS companies
+      FROM portfolio_events pe
+      LEFT JOIN deal_events de ON de.event_id=pe.id
+      LEFT JOIN deals d ON d.id=de.deal_id
+      GROUP BY pe.id ORDER BY pe.event_date DESC NULLS LAST, pe.created_at DESC`);
+    res.json(rows);
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+app.post('/api/portfolio-events', requireAuth, requireAdminOrManager, async (req, res) => {
+  try {
+    const { name, event_date, location, notes } = req.body;
+    const { rows } = await q(
+      `INSERT INTO portfolio_events (name, event_date, location, notes, created_by) VALUES (?,?,?,?,?) RETURNING *`,
+      [name, event_date||null, location||'', notes||'', req.admin.id]
+    );
+    res.json(rows[0]);
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+app.put('/api/portfolio-events/:id', requireAuth, requireAdminOrManager, async (req, res) => {
+  try {
+    const { name, event_date, location, notes } = req.body;
+    const { rows } = await q(
+      `UPDATE portfolio_events SET name=?, event_date=?, location=?, notes=? WHERE id=? RETURNING *`,
+      [name, event_date||null, location||'', notes||'', req.params.id]
+    );
+    if (!rows.length) return res.status(404).json({ error: 'Not found' });
+    res.json(rows[0]);
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+app.delete('/api/portfolio-events/:id', requireAuth, requireAdminOrManager, async (req, res) => {
+  try { await q('DELETE FROM portfolio_events WHERE id=?', [req.params.id]); res.json({ ok: true }); }
+  catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// ─── DEALS ────────────────────────────────────────────────────────────────────
+app.get('/api/deals', requireAuth, requireAdminOrManager, async (req, res) => {
+  try {
+    const { rows: deals } = await q(`
+      SELECT d.*,
+        COALESCE(json_agg(json_build_object('event_id',de.event_id,'event_name',pe.name,'allocated_amount',de.allocated_amount))
+          FILTER (WHERE de.event_id IS NOT NULL), '[]') AS events
+      FROM deals d
+      LEFT JOIN deal_events de ON de.deal_id = d.id
+      LEFT JOIN portfolio_events pe ON pe.id = de.event_id
+      GROUP BY d.id ORDER BY d.invoice_date DESC NULLS LAST, d.created_at DESC`);
+    res.json(deals);
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+// GET /api/deals/revenue-by-event — per-event revenue & payment breakdown
+app.get('/api/deals/revenue-by-event', requireAuth, requireAdminOrManager, async (req, res) => {
+  try {
+    const { rows } = await q(`
+      SELECT
+        pe.id AS event_id,
+        pe.name AS event_name,
+        pe.event_date,
+        COUNT(DISTINCT d.id) AS deal_count,
+        COALESCE(SUM(d.amount), 0) AS total_amount,
+        COALESCE(SUM(d.paid_inc_vat), 0) AS total_paid,
+        COUNT(DISTINCT CASE WHEN COALESCE(d.paid_inc_vat,0) > 0 THEN d.id END) AS paid_count,
+        json_agg(
+          json_build_object(
+            'id', d.id,
+            'company', COALESCE(NULLIF(d.company,''), d.title, ''),
+            'amount', COALESCE(d.amount, 0),
+            'paid_inc_vat', COALESCE(d.paid_inc_vat, 0),
+            'currency', COALESCE(d.currency, 'GBP')
+          ) ORDER BY d.company
+        ) FILTER (WHERE d.id IS NOT NULL) AS clients
+      FROM portfolio_events pe
+      LEFT JOIN deal_events de ON de.event_id = pe.id
+      LEFT JOIN deals d ON d.id = de.deal_id
+      GROUP BY pe.id, pe.name, pe.event_date
+      ORDER BY pe.event_date DESC NULLS LAST, pe.created_at DESC
+    `);
+    res.json(rows);
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
@@ -1414,6 +1637,161 @@ app.get('/api/employee/portfolio', requireAuth, async (req, res) => {
       [empId]
     );
     res.json(rows);
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// GET /api/deals/last-invoice — return last invoice number used (must be before /:id routes)
+app.get('/api/deals/last-invoice', requireAuth, requireAdminOrManager, async (req, res) => {
+  try {
+    const { rows } = await q(`SELECT id, invoice_number FROM deals WHERE invoice_number IS NOT NULL AND invoice_number != '' ORDER BY created_at DESC LIMIT 20`);
+    let maxNum = 0; let lastRow = null;
+    for (const r of rows) {
+      const m = r.invoice_number.match(/(\d+)$/);
+      if (m && parseInt(m[1]) > maxNum) { maxNum = parseInt(m[1]); lastRow = r; }
+    }
+    res.json(lastRow ? { id: lastRow.id, invoice_number: lastRow.invoice_number, next_number: maxNum + 1 } : { id: null, invoice_number: null, next_number: null });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.post('/api/deals', requireAuth, requireAdminOrManager, async (req, res) => {
+  try {
+    const { title, company, contact_name, amount, currency, stage, event_ids, notes,
+            invoice1_name, invoice1_data, invoice2_name, invoice2_data,
+            paid_inc_vat, tax_vat, invoice_date, paid_date, bank, invoice_number,
+            invoice_agreement_sent, signature_received, initials } = req.body;
+    const { rows } = await q(
+      `INSERT INTO deals (title, company, contact_name, amount, currency, stage, notes,
+        invoice1_name, invoice1_data, invoice2_name, invoice2_data, created_by,
+        paid_inc_vat, tax_vat, invoice_date, paid_date, bank, invoice_number,
+        invoice_agreement_sent, signature_received, initials)
+       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) RETURNING *`,
+      [title, company||'', contact_name||'', parseFloat(amount)||0, currency||'GBP',
+       stage||'Prospect', notes||'', invoice1_name||null, invoice1_data||null,
+       invoice2_name||null, invoice2_data||null, req.admin.id,
+       paid_inc_vat != null ? parseFloat(paid_inc_vat) : null,
+       tax_vat != null ? parseFloat(tax_vat) : null,
+       invoice_date||null, paid_date||null, bank||'', invoice_number||'',
+       invoice_agreement_sent ? true : false, signature_received ? true : false, initials||'']
+    );
+    const deal = rows[0];
+    if (Array.isArray(event_ids) && event_ids.length > 0) {
+      const perEvent = parseFloat((parseFloat(amount) / event_ids.length).toFixed(2));
+      for (const eid of event_ids) {
+        await q('INSERT INTO deal_events (deal_id, event_id, allocated_amount) VALUES (?,?,?)',
+          [deal.id, eid, perEvent]);
+      }
+    }
+    res.json(deal);
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+app.put('/api/deals/:id', requireAuth, requireAdminOrManager, async (req, res) => {
+  try {
+    const { title, company, contact_name, amount, currency, stage, event_ids, notes,
+            invoice1_name, invoice1_data, invoice2_name, invoice2_data,
+            paid_inc_vat, tax_vat, invoice_date, paid_date, bank, invoice_number,
+            invoice_agreement_sent, signature_received, initials } = req.body;
+    const { rows } = await q(
+      `UPDATE deals SET title=?, company=?, contact_name=?, amount=?, currency=?, stage=?, notes=?,
+        invoice1_name=COALESCE(?,invoice1_name), invoice1_data=COALESCE(?,invoice1_data),
+        invoice2_name=COALESCE(?,invoice2_name), invoice2_data=COALESCE(?,invoice2_data),
+        paid_inc_vat=?, tax_vat=?, invoice_date=?, paid_date=?, bank=?, invoice_number=?,
+        invoice_agreement_sent=?, signature_received=?, initials=?
+       WHERE id=? RETURNING *`,
+      [title, company||'', contact_name||'', parseFloat(amount)||0, currency||'GBP',
+       stage||'Prospect', notes||'',
+       invoice1_name||null, invoice1_data||null, invoice2_name||null, invoice2_data||null,
+       paid_inc_vat != null ? parseFloat(paid_inc_vat) : null,
+       tax_vat != null ? parseFloat(tax_vat) : null,
+       invoice_date||null, paid_date||null, bank||'', invoice_number||'',
+       invoice_agreement_sent ? true : false, signature_received ? true : false, initials||'',
+       req.params.id]
+    );
+    if (!rows.length) return res.status(404).json({ error: 'Not found' });
+    if (Array.isArray(event_ids)) {
+      await q('DELETE FROM deal_events WHERE deal_id=?', [req.params.id]);
+      const perEvent = event_ids.length > 0 ? parseFloat((parseFloat(amount) / event_ids.length).toFixed(2)) : 0;
+      for (const eid of event_ids) {
+        await q('INSERT INTO deal_events (deal_id, event_id, allocated_amount) VALUES (?,?,?)',
+          [req.params.id, eid, perEvent]);
+      }
+    }
+    res.json(rows[0]);
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+app.patch('/api/deals/:id/stage', requireAuth, requireAdminOrManager, async (req, res) => {
+  try {
+    const { stage } = req.body;
+    const { rows } = await q('UPDATE deals SET stage=? WHERE id=? RETURNING *', [stage, req.params.id]);
+    if (!rows.length) return res.status(404).json({ error: 'Not found' });
+    res.json(rows[0]);
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+app.delete('/api/deals/:id', requireAuth, requireAdminOrManager, async (req, res) => {
+  try { await q('DELETE FROM deals WHERE id=?', [req.params.id]); res.json({ ok: true }); }
+  catch (e) { res.status(500).json({ error: e.message }); }
+});
+app.get('/api/deals/:id/invoice/:n', requireAuth, requireAdminOrManager, async (req, res) => {
+  try {
+    const n = req.params.n === '2' ? 2 : 1;
+    const { rows } = await q(`SELECT invoice${n}_name AS name, invoice${n}_data AS data FROM deals WHERE id=?`, [req.params.id]);
+    const r = rows[0];
+    if (!r || !r.data) return res.status(404).json({ error: 'No invoice' });
+    const ext = (r.name||'').split('.').pop().toLowerCase();
+    const mimes = { pdf:'application/pdf', docx:'application/vnd.openxmlformats-officedocument.wordprocessingml.document', doc:'application/msword', png:'image/png', jpg:'image/jpeg', jpeg:'image/jpeg' };
+    res.setHeader('Content-Type', mimes[ext] || 'application/octet-stream');
+    res.setHeader('Content-Disposition', `inline; filename="${r.name}"`);
+    res.send(Buffer.from(r.data, 'base64'));
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// PATCH /api/deals/:id/row-status — set row color status
+app.patch('/api/deals/:id/row-status', requireAuth, requireAdminOrManager, async (req, res) => {
+  try {
+    const { row_status } = req.body;
+    const valid = ['none','paid','flagged','issue','urgent'];
+    if (!valid.includes(row_status)) return res.status(400).json({ error: 'Invalid status' });
+    const { rows } = await q('UPDATE deals SET row_status=? WHERE id=? RETURNING id,row_status', [row_status, req.params.id]);
+    if (!rows.length) return res.status(404).json({ error: 'Not found' });
+    res.json(rows[0]);
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// PATCH /api/deals/:id/field — inline cell edit (single field update)
+app.patch('/api/deals/:id/field', requireAuth, requireAdminOrManager, async (req, res) => {
+  const ALLOWED = ['title','company','initials','stage','amount','currency','paid_inc_vat',
+    'tax_vat','invoice_number','invoice_date','paid_date','bank',
+    'invoice_agreement_sent','signature_received','notes','cancelled_reason'];
+  try {
+    const { field, value } = req.body;
+    if (!ALLOWED.includes(field)) return res.status(400).json({ error: 'Field not allowed' });
+    const { rows } = await q(`UPDATE deals SET ${field}=? WHERE id=? RETURNING id`, [value, req.params.id]);
+    if (!rows.length) return res.status(404).json({ error: 'Not found' });
+    res.json({ ok: true });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// PATCH /api/deals/:id/cancel — mark deal as cancelled with optional reason
+app.patch('/api/deals/:id/cancel', requireAuth, requireAdminOrManager, async (req, res) => {
+  try {
+    const { reason = '' } = req.body;
+    const { rows } = await q(
+      `UPDATE deals SET stage_cancelled=true, cancelled_reason=?, stage='Cancelled' WHERE id=? RETURNING id`,
+      [reason, req.params.id]
+    );
+    if (!rows.length) return res.status(404).json({ error: 'Not found' });
+    res.json({ ok: true });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// PATCH /api/deals/:id/uncancel — restore a cancelled deal
+app.patch('/api/deals/:id/uncancel', requireAuth, requireAdminOrManager, async (req, res) => {
+  try {
+    const { rows } = await q(
+      `UPDATE deals SET stage_cancelled=false, cancelled_reason='', stage='Prospect' WHERE id=? RETURNING id`,
+      [req.params.id]
+    );
+    if (!rows.length) return res.status(404).json({ error: 'Not found' });
+    res.json({ ok: true });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
@@ -1709,6 +2087,151 @@ app.use((err, req, res, next) => {
   if (!res.headersSent) {
     res.status(500).json({ error: err.message || 'Internal server error' });
   }
+});
+
+// ─── EMPLOYEE PORTAL (PIN auth, no session) ───────────────────────────────────
+
+app.get('/portal', (req, res) => res.sendFile(path.join(__dirname, 'public', 'portal.html')));
+
+app.post('/api/portal/auth', async (req, res) => {
+  try {
+    const { employee_id, pin } = req.body;
+    if (!employee_id || !pin) return res.status(400).json({ error: 'ID and PIN required' });
+    const { rows } = await q('SELECT id, name, job_title, department, employment_type, annual_salary, currency, start_date, portal_pin FROM employees WHERE id = ? AND active = true', [employee_id]);
+    const emp = rows[0];
+    if (!emp || !emp.portal_pin) return res.status(401).json({ error: 'Invalid credentials' });
+    if (String(emp.portal_pin) !== String(pin).trim()) return res.status(401).json({ error: 'Invalid PIN' });
+    res.json({ id: emp.id, name: emp.name, job_title: emp.job_title, department: emp.department, employment_type: emp.employment_type, annual_salary: emp.annual_salary, currency: emp.currency, start_date: emp.start_date });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.post('/api/portal/holiday-request', async (req, res) => {
+  try {
+    const { employee_id, pin, date, type, note } = req.body;
+    const { rows: empRows } = await q('SELECT id, name, portal_pin FROM employees WHERE id = ? AND active = true', [employee_id]);
+    const emp = empRows[0];
+    if (!emp || String(emp.portal_pin) !== String(pin).trim()) return res.status(401).json({ error: 'Invalid credentials' });
+    // Check for duplicate pending/approved request for same date
+    const { rows: existing } = await q(
+      `SELECT id FROM holiday_requests WHERE employee_id = ? AND request_date = ? AND status IN ('pending','approved')`,
+      [employee_id, date]
+    );
+    if (existing.length > 0) return res.status(409).json({ error: 'A request for this date already exists.' });
+    await q(
+      `INSERT INTO holiday_requests (employee_id, request_date, day_type, note) VALUES (?, ?, ?, ?)`,
+      [employee_id, date, type === 'half' ? 'half' : 'full', note || '']
+    );
+    // Send admin email notification
+    await sendAdminEmail(
+      `Holiday Request: ${emp.name}`,
+      `<p><strong>${emp.name}</strong> has requested a day off.</p>
+       <p><strong>Date:</strong> ${date}<br><strong>Type:</strong> ${type === 'half' ? 'Half Day' : 'Full Day'}<br><strong>Note:</strong> ${note || '—'}</p>
+       <p>Log in to EmpTracker to approve or deny this request.</p>`
+    );
+    res.json({ success: true });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// ─── Holiday Requests (admin) ────────────────────────────────────────────────
+
+app.get('/api/holiday-requests', requireAuth, async (req, res) => {
+  try {
+    const status = req.query.status || 'pending';
+    const { rows } = await q(
+      `SELECT hr.id, hr.employee_id, e.name AS employee_name, hr.request_date, hr.day_type, hr.note,
+              hr.status, hr.reviewed_by, hr.reviewed_at, hr.created_at
+       FROM holiday_requests hr
+       JOIN employees e ON e.id = hr.employee_id
+       WHERE hr.status = ?
+       ORDER BY hr.created_at DESC`,
+      [status]
+    );
+    res.json(rows);
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.get('/api/holiday-requests/count', requireAuth, async (req, res) => {
+  try {
+    const { rows } = await q(`SELECT COUNT(*) AS c FROM holiday_requests WHERE status = 'pending'`);
+    res.json({ count: parseInt(rows[0].c) });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.put('/api/holiday-requests/:id/approve', requireAuth, async (req, res) => {
+  try {
+    const { rows: hrRows } = await q('SELECT * FROM holiday_requests WHERE id = ?', [req.params.id]);
+    const hr = hrRows[0];
+    if (!hr) return res.status(404).json({ error: 'Request not found' });
+    if (hr.status !== 'pending') return res.status(400).json({ error: 'Request already reviewed' });
+    const dayOff = hr.day_type === 'half' ? 0.5 : 1;
+    await q(
+      `INSERT INTO daily_records (employee_id, record_date, is_day_off, notes)
+       VALUES (?, ?, ?, ?)
+       ON CONFLICT (employee_id, record_date) DO UPDATE SET is_day_off = EXCLUDED.is_day_off, notes = EXCLUDED.notes`,
+      [hr.employee_id, hr.request_date, dayOff, hr.note || 'Portal request (approved)']
+    );
+    await q(
+      `UPDATE holiday_requests SET status = 'approved', reviewed_by = ?, reviewed_at = NOW() WHERE id = ?`,
+      [req.admin.id, req.params.id]
+    );
+    res.json({ success: true });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.put('/api/holiday-requests/:id/deny', requireAuth, async (req, res) => {
+  try {
+    const { rows: hrRows } = await q('SELECT * FROM holiday_requests WHERE id = ?', [req.params.id]);
+    const hr = hrRows[0];
+    if (!hr) return res.status(404).json({ error: 'Request not found' });
+    if (hr.status !== 'pending') return res.status(400).json({ error: 'Request already reviewed' });
+    await q(
+      `UPDATE holiday_requests SET status = 'denied', reviewed_by = ?, reviewed_at = NOW() WHERE id = ?`,
+      [req.admin.id, req.params.id]
+    );
+    res.json({ success: true });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// ─── Portal calendar (no admin reminders — days off only) ────────────────────
+
+app.get('/api/portal/calendar', async (req, res) => {
+  try {
+    const { employee_id, pin, year, month } = req.query;
+    if (!employee_id || !pin) return res.status(401).json({ error: 'Authentication required' });
+    const { rows: empRows } = await q('SELECT id, portal_pin FROM employees WHERE id = ? AND active = true', [employee_id]);
+    const emp = empRows[0];
+    if (!emp || String(emp.portal_pin) !== String(pin).trim()) return res.status(401).json({ error: 'Invalid credentials' });
+    const y = parseInt(year) || new Date().getFullYear();
+    const m = parseInt(month);
+    const allYear = !m || isNaN(m);
+    // All days off for all employees in the requested month (or full year)
+    const { rows: daysOff } = allYear
+      ? await q(
+          `SELECT dr.employee_id, e.name AS employee_name, dr.record_date::TEXT AS record_date, dr.is_day_off
+           FROM daily_records dr
+           JOIN employees e ON e.id = dr.employee_id
+           WHERE dr.is_day_off > 0 AND EXTRACT(YEAR FROM dr.record_date) = ?
+           ORDER BY dr.record_date`, [y])
+      : await q(
+          `SELECT dr.employee_id, e.name AS employee_name, dr.record_date::TEXT AS record_date, dr.is_day_off
+           FROM daily_records dr
+           JOIN employees e ON e.id = dr.employee_id
+           WHERE dr.is_day_off > 0
+             AND EXTRACT(YEAR FROM dr.record_date) = ?
+             AND EXTRACT(MONTH FROM dr.record_date) = ?
+           ORDER BY dr.record_date`,
+          [y, m]);
+    // Upcoming days off for all employees (next 60 days)
+    const { rows: upcoming } = await q(
+      `SELECT dr.employee_id, e.name AS employee_name, dr.record_date::TEXT AS record_date, dr.is_day_off
+       FROM daily_records dr
+       JOIN employees e ON e.id = dr.employee_id
+       WHERE dr.is_day_off > 0 AND dr.record_date >= CURRENT_DATE
+       ORDER BY dr.record_date
+       LIMIT 20`
+    );
+    res.json({ days_off: daysOff, upcoming });
+  } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
 // ─── START ────────────────────────────────────────────────────────────────────
