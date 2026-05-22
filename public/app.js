@@ -3362,38 +3362,45 @@ function renderHotelSummary() {
 
   const total  = yearData.length;
   const unpaid = yearData.filter(r => r.status !== 'paid').length;
+  const fmtN = n => n.toLocaleString('en-GB', {minimumFractionDigits:2, maximumFractionDigits:2});
 
-  const cards = Object.entries(byCur).flatMap(([cur, sums]) => {
+  const currencyCards = Object.entries(byCur).map(([cur, sums]) => {
     const sym = hotelCurrencySymbol(cur);
-    const totalSpent = sums.paid + sums.av;
+    const total_spent = sums.paid + sums.av;
     const outstanding = sums.cost > 0 ? Math.max(0, sums.cost - sums.paid) : null;
-    const fmtN = n => n.toLocaleString('en-GB', {minimumFractionDigits:2, maximumFractionDigits:2});
-    return [
-      `<div class="dash-mini-card dash-mini--green" style="flex:1;min-width:140px">
-        <div style="flex:1"><div class="dash-mini-label">Paid (${cur})</div><div class="dash-mini-value" style="color:var(--positive)">${sym}${fmtN(sums.paid)}</div></div>
-       </div>`,
-      sums.av > 0 ? `<div class="dash-mini-card dash-mini--indigo" style="flex:1;min-width:140px">
-        <div style="flex:1"><div class="dash-mini-label">AV – ${cur}</div><div class="dash-mini-value">${sym}${fmtN(sums.av)}</div></div>
-       </div>` : '',
-      `<div class="dash-mini-card" style="flex:1;min-width:140px">
-        <div style="flex:1"><div class="dash-mini-label">Total Spent (${cur})</div><div class="dash-mini-value">${sym}${fmtN(totalSpent)}</div></div>
-       </div>`,
-      outstanding !== null ? `<div class="dash-mini-card dash-mini--alert" style="flex:1;min-width:140px">
-        <div style="flex:1"><div class="dash-mini-label">Outstanding (${cur})</div><div class="dash-mini-value" style="color:${outstanding > 0 ? 'var(--danger)' : 'var(--positive)'}">${outstanding > 0 ? sym+fmtN(outstanding) : '✓ Settled'}</div></div>
-       </div>` : ''
-    ];
-  });
+    return `
+      <div class="hotel-fin-card">
+        <div class="hotel-fin-currency">${cur}</div>
+        <div class="hotel-fin-row">
+          <span class="hotel-fin-lbl">Venue / Hotel Paid</span>
+          <span class="hotel-fin-val hotel-fin-green">${sym}${fmtN(sums.paid)}</span>
+        </div>
+        <div class="hotel-fin-row">
+          <span class="hotel-fin-lbl">AV (separate charges)</span>
+          <span class="hotel-fin-val hotel-fin-blue">${sym}${fmtN(sums.av)}</span>
+        </div>
+        <div class="hotel-fin-row hotel-fin-total-row">
+          <span class="hotel-fin-lbl">Total Spent</span>
+          <span class="hotel-fin-val">${sym}${fmtN(total_spent)}</span>
+        </div>
+        ${outstanding !== null ? `<div class="hotel-fin-row" style="margin-top:6px;border-top:1px solid var(--border);padding-top:6px">
+          <span class="hotel-fin-lbl">Outstanding</span>
+          <span class="hotel-fin-val ${outstanding > 0 ? 'hotel-fin-red' : 'hotel-fin-green'}">${outstanding > 0 ? sym+fmtN(outstanding) : '✓ Settled'}</span>
+        </div>` : ''}
+      </div>`;
+  }).join('');
 
-  const statusCard = `<div class="dash-mini-card" style="flex:1;min-width:140px">
-    <div style="flex:1">
-      <div class="dash-mini-label">Events${_hotelYearFilter !== 'all' ? ' · '+_hotelYearFilter : ''}</div>
-      <div class="dash-mini-value">${total - unpaid}<span style="font-size:0.8rem;font-weight:500;color:var(--muted)">/${total} paid</span></div>
-      ${unpaid > 0 ? `<div style="font-size:0.75rem;color:var(--danger);margin-top:4px">${unpaid} outstanding</div>` : `<div style="font-size:0.75rem;color:var(--positive);margin-top:4px">✓ All clear</div>`}
+  document.getElementById('hotelSummary').innerHTML = `
+    <div class="hotel-fin-strip">
+      ${currencyCards}
+      <div class="hotel-fin-card hotel-fin-card--status">
+        <div class="hotel-fin-currency">STATUS${_hotelYearFilter !== 'all' ? ` · ${_hotelYearFilter}` : ''}</div>
+        <div class="hotel-fin-row"><span class="hotel-fin-lbl">Total Events</span><span class="hotel-fin-val">${total}</span></div>
+        <div class="hotel-fin-row"><span class="hotel-fin-lbl">Fully Paid</span><span class="hotel-fin-val hotel-fin-green">${total - unpaid}</span></div>
+        <div class="hotel-fin-row hotel-fin-total-row"><span class="hotel-fin-lbl">Still Outstanding</span><span class="hotel-fin-val ${unpaid > 0 ? 'hotel-fin-red' : 'hotel-fin-green'}">${unpaid > 0 ? unpaid : '✓ All clear'}</span></div>
+      </div>
     </div>
-  </div>`;
-
-  document.getElementById('hotelSummary').innerHTML =
-    `<div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:20px">${cards.filter(Boolean).join('')}${statusCard}</div>`;
+  `;
 }
 
 function renderHotelTable() {
