@@ -181,7 +181,7 @@ function navigate(page) {
   if (page === 'hotels') loadHotelExpenses();
   if (page === 'subscriptions') loadSubscriptions();
   if (page === 'portfolio') { loadPortfolio(); loadAdminPortfolio(); }
-  if (page === 'deals') { loadDeals(); loadDealTracker(); }
+  if (page === 'deals') { loadDeals(); }
 }
 
 // ─── EMPLOYEES ───────────────────────────────────────────────────────────────
