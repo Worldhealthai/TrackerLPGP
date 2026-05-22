@@ -180,7 +180,7 @@ function navigate(page) {
   if (page === 'salary') { loadSalaryPage(); renderSalaryReminderPanel(); }
   if (page === 'hotels') loadHotelExpenses();
   if (page === 'subscriptions') loadSubscriptions();
-  if (page === 'portfolio') { loadPortfolio(); loadAdminPortfolio(); }
+  if (page === 'portfolio') { loadPortfolio(); }
   if (page === 'deals') { loadDeals(); }
 }
 
@@ -4156,7 +4156,10 @@ function renderDealsTable() {
     const coHlKey = `dhl:${d.id}-company`;
     const coHl = localStorage.getItem(coHlKey) === '1';
 
-    return `<tr id="deal-row-${d.id}" class="${rowClass}">
+    const isFlagged = d.is_flagged || false;
+    const finalRowClass = isFlagged ? 'deal-row-flagged' : rowClass;
+    return `<tr id="deal-row-${d.id}" class="${finalRowClass}">
+      <td style="text-align:center;padding:0 2px"><button onclick="event.stopPropagation();dealToggleFlag(${d.id})" title="Flag row" style="background:none;border:none;cursor:pointer;font-size:15px;color:${isFlagged?'#f59e0b':'var(--border)'};padding:4px;line-height:1">⚑</button></td>
       ${ec('invoice_date','date',d.invoice_date||'', `<span class="deal-month-disp">${invMonth||'<span style="color:var(--muted)">—</span>'}</span>`)}
       <td class="deal-cell-company${coHl?' deal-cell-orange':''}" data-id="${d.id}" data-hlkey="${coHlKey}" onclick="dealCompanyClick(event,${d.id},this)" title="Click to open deal · Shift+click to highlight"><strong class="deal-co-link">${esc(d.company||d.title)}</strong>${d.initials?` <span class="deal-initials-badge">${esc(d.initials)}</span>`:''}</td>
       ${ec('paid_inc_vat','number',d.paid_inc_vat??'', paidDisplay, `class="deal-num dt-r"${isPartial?' style="background:rgba(234,88,12,.28)"':''}`)}
@@ -4279,6 +4282,24 @@ function dealCellClick(td) {
     if (e.key === 'Enter' && (type !== 'textarea' || e.ctrlKey || e.metaKey)) { e.preventDefault(); input.blur(); }
     if (e.key === 'Escape') { input.removeEventListener('blur', commit); cancel(); }
   });
+}
+
+async function dealToggleFlag(id) {
+  const idx = dealsData.findIndex(d => d.id === id);
+  if (idx === -1) return;
+  const newVal = !dealsData[idx].is_flagged;
+  const ok = await dealPatchField(id, 'is_flagged', newVal);
+  if (ok) {
+    dealsData[idx].is_flagged = newVal;
+    const row = document.getElementById(`deal-row-${id}`);
+    if (row) {
+      const paid = parseFloat(dealsData[idx].paid_inc_vat) || 0;
+      row.className = newVal ? 'deal-row-flagged' : (paid > 0 ? 'deal-row-paid' : '');
+    }
+    // Update flag button color immediately
+    const btn = row?.querySelector('button[title="Flag row"]');
+    if (btn) btn.style.color = newVal ? '#f59e0b' : 'var(--border)';
+  }
 }
 
 async function dealToggleBool(id, field, currentVal) {
