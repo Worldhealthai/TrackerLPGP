@@ -1084,47 +1084,193 @@ tbody tr:hover td strong { color: var(--primary); }
   display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
   gap: 16px; margin-bottom: 24px;
 }
+/* ── Salary Overview Cards ──────────────────────────────────────────────────── */
 .salary-overview-card {
-  background: var(--card); border: 1px solid var(--border); border-radius: var(--radius);
-  overflow: hidden; box-shadow: var(--shadow-card); transition: transform 0.18s, box-shadow 0.18s, border-color 0.18s;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  overflow: hidden;
+  box-shadow: 0 2px 12px rgba(0,0,0,0.06);
+  transition: transform 0.18s, box-shadow 0.18s, border-color 0.18s;
+  display: flex;
+  flex-direction: column;
 }
-.salary-overview-card:hover { transform: translateY(-2px); box-shadow: var(--shadow); border-color: rgba(79,70,229,0.2); }
-.salary-overview-card::before { content: ''; display: block; height: 3px; background: var(--border); }
-.salary-overview-card.payroll::before       { background: linear-gradient(90deg, var(--primary-dark), var(--primary), #818cf8); }
-.salary-overview-card.self-employed::before { background: linear-gradient(90deg, #b45309, var(--warning), #fbbf24); }
-.soc-header {
-  font-family: 'Plus Jakarta Sans', 'Inter', sans-serif;
-  font-size: 0.72rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.6px;
-  color: var(--muted); padding: 12px 16px 10px; border-bottom: 1px solid var(--border-light);
+.salary-overview-card:hover {
+  transform: translateY(-3px);
+  box-shadow: 0 8px 30px rgba(0,0,0,0.1);
 }
-.salary-overview-card.payroll .soc-header       { color: var(--primary); }
-.salary-overview-card.self-employed .soc-header { color: var(--warning); }
-.soc-row { display: flex; align-items: baseline; justify-content: space-between; padding: 7px 16px; gap: 8px; }
-.soc-row--outstanding { padding-top: 10px; padding-bottom: 14px; border-top: 1px solid var(--border-light); margin-top: 4px; }
-.soc-label { font-size: 0.72rem; font-weight: 500; color: var(--muted); white-space: nowrap; }
-.soc-value {
-  font-family: 'Space Grotesk', 'Inter', sans-serif;
-  font-size: 1.1rem; font-weight: 700; letter-spacing: -0.4px; color: var(--text);
+/* Accent top bar */
+.soc-accent-bar {
+  height: 4px;
+  background: var(--border);
 }
-.soc-value.paid        { color: var(--success); }
-.soc-value.deduct      { color: var(--warning); }
-.soc-value.outstanding { color: var(--danger); }
-.soc-value.outstanding.overpaid { color: var(--success); }
-.soc-value.outstanding.clear    { color: var(--muted); }
-.soc-conversion {
-  font-size: 0.69rem; color: var(--muted); padding: 4px 16px 10px;
-  border-top: 1px dashed var(--border-light); margin-top: 2px;
-  font-style: italic;
+.salary-overview-card.payroll .soc-accent-bar {
+  background: linear-gradient(90deg, #4f46e5, #818cf8, #a5b4fc);
 }
-.salary-overview-card.soc-gbp-total::before {
+.salary-overview-card.self-employed .soc-accent-bar {
+  background: linear-gradient(90deg, #b45309, #f59e0b, #fcd34d);
+}
+.salary-overview-card.soc-gbp-total .soc-accent-bar {
   background: linear-gradient(90deg, #059669, #34d399, #6ee7b7);
 }
-.salary-overview-card.soc-gbp-total .soc-header { color: var(--success); }
-.salary-overview-card.soc-gbp-total .soc-value.outstanding { color: var(--success); }
+
+/* Header row */
+.soc-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 14px 16px 12px;
+  border-bottom: 1px solid var(--border-light);
+}
+.soc-icon {
+  font-size: 1.4rem;
+  line-height: 1;
+  flex-shrink: 0;
+}
+.soc-header-text { flex: 1; min-width: 0; }
+.soc-title {
+  font-size: 0.72rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.salary-overview-card.payroll .soc-title       { color: #4f46e5; }
+.salary-overview-card.self-employed .soc-title { color: #d97706; }
+.salary-overview-card.soc-gbp-total .soc-title { color: #059669; }
+.soc-subtitle {
+  font-size: 0.66rem;
+  color: var(--muted);
+  margin-top: 1px;
+}
+.soc-pct-badge {
+  flex-shrink: 0;
+  background: rgba(79,70,229,0.1);
+  color: #4f46e5;
+  font-size: 0.72rem;
+  font-weight: 800;
+  border-radius: 20px;
+  padding: 3px 9px;
+  white-space: nowrap;
+}
+.soc-pct-badge--green {
+  background: rgba(5,150,105,0.1);
+  color: #059669;
+}
+
+/* Hero two-column block */
+.soc-hero {
+  display: flex;
+  align-items: stretch;
+  padding: 14px 16px 10px;
+  gap: 0;
+}
+.soc-hero-block {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+.soc-hero-block:last-child { text-align: right; }
+.soc-hero-divider {
+  width: 1px;
+  background: var(--border-light);
+  margin: 0 16px;
+  align-self: stretch;
+}
+.soc-hero-label {
+  font-size: 0.67rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--muted);
+}
+.soc-hero-val {
+  font-family: 'Space Grotesk', 'Inter', sans-serif;
+  font-size: 1.35rem;
+  font-weight: 800;
+  letter-spacing: -0.5px;
+  line-height: 1.1;
+}
+.soc-col-target  { color: var(--text); }
+.soc-col-paid    { color: var(--success); }
+.soc-col-deduct  { color: var(--warning); }
+.soc-col-outstanding { color: var(--danger); }
+.soc-col-outstanding.overpaid { color: var(--success); }
+.soc-col-outstanding.clear    { color: var(--muted); }
+.soc-col-outstanding--green   { color: var(--success); }
+
+/* Progress bar */
+.soc-progress-wrap {
+  height: 6px;
+  background: var(--border-light);
+  margin: 0 16px 12px;
+  border-radius: 99px;
+  overflow: hidden;
+}
+.soc-progress-bar {
+  height: 100%;
+  border-radius: 99px;
+  transition: width 1s cubic-bezier(.4,0,.2,1);
+  background: linear-gradient(90deg, #6366f1, #818cf8);
+}
+.soc-progress-bar.self-employed {
+  background: linear-gradient(90deg, #d97706, #fbbf24);
+}
+.soc-progress-bar.soc-gbp-total {
+  background: linear-gradient(90deg, #059669, #34d399);
+}
+
+/* Footer rows */
+.soc-footer {
+  padding: 0 16px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  margin-top: auto;
+}
+.soc-footer-item {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+}
+.soc-footer-item--outstanding {
+  padding-top: 8px;
+  border-top: 1px solid var(--border-light);
+  margin-top: 3px;
+}
+.soc-footer-label {
+  font-size: 0.7rem;
+  color: var(--muted);
+  font-weight: 500;
+  white-space: nowrap;
+}
+.soc-footer-val {
+  font-family: 'Space Grotesk', 'Inter', sans-serif;
+  font-size: 1rem;
+  font-weight: 700;
+  letter-spacing: -0.3px;
+}
+.soc-footer-item--outstanding .soc-footer-val {
+  font-size: 1.15rem;
+}
+
+.soc-conversion {
+  font-size: 0.67rem;
+  color: var(--muted);
+  padding: 4px 16px 10px;
+  font-style: italic;
+  text-align: right;
+  margin-top: -4px;
+}
 
 @media (max-width: 768px) {
   .salary-overview-grid { grid-template-columns: repeat(2, 1fr); gap: 10px; }
-  .soc-value { font-size: 0.95rem; }
+  .soc-hero-val { font-size: 1.1rem; }
 }
 @media (max-width: 380px) { .salary-overview-grid { grid-template-columns: 1fr; } }
 
@@ -1856,17 +2002,34 @@ tr.hotel-row-partial:hover td {
 
 /* Dark salary overview card */
 [data-theme="dark"] .salary-overview-card {
-  background: var(--card);
-  border-color: var(--border);
+  background: rgba(255,255,255,0.04);
+  border-color: rgba(255,255,255,0.08);
+  box-shadow: 0 2px 16px rgba(0,0,0,0.3);
 }
 [data-theme="dark"] .salary-overview-card:hover {
-  border-color: rgba(129,140,248,0.3);
-  box-shadow: 0 4px 24px rgba(0,0,0,0.5), 0 0 20px rgba(99,102,241,0.1);
+  border-color: rgba(129,140,248,0.35);
+  box-shadow: 0 8px 32px rgba(0,0,0,0.5), 0 0 20px rgba(99,102,241,0.12);
+  background: rgba(255,255,255,0.06);
 }
 [data-theme="dark"] .salary-overview-card.soc-gbp-total {
-  background: linear-gradient(135deg, rgba(52,211,153,0.08), rgba(52,211,153,0.04));
-  border-color: rgba(52,211,153,0.25);
+  background: rgba(5,150,105,0.07);
+  border-color: rgba(52,211,153,0.2);
 }
+[data-theme="dark"] .soc-title { color: rgba(255,255,255,0.9); }
+[data-theme="dark"] .salary-overview-card.payroll .soc-title       { color: #818cf8; }
+[data-theme="dark"] .salary-overview-card.self-employed .soc-title { color: #fbbf24; }
+[data-theme="dark"] .salary-overview-card.soc-gbp-total .soc-title { color: #34d399; }
+[data-theme="dark"] .soc-pct-badge {
+  background: rgba(129,140,248,0.15);
+  color: #818cf8;
+}
+[data-theme="dark"] .soc-pct-badge--green {
+  background: rgba(52,211,153,0.15);
+  color: #34d399;
+}
+[data-theme="dark"] .soc-progress-wrap { background: rgba(255,255,255,0.06); }
+[data-theme="dark"] .soc-hero-divider  { background: rgba(255,255,255,0.07); }
+[data-theme="dark"] .soc-footer-item--outstanding { border-top-color: rgba(255,255,255,0.07); }
 
 /* Dark deduction box */
 [data-theme="dark"] .deduction-box {
