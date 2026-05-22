@@ -2322,6 +2322,94 @@ tr.hotel-row-partial:hover td {
 .ri-expiry-yellow { background: rgba(234,179,8,.2); color: #fde68a; }
 .ri-expiry-red    { background: rgba(239,68,68,.2); color: #fca5a5; }
 
+/* ── RI Event breakdown ─────────────────────────────────────────────────────── */
+.ri-evt-section {
+  border-top: 1px solid rgba(255,255,255,0.08);
+  margin-top: 14px;
+  padding-top: 10px;
+}
+.ri-evt-section-title {
+  font-size: 0.65rem;
+  font-weight: 700;
+  color: rgba(255,255,255,0.35);
+  letter-spacing: .09em;
+  text-transform: uppercase;
+  margin-bottom: 8px;
+}
+.ri-evt-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-height: 340px;
+  overflow-y: auto;
+  padding-right: 2px;
+}
+.ri-evt-list::-webkit-scrollbar { width: 3px; }
+.ri-evt-list::-webkit-scrollbar-track { background: transparent; }
+.ri-evt-list::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.12); border-radius: 2px; }
+.ri-evt-card {
+  background: rgba(255,255,255,0.04);
+  border: 1px solid rgba(255,255,255,0.07);
+  border-radius: 10px;
+  padding: 10px 12px 8px;
+  cursor: pointer;
+  transition: background .15s, border-color .15s;
+}
+.ri-evt-card:hover {
+  background: rgba(255,255,255,0.08);
+  border-color: rgba(99,102,241,0.4);
+}
+.ri-evt-hd {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+.ri-evt-name {
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: rgba(255,255,255,0.85);
+  flex: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.ri-evt-date {
+  font-size: 0.66rem;
+  color: rgba(255,255,255,0.3);
+  white-space: nowrap;
+  margin-left: 8px;
+}
+.ri-evt-stats {
+  display: flex;
+  gap: 12px;
+  margin-bottom: 7px;
+}
+.ri-evt-stat {
+  font-size: 0.72rem;
+  line-height: 1.3;
+}
+.ri-evt-bar-wrap {
+  height: 3px;
+  background: rgba(255,255,255,0.08);
+  border-radius: 2px;
+  overflow: hidden;
+  margin-bottom: 6px;
+}
+.ri-evt-bar {
+  height: 100%;
+  background: linear-gradient(90deg, #22c55e, #4ade80);
+  border-radius: 2px;
+  width: 0%;
+}
+.ri-evt-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.ri-evt-dots { display: flex; align-items: center; gap: 2px; flex-wrap: wrap; flex: 1; }
+.ri-evt-counts { font-size: 0.7rem; font-weight: 700; white-space: nowrap; }
+
 /* ── Deal table inline editing ─────────────────────────────────────────────── */
 .deal-cell-edit {
   cursor: pointer;

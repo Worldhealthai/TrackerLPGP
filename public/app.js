@@ -340,14 +340,15 @@ async function loadDashboard() {
     </div>
   `;
 
-  const [summaryRes, salaryRes, upcomingRes, expiringRes, allEmpRes, hotelRes, dealsRes] = await Promise.all([
+  const [summaryRes, salaryRes, upcomingRes, expiringRes, allEmpRes, hotelRes, dealsRes, evtRevRes] = await Promise.all([
     fetch(`/api/summary?from=${year}-01-01&to=${year}-12-31`),
     fetch(`/api/salary-overview?year=${year}`),
     fetch(`/api/calendar-reminders/upcoming?days=7`),
     fetch(`/api/contracts/expiring?days=60`),
     fetch(`/api/employees/all`),
     fetch(`/api/hotel-expenses`),
-    fetch(`/api/deals`)
+    fetch(`/api/deals`),
+    fetch(`/api/deals/revenue-by-event`)
   ]);
 
   const summary       = summaryRes.ok   ? await summaryRes.json()   : [];
@@ -357,6 +358,7 @@ async function loadDashboard() {
   const allEmps       = allEmpRes.ok    ? await allEmpRes.json()    : [];
   const dashDeals     = dealsRes.ok     ? await dealsRes.json()     : [];
   const hotelData     = hotelRes.ok     ? await hotelRes.json()     : [];
+  const evtRevData    = evtRevRes.ok    ? await evtRevRes.json()    : [];
 
   const activeEmps    = allEmps.filter(e => e.active);
   const unpaidCount   = getUnpaidThisMonth(salaryData, year, month).length;
@@ -422,7 +424,7 @@ async function loadDashboard() {
   `;
 
   // Revenue Intelligence + contract expiry panel
-  renderRevenueIntelPanel(dashDeals, expiring);
+  renderRevenueIntelPanel(dashDeals, expiring, evtRevData);
 
   // Headcount by department
   renderHeadcountPanel(activeEmps);
@@ -456,34 +458,29 @@ async function loadDashboard() {
   });
 }
 
-function renderRevenueIntelPanel(deals, expiring) {
+function renderRevenueIntelPanel(deals, expiring, evtRevData) {
   const el = document.getElementById('contractExpiryPanel');
   if (!el) return;
 
-  const won      = deals.filter(d => d.stage === 'Won');
-  const lost     = deals.filter(d => d.stage === 'Lost');
-  const active   = deals.filter(d => !['Won','Lost'].includes(d.stage));
-  const wonRev   = won.reduce((a,d) => a + (parseFloat(d.amount)||0), 0);
-  const pipeRev  = active.reduce((a,d) => a + (parseFloat(d.amount)||0), 0);
-  const wonPaid  = won.reduce((a,d) => a + (parseFloat(d.paid_inc_vat)||0), 0);
-  const total    = deals.length;
-  const winRate  = (won.length + lost.length) > 0
-    ? Math.round(won.length / (won.length + lost.length) * 100) : 0;
+  // Overall metrics from all deals
+  const totalRev   = deals.reduce((a,d) => a + (parseFloat(d.amount)||0), 0);
+  const totalPaid  = deals.reduce((a,d) => a + (parseFloat(d.paid_inc_vat)||0), 0);
+  const totalOut   = Math.max(0, totalRev - totalPaid);
+  const paidDeals  = deals.filter(d => (parseFloat(d.paid_inc_vat)||0) > 0).length;
+  const collRate   = deals.length > 0 ? Math.round(paidDeals / deals.length * 100) : 0;
 
-  // SVG donut segments (based on count)
-  const R = 38, C = +(2 * Math.PI * R).toFixed(2); // 238.76
-  const segWon    = total > 0 ? (won.length / total * C) : 0;
-  const segActive = total > 0 ? (active.length / total * C) : 0;
-  const segLost   = total > 0 ? (lost.length / total * C) : 0;
-  // offsets (negative = clockwise shift)
-  const offWon    = 0;
-  const offActive = -(segWon);
-  const offLost   = -(segWon + segActive);
-
-  const stageCols = { Prospect:'#6366f1', Qualified:'#8b5cf6', Proposal:'#3b82f6',
-                      Negotiation:'#f59e0b', Won:'#22c55e', Lost:'#ef4444' };
-  const stageOrder = ['Won','Negotiation','Proposal','Qualified','Prospect','Lost'];
-  const maxAmt = Math.max(...stageOrder.map(s => deals.filter(d=>d.stage===s).reduce((a,d)=>a+(parseFloat(d.amount)||0),0)), 1);
+  // SVG donut: paid vs partial vs unpaid
+  const R = 38, C = +(2 * Math.PI * R).toFixed(2);
+  const unpaidDeals  = deals.filter(d => (parseFloat(d.paid_inc_vat)||0) === 0).length;
+  const partialDeals = deals.filter(d => { const p=parseFloat(d.paid_inc_vat)||0; const a=parseFloat(d.amount)||0; return p>0 && p<a; }).length;
+  const fullPaidDeals= deals.filter(d => { const p=parseFloat(d.paid_inc_vat)||0; const a=parseFloat(d.amount)||0; return p>0 && p>=a; }).length;
+  const total = deals.length;
+  const segPaid    = total > 0 ? (fullPaidDeals / total * C) : 0;
+  const segPartial = total > 0 ? (partialDeals / total * C) : 0;
+  const segUnpaid  = total > 0 ? (unpaidDeals / total * C) : 0;
+  const offPaid    = 0;
+  const offPartial = -(segPaid);
+  const offUnpaid  = -(segPaid + segPartial);
 
   const today = new Date().toISOString().slice(0,10);
   const expiryHtml = expiring.length ? `
@@ -498,6 +495,49 @@ function renderRevenueIntelPanel(deals, expiring) {
       }).join('')}
     </div>` : '';
 
+  // Per-event cards
+  const eventsHtml = (evtRevData||[]).filter(ev => Number(ev.deal_count) > 0).map(ev => {
+    const amt    = parseFloat(ev.total_amount) || 0;
+    const paid   = parseFloat(ev.total_paid) || 0;
+    const out    = Math.max(0, amt - paid);
+    const pct    = amt > 0 ? Math.min(100, Math.round(paid / amt * 100)) : 0;
+    const clients= Array.isArray(ev.clients) ? ev.clients : [];
+    const paidC  = clients.filter(c => (parseFloat(c.paid_inc_vat)||0) >= (parseFloat(c.amount)||0) && (parseFloat(c.amount)||0) > 0).length;
+    const partC  = clients.filter(c => { const p=parseFloat(c.paid_inc_vat)||0; const a=parseFloat(c.amount)||0; return p>0 && p<a; }).length;
+    const unpC   = clients.filter(c => (parseFloat(c.paid_inc_vat)||0) === 0).length;
+    const evtDate = ev.event_date ? new Date(ev.event_date).toLocaleDateString('en-GB',{month:'short',year:'2-digit'}) : '';
+
+    // Client dots
+    const dotHtml = clients.slice(0,12).map(c => {
+      const p=parseFloat(c.paid_inc_vat)||0; const a=parseFloat(c.amount)||0;
+      const status = p>=a && a>0 ? 'paid' : p>0 ? 'partial' : 'unpaid';
+      const dotCol = status==='paid' ? '#22c55e' : status==='partial' ? '#f59e0b' : '#6b7280';
+      const co = c.company || '?';
+      return `<span title="${esc(co)}: ${status}" style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${dotCol};margin:1px"></span>`;
+    }).join('') + (clients.length > 12 ? `<span style="font-size:0.7rem;color:rgba(255,255,255,0.4)">+${clients.length-12}</span>` : '');
+
+    return `<div class="ri-evt-card" onclick="riFilterEvent(${ev.event_id},'${esc(ev.event_name).replace(/'/g,"\\'")}')">
+      <div class="ri-evt-hd">
+        <span class="ri-evt-name">${esc(ev.event_name)}</span>
+        ${evtDate ? `<span class="ri-evt-date">${evtDate}</span>` : ''}
+      </div>
+      <div class="ri-evt-stats">
+        <span class="ri-evt-stat"><span style="color:rgba(255,255,255,0.45);font-size:0.7rem">Total</span><br><strong>£${fmtK(amt)}</strong></span>
+        <span class="ri-evt-stat"><span style="color:#22c55e;font-size:0.7rem">Collected</span><br><strong style="color:#22c55e">£${fmtK(paid)}</strong></span>
+        <span class="ri-evt-stat"><span style="color:#f59e0b;font-size:0.7rem">Outstanding</span><br><strong style="color:#f59e0b">£${fmtK(out)}</strong></span>
+      </div>
+      <div class="ri-evt-bar-wrap"><div class="ri-evt-bar" style="width:0%" data-pct="${pct}"></div></div>
+      <div class="ri-evt-foot">
+        <span class="ri-evt-dots">${dotHtml}</span>
+        <span class="ri-evt-counts">
+          <span style="color:#22c55e">${paidC}✓</span>
+          ${partC > 0 ? `<span style="color:#f59e0b"> ${partC}~</span>` : ''}
+          <span style="color:#6b7280"> ${unpC}✗</span>
+        </span>
+      </div>
+    </div>`;
+  }).join('');
+
   el.innerHTML = `
     <div class="ri-card">
       <div class="ri-glow"></div>
@@ -509,91 +549,85 @@ function renderRevenueIntelPanel(deals, expiring) {
         <span class="ri-year">${new Date().getFullYear()}</span>
       </div>
 
+      <!-- Top: donut + summary metrics -->
       <div class="ri-body">
-        <!-- Donut chart -->
         <div class="ri-chart-wrap">
           <svg class="ri-donut" viewBox="0 0 100 100">
             <circle cx="50" cy="50" r="${R}" fill="none" stroke="rgba(255,255,255,0.04)" stroke-width="10"/>
             <circle cx="50" cy="50" r="${R}" fill="none" stroke="#22c55e" stroke-width="10" stroke-linecap="round"
-              stroke-dasharray="0 ${C}" stroke-dashoffset="${offWon}" class="ri-seg ri-seg-won"
-              data-final="${segWon} ${C - segWon}" data-offset="${offWon}"/>
-            <circle cx="50" cy="50" r="${R}" fill="none" stroke="#6366f1" stroke-width="10" stroke-linecap="round"
-              stroke-dasharray="0 ${C}" stroke-dashoffset="${offActive}" class="ri-seg ri-seg-active"
-              data-final="${segActive} ${C - segActive}" data-offset="${offActive}"/>
-            <circle cx="50" cy="50" r="${R}" fill="none" stroke="#ef4444" stroke-width="6" stroke-linecap="round"
-              stroke-dasharray="0 ${C}" stroke-dashoffset="${offLost}" class="ri-seg ri-seg-lost"
-              data-final="${segLost} ${C - segLost}" data-offset="${offLost}"/>
+              stroke-dasharray="0 ${C}" stroke-dashoffset="${offPaid}" class="ri-seg"
+              data-final="${segPaid} ${C - segPaid}"/>
+            <circle cx="50" cy="50" r="${R}" fill="none" stroke="#f59e0b" stroke-width="10" stroke-linecap="round"
+              stroke-dasharray="0 ${C}" stroke-dashoffset="${offPartial}" class="ri-seg"
+              data-final="${segPartial} ${C - segPartial}"/>
+            <circle cx="50" cy="50" r="${R}" fill="none" stroke="#374151" stroke-width="10" stroke-linecap="round"
+              stroke-dasharray="0 ${C}" stroke-dashoffset="${offUnpaid}" class="ri-seg"
+              data-final="${segUnpaid} ${C - segUnpaid}"/>
           </svg>
           <div class="ri-donut-center">
-            <div class="ri-donut-num" data-target="${total}">${total}</div>
-            <div class="ri-donut-label">Deals</div>
+            <div class="ri-donut-num">${collRate}%</div>
+            <div class="ri-donut-label">Collected</div>
           </div>
         </div>
-
-        <!-- Metrics -->
         <div class="ri-metrics">
           <div class="ri-metric">
-            <div class="ri-metric-label">Won Revenue</div>
-            <div class="ri-metric-val ri-green" data-countup="${wonRev}">£${fmtK(wonRev)}</div>
-          </div>
-          <div class="ri-metric">
-            <div class="ri-metric-label">Pipeline</div>
-            <div class="ri-metric-val ri-blue" data-countup="${pipeRev}">£${fmtK(pipeRev)}</div>
+            <div class="ri-metric-label">Total Revenue</div>
+            <div class="ri-metric-val ri-blue">£${fmtK(totalRev)}</div>
           </div>
           <div class="ri-metric">
             <div class="ri-metric-label">Collected</div>
-            <div class="ri-metric-val" data-countup="${wonPaid}">£${fmtK(wonPaid)}</div>
+            <div class="ri-metric-val ri-green">£${fmtK(totalPaid)}</div>
+          </div>
+          <div class="ri-metric">
+            <div class="ri-metric-label">Outstanding</div>
+            <div class="ri-metric-val" style="color:#f59e0b">£${fmtK(totalOut)}</div>
           </div>
           <div class="ri-metric ri-metric--wide">
-            <div class="ri-metric-label">Win Rate</div>
-            <div style="display:flex;align-items:center;gap:8px">
-              <div class="ri-metric-val ri-green">${winRate}%</div>
-              <div class="ri-winbar-wrap"><div class="ri-winbar-fill" style="width:0%" data-pct="${winRate}"></div></div>
+            <div class="ri-metric-label">Payment Status</div>
+            <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-top:2px">
+              <span style="font-size:0.72rem;color:#22c55e">●  ${fullPaidDeals} paid</span>
+              <span style="font-size:0.72rem;color:#f59e0b">● ${partialDeals} partial</span>
+              <span style="font-size:0.72rem;color:#6b7280">● ${unpaidDeals} unpaid</span>
             </div>
           </div>
         </div>
       </div>
 
-      <!-- Stage breakdown -->
-      <div class="ri-stages">
-        ${stageOrder.map(stage => {
-          const stDeals = deals.filter(d => d.stage === stage);
-          const stAmt   = stDeals.reduce((a,d) => a + (parseFloat(d.amount)||0), 0);
-          const pct     = Math.round(stAmt / maxAmt * 100);
-          return `<div class="ri-stage-row">
-            <div class="ri-stage-name">${stage}</div>
-            <div class="ri-stage-bar-wrap">
-              <div class="ri-stage-bar" style="width:0%;background:${stageCols[stage]}" data-pct="${pct}"></div>
-            </div>
-            <div class="ri-stage-meta">
-              <span class="ri-stage-count" style="color:${stageCols[stage]}">${stDeals.length}</span>
-              <span class="ri-stage-amt">£${fmtK(stAmt)}</span>
-            </div>
-          </div>`;
-        }).join('')}
-      </div>
+      <!-- Per-event cards -->
+      ${eventsHtml ? `
+      <div class="ri-evt-section">
+        <div class="ri-evt-section-title">Events Breakdown</div>
+        <div class="ri-evt-list">${eventsHtml}</div>
+      </div>` : ''}
 
       ${expiryHtml}
     </div>`;
 
-  // Animate bars and donut after render
+  // Animate after render
   requestAnimationFrame(() => {
     setTimeout(() => {
-      // Animate stage bars
-      el.querySelectorAll('.ri-stage-bar').forEach(bar => {
-        bar.style.transition = 'width 1s cubic-bezier(.4,0,.2,1)';
-        bar.style.width = bar.dataset.pct + '%';
-      });
-      // Animate win rate bar
-      const wb = el.querySelector('.ri-winbar-fill');
-      if (wb) { wb.style.transition = 'width 1.2s cubic-bezier(.4,0,.2,1)'; wb.style.width = wb.dataset.pct + '%'; }
-      // Animate donut segments
       el.querySelectorAll('.ri-seg').forEach(seg => {
         seg.style.transition = 'stroke-dasharray 1.2s cubic-bezier(.4,0,.2,1)';
         seg.setAttribute('stroke-dasharray', seg.dataset.final);
       });
+      el.querySelectorAll('.ri-evt-bar').forEach(bar => {
+        bar.style.transition = 'width 1s cubic-bezier(.4,0,.2,1)';
+        bar.style.width = bar.dataset.pct + '%';
+      });
     }, 80);
   });
+}
+
+function riFilterEvent(eventId, eventName) {
+  // Switch to deals page and filter by this event
+  navigate('deals');
+  setTimeout(() => {
+    const sel = document.getElementById('dealEventFilter');
+    if (sel) {
+      sel.value = String(eventId);
+      setDealEvent(String(eventId));
+    }
+  }, 300);
 }
 
 function renderHeadcountPanel(activeEmps) {
@@ -3201,6 +3235,7 @@ let _dealInv1 = null;
 let _dealInv2 = null;
 let _dealQFilter = 'all';
 let _dealYearFilter = 'all';
+let _dealEventFilter = '';
 let _lastInvoiceId = null;
 let _nextInvoiceNum = null;
 let _importRows = [];
@@ -3212,6 +3247,15 @@ async function loadDeals() {
       fetch('/api/deals/last-invoice')
     ]);
     dealsData = await dealsRes.json();
+    // Populate event filter dropdown from deals' events arrays
+    const evtSel = document.getElementById('dealEventFilter');
+    if (evtSel) {
+      const evtMap = {};
+      dealsData.forEach(d => (d.events||[]).forEach(ev => { if (ev.event_id) evtMap[ev.event_id] = ev.event_name; }));
+      const current = evtSel.value;
+      evtSel.innerHTML = '<option value="">All Events</option>' +
+        Object.entries(evtMap).map(([id,name]) => `<option value="${id}"${String(id)===current?'selected':''}>${esc(name)}</option>`).join('');
+    }
     const invData = await invRes.json();
     _lastInvoiceId = invData.id;
     _nextInvoiceNum = invData.next_number;
@@ -3278,6 +3322,11 @@ function setDealQ(btn, q) {
   renderDealsTable();
 }
 
+function setDealEvent(eventId) {
+  _dealEventFilter = eventId;
+  renderDealsTable();
+}
+
 function dealPassesFilter(d) {
   const q = _dealQFilter;
   const yr = _dealYearFilter;
@@ -3285,6 +3334,10 @@ function dealPassesFilter(d) {
   const stageFilter = document.getElementById('dealStageFilter')?.value || '';
   if (search && ![(d.company||''),(d.title||''),(d.contact_name||''),(d.invoice_number||'')].some(s => s.toLowerCase().includes(search))) return false;
   if (stageFilter && d.stage !== stageFilter) return false;
+  if (_dealEventFilter) {
+    const evtId = String(_dealEventFilter);
+    if (!Array.isArray(d.events) || !d.events.some(ev => String(ev.event_id) === evtId)) return false;
+  }
   const date = d.invoice_date ? new Date(d.invoice_date) : null;
   if (yr !== 'all') {
     if (!date || String(date.getFullYear()) !== yr) return false;

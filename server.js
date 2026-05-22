@@ -1304,6 +1304,37 @@ app.get('/api/deals', requireAuth, requireAdminOrManager, async (req, res) => {
     res.json(deals);
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
+// GET /api/deals/revenue-by-event — per-event revenue & payment breakdown
+app.get('/api/deals/revenue-by-event', requireAuth, requireAdminOrManager, async (req, res) => {
+  try {
+    const { rows } = await q(`
+      SELECT
+        pe.id AS event_id,
+        pe.name AS event_name,
+        pe.event_date,
+        COUNT(DISTINCT d.id) AS deal_count,
+        COALESCE(SUM(d.amount), 0) AS total_amount,
+        COALESCE(SUM(d.paid_inc_vat), 0) AS total_paid,
+        COUNT(DISTINCT CASE WHEN COALESCE(d.paid_inc_vat,0) > 0 THEN d.id END) AS paid_count,
+        json_agg(
+          json_build_object(
+            'id', d.id,
+            'company', COALESCE(NULLIF(d.company,''), d.title, ''),
+            'amount', COALESCE(d.amount, 0),
+            'paid_inc_vat', COALESCE(d.paid_inc_vat, 0),
+            'currency', COALESCE(d.currency, 'GBP')
+          ) ORDER BY d.company
+        ) FILTER (WHERE d.id IS NOT NULL) AS clients
+      FROM portfolio_events pe
+      LEFT JOIN deal_events de ON de.event_id = pe.id
+      LEFT JOIN deals d ON d.id = de.deal_id
+      GROUP BY pe.id, pe.name, pe.event_date
+      ORDER BY pe.event_date DESC NULLS LAST, pe.created_at DESC
+    `);
+    res.json(rows);
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 // GET /api/deals/last-invoice — return last invoice number used (must be before /:id routes)
 app.get('/api/deals/last-invoice', requireAuth, requireAdminOrManager, async (req, res) => {
   try {
