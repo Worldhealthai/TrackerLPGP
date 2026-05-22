@@ -1211,24 +1211,24 @@ tbody tr:last-child td { border-bottom: none; }
 }
 .cal-grid { display: grid; grid-template-columns: repeat(7, 1fr); }
 .cal-cell {
-  min-height: 96px; border-right: 1px solid var(--border-light);
-  border-bottom: 1px solid var(--border-light);
+  min-height: 96px; border-right: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
   padding: 8px 10px; cursor: pointer; transition: all 0.15s;
-  position: relative; background: #fff;
+  position: relative; background: var(--surface);
 }
 .cal-cell:nth-child(7n) { border-right: none; }
-.cal-cell:hover { background: var(--primary-light); z-index: 1; box-shadow: inset 0 0 0 2px var(--primary); }
-.cal-cell.today { background: #eef1ff; }
+.cal-cell:hover { background: var(--surface-2); z-index: 1; box-shadow: inset 0 0 0 2px var(--accent); }
+.cal-cell.today { background: var(--accent-soft); }
 .cal-cell.today .cal-date {
-  color: #fff; background: var(--primary); width: 24px; height: 24px; border-radius: 50%;
+  color: var(--bg); background: var(--accent); width: 24px; height: 24px; border-radius: 50%;
   display: flex; align-items: center; justify-content: center;
-  font-size: 0.8rem; box-shadow: 0 2px 8px rgba(79,70,229,0.4);
+  font-size: 0.8rem; box-shadow: 0 2px 8px var(--accent-line);
 }
-.cal-cell.other-month { background: #fafbff; }
-.cal-cell.other-month .cal-date { color: #d1d5db; }
-.cal-cell.weekend { background: #fdfdff; }
-.cal-cell.has-offs { background: #fff8f8; }
-.cal-cell.has-offs:hover { background: #fef0f0; }
+.cal-cell.other-month { background: var(--bg); }
+.cal-cell.other-month .cal-date { color: var(--dim); }
+.cal-cell.weekend { background: var(--surface); }
+.cal-cell.has-offs { background: var(--negative-soft); }
+.cal-cell.has-offs:hover { background: var(--negative-soft); opacity: 0.85; }
 .cal-date {
   font-size: 0.8rem; font-weight: 700; margin-bottom: 5px; color: var(--text-2);
   width: 24px; height: 24px; display: flex; align-items: center; justify-content: center;
@@ -1238,8 +1238,8 @@ tbody tr:last-child td { border-bottom: none; }
   display: inline-block; font-size: 0.67rem; padding: 2px 7px; border-radius: 10px;
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; font-weight: 600;
 }
-.chip-full { background: #fef2f4; color: #be123c; }
-.chip-half { background: #fffbeb; color: #92400e; }
+.chip-full { background: var(--negative-soft); color: var(--negative); }
+.chip-half { background: var(--warning-soft); color: var(--warning); }
 .cal-more { font-size: 0.65rem; color: var(--muted-light); margin-top: 3px; font-weight: 600; }
 
 .cal-summary-card {
@@ -2526,7 +2526,7 @@ tbody tr:last-child td { border-bottom: none; }
   letter-spacing: 0.4px;
 }
 
-.chip-full { background: var(--info-soft); color: var(--info); }
+.chip-full { background: var(--negative-soft); color: var(--negative); }
 .chip-half { background: var(--warning-soft); color: var(--warning); }
 
 .cal-reminder-dot {
@@ -3325,7 +3325,8 @@ tbody tr:last-child td { border-bottom: none; }
 [data-theme="dark"] .sc-annual-val { color: var(--text) !important; }
 
 /* Dark filter bar */
-[data-theme="dark"] .filter-bar {
+[data-theme="dark"] .filter-bar,
+[data-theme="dark"] .deal-filter-card {
   background: var(--card);
   border-color: var(--border);
   border-left-color: var(--primary);
@@ -3648,21 +3649,154 @@ tbody tr:last-child td { border-bottom: none; }
   cursor: pointer;
 }
 
-/* ── Deal Tracker Table ───────────────────────────────────────────────────── */
-.deal-q-filters { display: flex; gap: 4px; }
-.deal-q-btn {
-  padding: 6px 12px; border-radius: 8px; font-size: 0.8rem; font-weight: 600;
-  border: 1.5px solid var(--border); background: var(--bg-2); color: var(--muted);
-  cursor: pointer; transition: all .12s;
-}
-.deal-q-btn:hover { background: var(--bg); color: var(--text); }
-.deal-q-btn.active { background: var(--primary); color: #fff; border-color: var(--primary); }
+/* ══════════════════════════════════════════
+   DEAL TRACKER — full layout
+══════════════════════════════════════════ */
 
-.deal-row-paid { background: rgba(22,163,74,.12) !important; }
+/* Last invoice banner */
+.deal-inv-banner {
+  display: none;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 12px 18px;
+  margin-bottom: 10px;
+  font-size: 0.85rem;
+}
+.deal-inv-label { color: var(--muted); }
+.deal-inv-link  { font-weight: 700; color: var(--primary); text-decoration: none; }
+.deal-inv-link:hover { text-decoration: underline; }
+.deal-inv-arrow { color: var(--muted); }
+.deal-inv-next  { font-weight: 700; font-family: var(--font-mono); color: var(--text); }
+.deal-inv-copy  { margin-left: 2px; padding: 3px 12px !important; font-size: 0.78rem !important; }
+
+/* Filter cards */
+.deal-filter-card {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-left: 4px solid var(--accent);
+  border-radius: var(--radius);
+  padding: 12px 16px;
+  margin-bottom: 10px;
+}
+.deal-filter-actions { margin-bottom: 16px; }
+.deal-add-btn { margin-left: auto; }
+
+/* Separator between year and quarter groups */
+.deal-q-sep { width: 1px; height: 24px; background: var(--border); margin: 0 4px; }
+
+/* Year/Quarter pill buttons */
+.deal-q-filters { display: flex; gap: 4px; flex-wrap: wrap; }
+.deal-q-btn {
+  padding: 6px 14px;
+  border-radius: 20px;
+  font-size: 0.82rem;
+  font-weight: 600;
+  border: 1.5px solid var(--border);
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  transition: all .12s;
+  white-space: nowrap;
+}
+.deal-q-btn:hover { background: var(--bg); color: var(--text); border-color: var(--text); }
+.deal-q-btn.active { background: var(--primary); color: #fff; border-color: var(--primary); }
+.deal-q-add { font-weight: 700; color: var(--primary) !important; border-style: dashed !important; }
+
+/* Search + select inputs inside filter card */
+.deal-search-input {
+  border: 1.5px solid var(--border);
+  border-radius: 9px;
+  padding: 8px 12px;
+  font-size: 0.85rem;
+  font-family: inherit;
+  outline: none;
+  background: var(--bg-2);
+  color: var(--text);
+  min-width: 200px;
+}
+.deal-search-input:focus { border-color: var(--accent); }
+.deal-select {
+  border: 1.5px solid var(--border);
+  border-radius: 9px;
+  padding: 8px 12px;
+  font-size: 0.85rem;
+  font-family: inherit;
+  background: var(--bg-2);
+  color: var(--text);
+}
+
+/* ── Stat summary cards ── */
+.deal-stat-cards {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 12px;
+  margin-bottom: 16px;
+}
+@media (max-width: 900px) { .deal-stat-cards { grid-template-columns: repeat(2, 1fr); } }
+@media (max-width: 480px) { .deal-stat-cards { grid-template-columns: 1fr; } }
+.deal-stat-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 20px 24px;
+}
+.deal-stat-label {
+  font: 600 10px/1.5 var(--font-mono);
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  color: var(--muted);
+  max-width: 80px;
+}
+.deal-stat-value {
+  font-size: 28px;
+  font-weight: 800;
+  line-height: 1;
+  color: var(--text);
+  letter-spacing: -0.5px;
+  text-align: right;
+  flex-shrink: 0;
+}
+.deal-stat-card.ds--green  { border-left: 4px solid var(--positive); }
+.deal-stat-card.ds--green  .deal-stat-value { color: var(--positive); }
+.deal-stat-card.ds--alert  { border-left: 4px solid var(--warning); }
+.deal-stat-card.ds--alert  .deal-stat-value { color: var(--warning); }
+.deal-stat-card.ds--indigo { border-left: 4px solid var(--accent); }
+.deal-stat-card.ds--indigo .deal-stat-value { color: var(--accent); }
+
+/* ── Deals table card ── */
+.deal-table-card { padding: 0; overflow: hidden; }
+
+/* Table column widths */
+.deal-th-month  { width: 72px; }
+.deal-th-company { min-width: 160px; }
+.deal-th-num    { width: 110px; text-align: right !important; }
+.deal-th-date   { width: 100px; }
+.deal-th-bank   { width: 70px; }
+.deal-th-inv    { width: 152px; }
+.deal-th-sm     { width: 52px; text-align: center !important; }
+.deal-th-del    { width: 36px; }
+
+#dealsTable td { white-space: normal; word-break: break-word; vertical-align: top; padding: 9px 12px; }
+#dealsTable td.deal-cell-edit { white-space: normal; }
+
+/* Row states */
+.deal-row-paid    { background: rgba(22,163,74,.12) !important; }
 .deal-row-paid td { border-bottom-color: rgba(22,163,74,.2) !important; }
 .deal-row-flagged { background: rgba(234,179,8,.07) !important; }
-.deal-row-issue { background: rgba(234,88,12,.07) !important; }
-.deal-row-urgent { background: rgba(220,38,38,.12) !important; }
+.deal-row-issue   { background: rgba(234,88,12,.07) !important; }
+.deal-row-urgent  { background: rgba(220,38,38,.12) !important; }
 .deal-row-highlight { outline: 3px solid var(--primary); outline-offset: -1px; }
 
 .deal-company-flagged { background: rgba(234,179,8,.25); border-radius: 4px; padding: 2px 4px; }
@@ -3670,13 +3804,13 @@ tbody tr:last-child td { border-bottom: none; }
 
 .deal-initials-badge {
   display: inline-block; background: var(--primary); color: #fff;
-  border-radius: 20px; padding: 1px 6px; font-size: 0.68rem; font-weight: 700;
-  vertical-align: middle; margin-left: 4px;
+  border-radius: 20px; padding: 1px 7px; font-size: 0.68rem; font-weight: 700;
+  vertical-align: middle; margin-left: 4px; letter-spacing: 0.3px;
 }
 
 .deal-inv-num {
-  font-family: monospace; font-size: 0.72rem; color: var(--text);
-  display: inline-block; max-width: 130px; overflow: hidden;
+  font-family: var(--font-mono); font-size: 0.72rem; color: var(--text);
+  display: inline-block; max-width: 138px; overflow: hidden;
   text-overflow: ellipsis; white-space: nowrap; vertical-align: middle;
 }
 
@@ -3684,14 +3818,6 @@ tbody tr:last-child td { border-bottom: none; }
 .deal-totals-row td { border-top: 2px solid var(--border) !important; padding: 10px 12px !important; }
 
 .port-card-companies { font-size: 0.75rem; color: var(--text); border-top: 1px solid var(--border); padding-top: 6px; }
-
-/* Deal year/quarter filter add button */
-.deal-q-add {
-  font-weight: 700;
-  padding: 6px 10px !important;
-  color: var(--primary) !important;
-  border-style: dashed !important;
-}
 
 /* ── Revenue Intelligence Panel ──────────────────────────────────────────── */
 .ri-card {
@@ -4112,8 +4238,6 @@ tbody tr:last-child td { border-bottom: none; }
 }
 
 /* Allow deal rows to wrap to 2 lines */
-#dealsTable td { white-space: normal; word-break: break-word; vertical-align: top; padding: 8px 10px; }
-#dealsTable td.deal-cell-edit { white-space: normal; }
 #dealsTable td.deal-num { white-space: nowrap; word-break: normal; }
 .deal-month-disp { white-space: nowrap; }
 .deal-initials-badge { white-space: nowrap; }

@@ -1,31 +1,11 @@
-// ─── THEME ───────────────────────────────────────────────────────────────────
-function toggleTheme() {
-  const isLight = document.body.classList.toggle('light-mode');
-  localStorage.setItem('theme', isLight ? 'light' : 'dark');
-  updateThemeButton(isLight);
-}
-function updateThemeButton(isLight) {
-  const btn   = document.getElementById('themeToggleBtn');
-  const label = document.getElementById('themeLabel');
-  const icon  = document.getElementById('themeIcon');
-  if (!btn) return;
-  if (isLight) {
-    if (label) label.textContent = 'Dark';
-    if (icon)  icon.innerHTML = '<path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>';
-  } else {
-    if (label) label.textContent = 'Light';
-    if (icon)  icon.innerHTML = '<circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/>';
-  }
-}
+// ─── THEME (data-theme system) ───────────────────────────────────────────────
 (function applyStoredTheme() {
-  const stored = localStorage.getItem('theme');
-  if (stored === 'light') {
-    document.body.classList.add('light-mode');
-    document.addEventListener('DOMContentLoaded', () => updateThemeButton(true));
+  const saved = localStorage.getItem('emptracker-theme');
+  if (saved === 'dark') {
+    document.documentElement.setAttribute('data-theme', 'dark');
+    document.addEventListener('DOMContentLoaded', () => _updateThemeBtn('dark'));
   }
 })();
-
-// ─── STATE ───────────────────────────────────────────────────────────────────
 let currentUser = null;
 let employees = [];
 let allEmployeesData = [];
@@ -3365,7 +3345,6 @@ function fmtHotelAmount(v) {
 function renderHotelSummary() {
   const yearData = hotelYearFiltered();
 
-  // Parse cost field as number (strips currency symbols, commas, spaces)
   function parseCost(str) {
     if (!str) return 0;
     return parseFloat(String(str).replace(/[^0-9.]/g, '')) || 0;
@@ -3376,16 +3355,14 @@ function renderHotelSummary() {
     const c = r.currency || r.paid_currency || 'USD';
     byCur[c] = byCur[c] || { paid: 0, av: 0, cost: 0 };
     if (r.paid_amount != null) byCur[c].paid += parseFloat(r.paid_amount) || 0;
-    if (r.av_amount != null && r.av_billing !== 'included') {
-      byCur[c].av += parseFloat(r.av_amount) || 0;
-    }
-    // Accumulate cost (from text cost field) per row currency
+    if (r.av_amount != null && r.av_billing !== 'included') byCur[c].av += parseFloat(r.av_amount) || 0;
     const costNum = parseCost(r.cost);
     if (costNum > 0) byCur[c].cost += costNum;
   });
 
   const total  = yearData.length;
   const unpaid = yearData.filter(r => r.status !== 'paid').length;
+  const fmtN = n => n.toLocaleString('en-GB', {minimumFractionDigits:2, maximumFractionDigits:2});
 
   const currencyCards = Object.entries(byCur).map(([cur, sums]) => {
     const sym = hotelCurrencySymbol(cur);
@@ -3396,19 +3373,19 @@ function renderHotelSummary() {
         <div class="hotel-fin-currency">${cur}</div>
         <div class="hotel-fin-row">
           <span class="hotel-fin-lbl">Venue / Hotel Paid</span>
-          <span class="hotel-fin-val hotel-fin-green">${sym}${sums.paid.toLocaleString('en-GB',{minimumFractionDigits:2,maximumFractionDigits:2})}</span>
+          <span class="hotel-fin-val hotel-fin-green">${sym}${fmtN(sums.paid)}</span>
         </div>
         <div class="hotel-fin-row">
           <span class="hotel-fin-lbl">AV (separate charges)</span>
-          <span class="hotel-fin-val hotel-fin-blue">${sym}${sums.av.toLocaleString('en-GB',{minimumFractionDigits:2,maximumFractionDigits:2})}</span>
+          <span class="hotel-fin-val hotel-fin-blue">${sym}${fmtN(sums.av)}</span>
         </div>
         <div class="hotel-fin-row hotel-fin-total-row">
           <span class="hotel-fin-lbl">Total Spent</span>
-          <span class="hotel-fin-val">${sym}${total_spent.toLocaleString('en-GB',{minimumFractionDigits:2,maximumFractionDigits:2})}</span>
+          <span class="hotel-fin-val">${sym}${fmtN(total_spent)}</span>
         </div>
-        ${outstanding !== null ? `<div class="hotel-fin-row" style="margin-top:6px;border-top:1px solid rgba(255,255,255,0.08);padding-top:6px">
+        ${outstanding !== null ? `<div class="hotel-fin-row" style="margin-top:6px;border-top:1px solid var(--border);padding-top:6px">
           <span class="hotel-fin-lbl">Outstanding</span>
-          <span class="hotel-fin-val ${outstanding > 0 ? 'hotel-fin-red' : 'hotel-fin-green'}">${outstanding > 0 ? sym+outstanding.toLocaleString('en-GB',{minimumFractionDigits:2,maximumFractionDigits:2}) : '✓ Settled'}</span>
+          <span class="hotel-fin-val ${outstanding > 0 ? 'hotel-fin-red' : 'hotel-fin-green'}">${outstanding > 0 ? sym+fmtN(outstanding) : '✓ Settled'}</span>
         </div>` : ''}
       </div>`;
   }).join('');
@@ -3897,6 +3874,7 @@ function renderPortfolioGrid() {
     const dateStr = ev.event_date ? new Date(ev.event_date).toLocaleDateString('en-GB',{day:'numeric',month:'short',year:'numeric'}) : 'TBD';
     const won = parseFloat(ev.total_won) || 0;
     const pipeline = parseFloat(ev.total_pipeline) || 0;
+    const dealCount = parseInt(ev.deal_count) || 0;
     return `<div class="port-card">
       <div class="port-card-header">
         <div class="port-card-title">${esc(ev.name)}</div>
@@ -3919,10 +3897,35 @@ function renderPortfolioGrid() {
           <div class="port-stat-val">£${fmt(pipeline)}</div>
         </div>
       </div>
-      ${ev.notes ? `<div class="port-card-notes">${esc(ev.notes)}</div>` : ''}
       ${ev.companies ? `<div class="port-card-companies"><span style="font-size:0.72rem;color:var(--muted)">Companies: </span>${esc(ev.companies)}</div>` : ''}
+      ${ev.notes ? `<div class="port-card-notes">${esc(ev.notes)}</div>` : ''}
+      <div style="margin-top:10px;padding-top:10px;border-top:1px solid var(--border);display:flex;justify-content:space-between;align-items:center">
+        <span style="font-size:0.75rem;color:var(--muted)">${dealCount} deal${dealCount !== 1 ? 's' : ''} linked</span>
+        <button class="btn btn-ghost btn-sm" onclick="viewEventDeals(${ev.id},'${esc(ev.name)}')" style="font-size:0.78rem;padding:4px 10px">View Deals →</button>
+      </div>
     </div>`;
   }).join('');
+}
+
+function viewEventDeals(eventId, eventName) {
+  _dealEventFilter = String(eventId);
+  navigate('deals');
+  // Ensure deals are loaded then apply filter
+  const apply = () => {
+    const sel = document.getElementById('dealEventFilter');
+    if (sel) {
+      // Ensure the option exists (loadDeals populates it)
+      let opt = Array.from(sel.options).find(o => o.value === String(eventId));
+      if (!opt) {
+        opt = new Option(eventName, String(eventId));
+        sel.add(opt);
+      }
+      sel.value = String(eventId);
+    }
+    renderDealsTable();
+  };
+  if (dealsData.length) { apply(); }
+  else { loadDeals().then(apply); }
 }
 
 function openPortfolioModal(id) {
@@ -4334,24 +4337,23 @@ function renderDealTotals(filtered, tfoot) {
       ${_dealQFilter !== 'all' ? `&nbsp;·&nbsp; VAT: <strong>£${fmt(totalTax)}</strong>` : ''}
     </td>
   </tr>`;
-  // Also update the top totals summary
   document.getElementById('dealTotals').innerHTML = `
-    <div style="display:flex;gap:10px;flex-wrap:wrap">
-      <div class="dash-mini-card" style="flex:1;min-width:130px">
-        <div class="dash-mini-label">Total Paid</div>
-        <div class="dash-mini-value">£${fmt(totalPaid)}</div>
+    <div class="deal-stat-cards">
+      <div class="deal-stat-card">
+        <div class="deal-stat-label">Total Paid</div>
+        <div class="deal-stat-value">£${fmt(totalPaid)}</div>
       </div>
-      <div class="dash-mini-card dash-mini--green" style="flex:1;min-width:130px">
-        <div class="dash-mini-label">Total Revenue</div>
-        <div class="dash-mini-value">£${fmt(totalDeal)}</div>
+      <div class="deal-stat-card ds--green">
+        <div class="deal-stat-label">Total Revenue</div>
+        <div class="deal-stat-value">£${fmt(totalDeal)}</div>
       </div>
-      <div class="dash-mini-card dash-mini--alert" style="flex:1;min-width:130px">
-        <div class="dash-mini-label">Outstanding</div>
-        <div class="dash-mini-value">£${fmt(Math.max(0,remaining))}</div>
+      <div class="deal-stat-card ds--alert">
+        <div class="deal-stat-label">Outstanding</div>
+        <div class="deal-stat-value">£${fmt(Math.max(0,remaining))}</div>
       </div>
-      <div class="dash-mini-card dash-mini--indigo" style="flex:1;min-width:130px">
-        <div class="dash-mini-label">VAT${_dealQFilter !== 'all' ? ' '+_dealQFilter : ' Total'}</div>
-        <div class="dash-mini-value">£${fmt(totalTax)}</div>
+      <div class="deal-stat-card ds--indigo">
+        <div class="deal-stat-label">VAT${_dealQFilter !== 'all' ? ' '+_dealQFilter : ' Total'}</div>
+        <div class="deal-stat-value">£${fmt(totalTax)}</div>
       </div>
     </div>`;
 }
