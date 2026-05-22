@@ -3805,25 +3805,38 @@ tbody tr:last-child td { border-bottom: none; }
   overflow: hidden;
   white-space: normal;
   word-break: break-word;
+  line-height: 1.25;
   vertical-align: bottom;
-  line-height: 1.2;
-  padding: 10px 8px;
+  padding: 10px 10px;
   background: var(--bg-2);
   color: var(--text-2);
+  font: 600 10.5px/1.25 var(--font-mono);
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+  border-bottom: 1px solid var(--border);
 }
 
 #dealsTable td {
-  padding: 10px 8px;
+  padding: 14px 10px;
   vertical-align: middle;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  font-size: 14px;
+  color: var(--text);
 }
 
-/* Let notes column wrap instead of truncate */
-#dealsTable td:nth-child(11) { white-space: normal; word-break: break-word; vertical-align: top; }
+/* Notes column: wrap to 2 lines */
+#dealsTable td:nth-child(11) {
+  white-space: normal;
+  word-break: break-word;
+  vertical-align: top;
+  padding-top: 16px;
+  font-size: 13px;
+  color: var(--muted);
+}
 
-/* Editable cell keeps normal text flow */
+/* Editable cell */
 #dealsTable td.deal-cell-edit { cursor: pointer; }
 
 /* Row states */
@@ -4257,10 +4270,10 @@ tbody tr:last-child td { border-bottom: none; }
 }
 /* Month cell display */
 .deal-month-disp {
-  font-size: 0.8rem;
+  font-size: 13px;
   white-space: nowrap;
-  color: var(--text);
-  font-weight: 600;
+  color: var(--text-2);
+  font-weight: 500;
 }
 /* Deal title display */
 .deal-title-disp {
@@ -4287,7 +4300,7 @@ tbody tr:last-child td { border-bottom: none; }
   white-space: nowrap;
 }
 .deal-cell-company:hover { background: rgba(79,70,229,0.08) !important; }
-.deal-co-link { color: var(--primary); }
+.deal-co-link { color: var(--primary); font-size: 14px; font-weight: 700; }
 [data-theme="dark"] .deal-co-link { color: #818cf8; }
 
 /* ── Cancelled deals section ── */
