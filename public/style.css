@@ -949,7 +949,7 @@ tbody tr:hover td strong { color: var(--primary); }
 .hc-emp-role { font-size: 0.7rem; color: var(--muted); }
 
 /* ── Hotel inline editing ── */
-.ht-cell { cursor: pointer; transition: background 0.1s; min-width: 60px; }
+.ht-cell { cursor: pointer; transition: background 0.1s; padding: 6px 8px; font-size: 0.82rem; }
 .ht-cell:hover { background: var(--primary-light) !important; }
 .ht-empty { color: var(--muted-light); user-select: none; }
 .ht-input {
@@ -961,20 +961,26 @@ tbody tr:hover td strong { color: var(--primary); }
 .ht-num { text-align: right; font-variant-numeric: tabular-nums; }
 .ht-cur-sel { padding: 0 !important; }
 .ht-select {
-  width: 100%; padding: 6px 5px; border: none; background: transparent;
+  width: 100%; padding: 5px 4px; border: none; background: transparent;
   color: var(--text); font-size: 0.78rem; font-family: inherit; cursor: pointer;
   outline: none;
 }
 .ht-select:focus { background: var(--primary-light); border-radius: 4px; }
-.ht-status-sel { font-weight: 700; }
+.ht-status-sel { font-weight: 700; font-size: 0.78rem; }
 [data-theme="dark"] .ht-input { background: var(--card); color: var(--text); }
 .ht-upload-btn {
-  display: inline-flex; align-items: center; gap: 4px;
-  font-size: 0.72rem; padding: 4px 8px; border-radius: 7px;
+  display: inline-flex; align-items: center; gap: 3px;
+  font-size: 0.68rem; padding: 3px 6px; border-radius: 6px;
   border: 1px dashed var(--border); color: var(--muted); cursor: pointer;
   font-family: inherit; transition: all 0.15s; white-space: nowrap;
 }
 .ht-upload-btn:hover { border-color: var(--primary); color: var(--primary); background: var(--primary-light); }
+
+/* Hotel table: prevent overflow-x on wide screens */
+#hotelTable { font-size: 0.82rem; table-layout: fixed; width: 100%; }
+#hotelTable th, #hotelTable td { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#hotelTable td.ht-cell { white-space: nowrap; }
+.card:has(#hotelTable) .table-wrap { overflow-x: auto; }
 
 /* ══════════════════════════════════════════
    SALARY PAGE (legacy card)

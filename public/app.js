@@ -2633,6 +2633,7 @@ function renderUpcomingWidget(upcoming) {
 // ─── HOTEL EXPENSES ──────────────────────────────────────────────────────────
 
 let hotelData = [];
+let _hotelYearFilter = 'all';
 
 async function loadHotelExpenses() {
   const res = await fetch('/api/hotel-expenses');
@@ -2640,6 +2641,19 @@ async function loadHotelExpenses() {
   hotelData = await res.json();
   renderHotelSummary();
   renderHotelTable();
+}
+
+function setHotelYear(btn, yr) {
+  _hotelYearFilter = yr;
+  document.querySelectorAll('#hotelYearFilters .deal-q-btn').forEach(b => b.classList.toggle('active', b.dataset.hyr === yr));
+  renderHotelSummary();
+  renderHotelTable();
+}
+
+function hotelYearFiltered() {
+  if (_hotelYearFilter === 'all') return hotelData;
+  const yr = parseInt(_hotelYearFilter);
+  return hotelData.filter(r => r.event_year === yr || r.event_year === String(yr));
 }
 
 function hotelCurrencySymbol(c) {
@@ -2656,9 +2670,10 @@ function fmtHotelNum(v) {
 }
 
 function renderHotelSummary() {
+  const yearData = hotelYearFiltered();
   // Group by currency and sum paid + AV amounts (exclude staff hotel, flights, printing)
   const byCur = {};
-  hotelData.forEach(r => {
+  yearData.forEach(r => {
     // Paid so far (venue)
     if (r.paid_amount != null) {
       const c = r.paid_currency || 'USD';
@@ -2673,8 +2688,19 @@ function renderHotelSummary() {
     }
   });
 
-  const total   = hotelData.length;
-  const unpaid  = hotelData.filter(r => r.status !== 'paid').length;
+  const total   = yearData.length;
+  const unpaid  = yearData.filter(r => r.status !== 'paid').length;
+  // Total outstanding (where total_cost_num is set, sum in paid_currency — simplified to single value)
+  const totalOutstandingGBP = yearData.reduce((a, r) => {
+    if (!r.total_cost_num) return a;
+    const tc = parseFloat(r.total_cost_num) || 0;
+    const paid = parseFloat(r.paid_amount) || 0;
+    const out = Math.max(0, tc - paid);
+    // Convert to GBP for summary (rough)
+    const c = r.paid_currency || 'USD';
+    const rates = { GBP: 1, USD: 0.79, EUR: 0.86, CHF: 0.88, AED: 0.214 };
+    return a + out * (rates[c] || 0.79);
+  }, 0);
 
   const currencyCards = Object.entries(byCur).map(([cur, sums]) => {
     const sym = hotelCurrencySymbol(cur);
@@ -2701,10 +2727,11 @@ function renderHotelSummary() {
     <div class="hotel-fin-strip">
       ${currencyCards}
       <div class="hotel-fin-card hotel-fin-card--status">
-        <div class="hotel-fin-currency">STATUS</div>
+        <div class="hotel-fin-currency">STATUS${_hotelYearFilter !== 'all' ? ` · ${_hotelYearFilter}` : ''}</div>
         <div class="hotel-fin-row"><span class="hotel-fin-lbl">Total Events</span><span class="hotel-fin-val">${total}</span></div>
         <div class="hotel-fin-row"><span class="hotel-fin-lbl">Fully Paid</span><span class="hotel-fin-val hotel-fin-green">${total - unpaid}</span></div>
-        <div class="hotel-fin-row hotel-fin-total-row"><span class="hotel-fin-lbl">Outstanding</span><span class="hotel-fin-val hotel-fin-red">${unpaid}</span></div>
+        <div class="hotel-fin-row hotel-fin-total-row"><span class="hotel-fin-lbl">Outstanding Events</span><span class="hotel-fin-val hotel-fin-red">${unpaid}</span></div>
+        ${totalOutstandingGBP > 0 ? `<div class="hotel-fin-row"><span class="hotel-fin-lbl">≈ Outstanding (GBP)</span><span class="hotel-fin-val hotel-fin-red">£${totalOutstandingGBP.toLocaleString('en-GB',{maximumFractionDigits:0})}</span></div>` : ''}
       </div>
     </div>
   `;
@@ -2713,7 +2740,8 @@ function renderHotelSummary() {
 function renderHotelTable() {
   const search = (document.getElementById('hotelSearch')?.value || '').toLowerCase();
   const statusF = document.getElementById('hotelStatusFilter')?.value || '';
-  const filtered = hotelData.filter(r => {
+  const yearData = hotelYearFiltered();
+  const filtered = yearData.filter(r => {
     const matchSearch = !search || r.event_name.toLowerCase().includes(search) || (r.hotel||'').toLowerCase().includes(search);
     const matchStatus = !statusF || r.status === statusF;
     return matchSearch && matchStatus;
@@ -2775,6 +2803,15 @@ function renderHotelTable() {
            <input type="file" accept=".pdf,.png,.jpg,.jpeg" style="display:none" onchange="htUploadInvoice(${r.id},this)">
          </label>`;
 
+    // Outstanding calculation
+    const totalCost = parseFloat(r.total_cost_num) || 0;
+    const paidAmt   = parseFloat(r.paid_amount) || 0;
+    const paidSym2  = hotelCurrencySymbol(r.paid_currency || 'USD');
+    const outstanding = totalCost > 0 ? Math.max(0, totalCost - paidAmt) : null;
+    const outDisplay = outstanding !== null
+      ? `<span style="color:${outstanding > 0 ? 'var(--danger)' : 'var(--success)'};font-weight:700">${outstanding > 0 ? paidSym2+fmtHotelNum(outstanding) : '✓ Settled'}</span>`
+      : '<span class="ht-empty">—</span>';
+
     return `<tr class="${rowClass}" id="htr-${r.id}">
       ${cellText('event_name', r.event_name, 'font-weight:700')}
       ${cellText('hotel', r.hotel||'')}
@@ -2789,9 +2826,8 @@ function renderHotelTable() {
       </td>
       ${cellCur('paid_currency', r.paid_currency)}
       ${cellNum('paid_amount', r.paid_amount, 'font-weight:600')}
-      ${cellNum('staff_hotel', r.staff_hotel, 'color:var(--muted)')}
-      ${cellNum('flights', r.flights, 'color:var(--muted)')}
-      ${cellNum('printing', r.printing, 'color:var(--muted)')}
+      ${cellNum('total_cost_num', r.total_cost_num, 'color:var(--text)')}
+      <td style="padding:6px 10px;white-space:nowrap">${outDisplay}</td>
       <td class="ht-cell ht-cur-sel" data-id="${r.id}" data-field="status">
         <select class="ht-select ht-status-sel" onchange="htPatchField(${r.id},'status',this.value);htUpdateRowClass(${r.id},this.value)" onclick="event.stopPropagation()">
           <option value="pending"${(r.status||'pending')==='pending'?' selected':''}>Pending</option>
@@ -2799,8 +2835,7 @@ function renderHotelTable() {
           <option value="paid"${r.status==='paid'?' selected':''}>Paid</option>
         </select>
       </td>
-      ${cellText('notes', r.notes||'', 'font-size:0.78rem;color:var(--muted);font-style:italic')}
-      <td style="padding:4px 10px">${invoiceCell}</td>
+      <td style="padding:4px 8px">${invoiceCell}</td>
       <td><button class="btn btn-danger btn-sm" onclick="deleteHotelExpense(${r.id})">×</button></td>
     </tr>`;
   }).join('');
@@ -2823,6 +2858,8 @@ function openHotelModal(id) {
   document.getElementById('hotelFlights').value     = r && r.flights    != null ? r.flights    : '';
   document.getElementById('hotelPrinting').value    = r && r.printing   != null ? r.printing   : '';
   document.getElementById('hotelNotes').value       = r ? (r.notes || '') : '';
+  document.getElementById('hotelTotalCostNum').value = r && r.total_cost_num != null ? r.total_cost_num : '';
+  document.getElementById('hotelEventYear').value   = r && r.event_year ? String(r.event_year) : '';
   document.getElementById('hotelModal').classList.add('open');
 }
 
@@ -2842,10 +2879,12 @@ async function saveHotelExpense() {
     av_billing:    document.getElementById('hotelAvBilling').value,
     paid_currency: document.getElementById('hotelPaidCurrency').value,
     paid_amount:   document.getElementById('hotelPaidAmount').value || null,
-    staff_hotel:   document.getElementById('hotelStaffHotel').value || null,
-    flights:       document.getElementById('hotelFlights').value || null,
-    printing:      document.getElementById('hotelPrinting').value || null,
-    notes:         document.getElementById('hotelNotes').value.trim()
+    staff_hotel:    document.getElementById('hotelStaffHotel').value || null,
+    flights:        document.getElementById('hotelFlights').value || null,
+    printing:       document.getElementById('hotelPrinting').value || null,
+    notes:          document.getElementById('hotelNotes').value.trim(),
+    total_cost_num: document.getElementById('hotelTotalCostNum').value || null,
+    event_year:     document.getElementById('hotelEventYear').value || null
   };
   if (!payload.event_name) { showToast('Event name is required', 'error'); return; }
   const method = id ? 'PUT' : 'POST';
@@ -2905,7 +2944,11 @@ async function htPatchField(id, field, value) {
     const updated = await res.json();
     const idx = hotelData.findIndex(r => r.id === id);
     if (idx !== -1) hotelData[idx] = updated;
-    renderHotelSummary(); // refresh totals
+    renderHotelSummary();
+    // Refresh outstanding cell if cost/paid changed
+    if (field === 'total_cost_num' || field === 'paid_amount' || field === 'paid_currency') {
+      renderHotelTable();
+    }
   } catch { showToast('Save failed', 'error'); }
 }
 

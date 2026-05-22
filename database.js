@@ -234,6 +234,8 @@ async function runMigrations() {
   await sql(`ALTER TABLE hotel_expenses ADD COLUMN IF NOT EXISTS av_billing TEXT NOT NULL DEFAULT 'separate'`);
   await sql(`ALTER TABLE hotel_expenses ADD COLUMN IF NOT EXISTS invoice_name TEXT DEFAULT NULL`);
   await sql(`ALTER TABLE hotel_expenses ADD COLUMN IF NOT EXISTS invoice_data TEXT DEFAULT NULL`);
+  await sql(`ALTER TABLE hotel_expenses ADD COLUMN IF NOT EXISTS event_year INT`);
+  await sql(`ALTER TABLE hotel_expenses ADD COLUMN IF NOT EXISTS total_cost_num NUMERIC(12,2)`);
 
   // ── Subscriptions ──────────────────────────────────────────────────────────
   await sql(`
