@@ -357,10 +357,15 @@ async function loadDashboard() {
   const payrollCount    = activeEmps.filter(e => e.employment_type === 'payroll').length;
   const seCount         = activeEmps.filter(e => e.employment_type === 'self_employed').length;
 
-  // Total GBP salary remaining to pay this year
+  // Total salary remaining to pay this year — GBP + AED converted, max(0) per employee
+  const DASH_AED_TO_GBP = 1 / 4.67;
   const totalGBPRemaining = salaryData
-    .filter(e => (e.currency || 'GBP') === 'GBP')
-    .reduce((a, e) => a + Math.max(0, parseFloat(e.net_remaining) || 0), 0);
+    .filter(e => !e.is_terminated)
+    .reduce((a, e) => {
+      const r = Math.max(0, parseFloat(e.net_remaining) || 0);
+      const c = e.currency || 'GBP';
+      return a + (c === 'AED' ? r * DASH_AED_TO_GBP : c === 'GBP' ? r : 0);
+    }, 0);
 
   // Hotel fees remaining (unpaid + partial rows: paid_amount vs cost where parseable)
   const hotelUnpaidCount = hotelData.filter(h => h.status !== 'paid').length;
@@ -673,8 +678,7 @@ async function loadEmployeeRecords() {
     });
   }
 
-  // Payments section
-  loadPaymentsSection(empId, emp);
+  // Payments section kept hidden — salary management is in the Salary page
 }
 
 // ─── RECORD MODAL ────────────────────────────────────────────────────────────
@@ -1268,28 +1272,64 @@ async function loadSalaryPage() {
         </div>`;
     });
 
-    // Grand total GBP card — converts all currencies to GBP
-    const gbpTotal = groups.reduce((sum, g) => {
-      const tRemain = g.rows.reduce((a, b) => a + (parseFloat(b.net_remaining) || 0), 0);
-      if (g.currency === 'GBP') return sum + tRemain;
-      if (g.currency === 'AED') return sum + tRemain * AED_TO_GBP;
-      return sum; // other currencies not converted
+    // Grand total card — all currencies converted to GBP, with full breakdown
+    const allActive = activeRows; // alias for clarity
+    const gtTarget  = allActive.reduce((s, e) => {
+      const t = parseFloat(e.salary_target ?? e.annual_salary) || 0;
+      const c = e.currency || 'GBP';
+      return s + (c === 'AED' ? t * AED_TO_GBP : c === 'GBP' ? t : 0);
+    }, 0);
+    const gtPaid    = allActive.reduce((s, e) => {
+      const p = parseFloat(e.total_paid) || 0;
+      const c = e.currency || 'GBP';
+      return s + (c === 'AED' ? p * AED_TO_GBP : c === 'GBP' ? p : 0);
+    }, 0);
+    const gtDayOff  = allActive.reduce((s, e) => {
+      const d = parseFloat(e.excess_deduction) || 0;
+      const c = e.currency || 'GBP';
+      return s + (c === 'AED' ? d * AED_TO_GBP : c === 'GBP' ? d : 0);
+    }, 0);
+    const gtOffice  = allActive.reduce((s, e) => {
+      const d = parseFloat(e.total_office_deductions) || 0;
+      const c = e.currency || 'GBP';
+      return s + (c === 'AED' ? d * AED_TO_GBP : c === 'GBP' ? d : 0);
+    }, 0);
+    const gtDeduct  = gtDayOff + gtOffice;
+    // Remaining = max(0) per employee so overpaid don't cancel owed amounts
+    const gtRemain  = allActive.reduce((s, e) => {
+      const r = parseFloat(e.net_remaining) || 0;
+      const c = e.currency || 'GBP';
+      const converted = c === 'AED' ? r * AED_TO_GBP : c === 'GBP' ? r : 0;
+      return s + Math.max(0, converted);
     }, 0);
     const hasMultiCurrency = groups.some(g => g.currency !== 'GBP');
-    const gbpCard = hasMultiCurrency ? `
+    const gbpCard = `
       <div class="salary-overview-card soc-gbp-total">
-        <div class="soc-header">Total Outstanding · GBP</div>
-        <div class="soc-row" style="padding-top:10px">
-          <span class="soc-label">All salaries (converted)</span>
+        <div class="soc-header">Total Outstanding · GBP${hasMultiCurrency ? ' <span style="font-size:0.65rem;opacity:0.7">(AED @ 4.67)</span>' : ''}</div>
+        <div class="soc-row" style="padding-top:6px">
+          <span class="soc-label">Total Owed This Year</span>
+          <span class="soc-value target">£${gtTarget.toLocaleString('en-GB',{minimumFractionDigits:2,maximumFractionDigits:2})}</span>
         </div>
+        <div class="soc-row">
+          <span class="soc-label">Total Paid (salary)</span>
+          <span class="soc-value paid">£${gtPaid.toLocaleString('en-GB',{minimumFractionDigits:2,maximumFractionDigits:2})}</span>
+        </div>
+        ${gtDayOff > 0 ? `<div class="soc-row">
+          <span class="soc-label">Day-Off Deductions</span>
+          <span class="soc-value deduct">−£${gtDayOff.toLocaleString('en-GB',{minimumFractionDigits:2,maximumFractionDigits:2})}</span>
+        </div>` : ''}
+        ${gtOffice > 0 ? `<div class="soc-row">
+          <span class="soc-label">Office Deductions</span>
+          <span class="soc-value deduct">−£${gtOffice.toLocaleString('en-GB',{minimumFractionDigits:2,maximumFractionDigits:2})}</span>
+        </div>` : ''}
         <div class="soc-row soc-row--outstanding">
-          <span class="soc-label">Remaining to pay</span>
-          <span class="soc-value outstanding ${gbpTotal <= 0 ? 'overpaid' : ''}" style="font-size:1.35rem">
-            £${Math.abs(gbpTotal).toLocaleString('en-GB',{minimumFractionDigits:2,maximumFractionDigits:2})}
+          <span class="soc-label">Remaining to Pay</span>
+          <span class="soc-value outstanding" style="font-size:1.3rem">
+            £${gtRemain.toLocaleString('en-GB',{minimumFractionDigits:2,maximumFractionDigits:2})}
           </span>
         </div>
-        <div class="soc-conversion">GBP + AED at 4.67 · end of ${year}</div>
-      </div>` : '';
+        ${hasMultiCurrency ? `<div class="soc-conversion">Includes AED converted · end of ${year}</div>` : ''}
+      </div>`;
 
     document.getElementById('salaryTotals').innerHTML = (groupCards.join('') + gbpCard) || '';
 
