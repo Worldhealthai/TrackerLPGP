@@ -339,13 +339,14 @@ async function loadDashboard() {
     </div>
   `;
 
-  const [summaryRes, salaryRes, upcomingRes, expiringRes, allEmpRes, hotelRes] = await Promise.all([
+  const [summaryRes, salaryRes, upcomingRes, expiringRes, allEmpRes, hotelRes, dealsRes] = await Promise.all([
     fetch(`/api/summary?from=${year}-01-01&to=${year}-12-31`),
     fetch(`/api/salary-overview?year=${year}`),
     fetch(`/api/calendar-reminders/upcoming?days=7`),
     fetch(`/api/contracts/expiring?days=60`),
     fetch(`/api/employees/all`),
-    fetch(`/api/hotel-expenses`)
+    fetch(`/api/hotel-expenses`),
+    fetch(`/api/deals`)
   ]);
 
   const summary       = summaryRes.ok   ? await summaryRes.json()   : [];
@@ -353,6 +354,7 @@ async function loadDashboard() {
   const upcoming      = upcomingRes.ok  ? await upcomingRes.json()  : [];
   const expiring      = expiringRes.ok  ? await expiringRes.json()  : [];
   const allEmps       = allEmpRes.ok    ? await allEmpRes.json()    : [];
+  const dashDeals     = dealsRes.ok     ? await dealsRes.json()     : [];
   const hotelData     = hotelRes.ok     ? await hotelRes.json()     : [];
 
   const activeEmps    = allEmps.filter(e => e.active);
@@ -418,8 +420,8 @@ async function loadDashboard() {
     </div>
   `;
 
-  // Contract expiry panel
-  renderContractExpiryPanel(expiring);
+  // Revenue Intelligence + contract expiry panel
+  renderRevenueIntelPanel(dashDeals, expiring);
 
   // Headcount by department
   renderHeadcountPanel(activeEmps);
@@ -453,33 +455,144 @@ async function loadDashboard() {
   });
 }
 
-function renderContractExpiryPanel(expiring) {
+function renderRevenueIntelPanel(deals, expiring) {
   const el = document.getElementById('contractExpiryPanel');
   if (!el) return;
-  if (!expiring.length) { el.innerHTML = ''; return; }
+
+  const won      = deals.filter(d => d.stage === 'Won');
+  const lost     = deals.filter(d => d.stage === 'Lost');
+  const active   = deals.filter(d => !['Won','Lost'].includes(d.stage));
+  const wonRev   = won.reduce((a,d) => a + (parseFloat(d.amount)||0), 0);
+  const pipeRev  = active.reduce((a,d) => a + (parseFloat(d.amount)||0), 0);
+  const wonPaid  = won.reduce((a,d) => a + (parseFloat(d.paid_inc_vat)||0), 0);
+  const total    = deals.length;
+  const winRate  = (won.length + lost.length) > 0
+    ? Math.round(won.length / (won.length + lost.length) * 100) : 0;
+
+  // SVG donut segments (based on count)
+  const R = 38, C = +(2 * Math.PI * R).toFixed(2); // 238.76
+  const segWon    = total > 0 ? (won.length / total * C) : 0;
+  const segActive = total > 0 ? (active.length / total * C) : 0;
+  const segLost   = total > 0 ? (lost.length / total * C) : 0;
+  // offsets (negative = clockwise shift)
+  const offWon    = 0;
+  const offActive = -(segWon);
+  const offLost   = -(segWon + segActive);
+
+  const stageCols = { Prospect:'#6366f1', Qualified:'#8b5cf6', Proposal:'#3b82f6',
+                      Negotiation:'#f59e0b', Won:'#22c55e', Lost:'#ef4444' };
+  const stageOrder = ['Won','Negotiation','Proposal','Qualified','Prospect','Lost'];
+  const maxAmt = Math.max(...stageOrder.map(s => deals.filter(d=>d.stage===s).reduce((a,d)=>a+(parseFloat(d.amount)||0),0)), 1);
+
   const today = new Date().toISOString().slice(0,10);
+  const expiryHtml = expiring.length ? `
+    <div class="ri-expiry-section">
+      <div class="ri-expiry-title">⚠️ Contracts Expiring</div>
+      ${expiring.slice(0,3).map(e => {
+        const expired = e.contract_end_date < today;
+        return `<div class="ri-expiry-row">
+          <span>${esc(e.name)}</span>
+          <span class="ri-expiry-badge ${expired ? 'ri-expiry-red' : 'ri-expiry-yellow'}">${expired ? 'Expired' : e.contract_end_date}</span>
+        </div>`;
+      }).join('')}
+    </div>` : '';
+
   el.innerHTML = `
-    <div class="dash-panel dash-panel--alert">
-      <div class="dash-panel-header">
-        <span class="dash-panel-icon">⚠️</span>
-        <span class="dash-panel-title">Contracts Expiring (Next 60 Days)</span>
-        <span class="dash-panel-count">${expiring.length}</span>
+    <div class="ri-card">
+      <div class="ri-glow"></div>
+      <div class="ri-header">
+        <div class="ri-header-left">
+          <span class="ri-pulse"></span>
+          <span class="ri-title">REVENUE INTELLIGENCE</span>
+        </div>
+        <span class="ri-year">${new Date().getFullYear()}</span>
       </div>
-      <div class="dash-panel-body">
-        ${expiring.map(e => {
-          const expired = e.contract_end_date < today;
-          const badge = expired ? 'badge-red' : 'badge-yellow';
-          const label = expired ? 'Expired' : `Ends ${e.contract_end_date}`;
-          return `<div class="dash-panel-row">
-            <div>
-              <div style="font-weight:700;font-size:0.88rem">${esc(e.name)}</div>
-              ${e.job_title || e.department ? `<div style="font-size:0.74rem;color:var(--muted)">${esc([e.job_title,e.department].filter(Boolean).join(' · '))}</div>` : ''}
+
+      <div class="ri-body">
+        <!-- Donut chart -->
+        <div class="ri-chart-wrap">
+          <svg class="ri-donut" viewBox="0 0 100 100">
+            <circle cx="50" cy="50" r="${R}" fill="none" stroke="rgba(255,255,255,0.04)" stroke-width="10"/>
+            <circle cx="50" cy="50" r="${R}" fill="none" stroke="#22c55e" stroke-width="10" stroke-linecap="round"
+              stroke-dasharray="0 ${C}" stroke-dashoffset="${offWon}" class="ri-seg ri-seg-won"
+              data-final="${segWon} ${C - segWon}" data-offset="${offWon}"/>
+            <circle cx="50" cy="50" r="${R}" fill="none" stroke="#6366f1" stroke-width="10" stroke-linecap="round"
+              stroke-dasharray="0 ${C}" stroke-dashoffset="${offActive}" class="ri-seg ri-seg-active"
+              data-final="${segActive} ${C - segActive}" data-offset="${offActive}"/>
+            <circle cx="50" cy="50" r="${R}" fill="none" stroke="#ef4444" stroke-width="6" stroke-linecap="round"
+              stroke-dasharray="0 ${C}" stroke-dashoffset="${offLost}" class="ri-seg ri-seg-lost"
+              data-final="${segLost} ${C - segLost}" data-offset="${offLost}"/>
+          </svg>
+          <div class="ri-donut-center">
+            <div class="ri-donut-num" data-target="${total}">${total}</div>
+            <div class="ri-donut-label">Deals</div>
+          </div>
+        </div>
+
+        <!-- Metrics -->
+        <div class="ri-metrics">
+          <div class="ri-metric">
+            <div class="ri-metric-label">Won Revenue</div>
+            <div class="ri-metric-val ri-green" data-countup="${wonRev}">£${fmtK(wonRev)}</div>
+          </div>
+          <div class="ri-metric">
+            <div class="ri-metric-label">Pipeline</div>
+            <div class="ri-metric-val ri-blue" data-countup="${pipeRev}">£${fmtK(pipeRev)}</div>
+          </div>
+          <div class="ri-metric">
+            <div class="ri-metric-label">Collected</div>
+            <div class="ri-metric-val" data-countup="${wonPaid}">£${fmtK(wonPaid)}</div>
+          </div>
+          <div class="ri-metric ri-metric--wide">
+            <div class="ri-metric-label">Win Rate</div>
+            <div style="display:flex;align-items:center;gap:8px">
+              <div class="ri-metric-val ri-green">${winRate}%</div>
+              <div class="ri-winbar-wrap"><div class="ri-winbar-fill" style="width:0%" data-pct="${winRate}"></div></div>
             </div>
-            <span class="badge ${badge}">${label}</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Stage breakdown -->
+      <div class="ri-stages">
+        ${stageOrder.map(stage => {
+          const stDeals = deals.filter(d => d.stage === stage);
+          const stAmt   = stDeals.reduce((a,d) => a + (parseFloat(d.amount)||0), 0);
+          const pct     = Math.round(stAmt / maxAmt * 100);
+          return `<div class="ri-stage-row">
+            <div class="ri-stage-name">${stage}</div>
+            <div class="ri-stage-bar-wrap">
+              <div class="ri-stage-bar" style="width:0%;background:${stageCols[stage]}" data-pct="${pct}"></div>
+            </div>
+            <div class="ri-stage-meta">
+              <span class="ri-stage-count" style="color:${stageCols[stage]}">${stDeals.length}</span>
+              <span class="ri-stage-amt">£${fmtK(stAmt)}</span>
+            </div>
           </div>`;
         }).join('')}
       </div>
+
+      ${expiryHtml}
     </div>`;
+
+  // Animate bars and donut after render
+  requestAnimationFrame(() => {
+    setTimeout(() => {
+      // Animate stage bars
+      el.querySelectorAll('.ri-stage-bar').forEach(bar => {
+        bar.style.transition = 'width 1s cubic-bezier(.4,0,.2,1)';
+        bar.style.width = bar.dataset.pct + '%';
+      });
+      // Animate win rate bar
+      const wb = el.querySelector('.ri-winbar-fill');
+      if (wb) { wb.style.transition = 'width 1.2s cubic-bezier(.4,0,.2,1)'; wb.style.width = wb.dataset.pct + '%'; }
+      // Animate donut segments
+      el.querySelectorAll('.ri-seg').forEach(seg => {
+        seg.style.transition = 'stroke-dasharray 1.2s cubic-bezier(.4,0,.2,1)';
+        seg.setAttribute('stroke-dasharray', seg.dataset.final);
+      });
+    }, 80);
+  });
 }
 
 function renderHeadcountPanel(activeEmps) {
