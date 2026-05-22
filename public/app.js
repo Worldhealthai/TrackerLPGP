@@ -11,6 +11,7 @@ const MONTHS = ['','January','February','March','April','May','June',
 
 function currencySymbol(c) { return c === 'AED' ? 'AED ' : '£'; }
 function fmtMoney(amount, currency) { return currencySymbol(currency) + Number(amount || 0).toLocaleString('en-GB', {minimumFractionDigits:2}); }
+function fmt(n) { return Number(n||0).toLocaleString('en-GB', {minimumFractionDigits:2, maximumFractionDigits:2}); }
 
 // ─── THEME ───────────────────────────────────────────────────────────────────
 (function applyStoredTheme() {
