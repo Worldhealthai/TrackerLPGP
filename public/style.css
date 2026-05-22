@@ -3693,22 +3693,28 @@ tbody tr:last-child td { border-bottom: none; }
 @media (max-width: 800px) { .deal-stat-cards { grid-template-columns: repeat(2, 1fr); } }
 @media (max-width: 480px) { .deal-stat-cards { grid-template-columns: 1fr; } }
 .deal-stat-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: var(--radius);
   padding: 18px 22px;
 }
 .deal-stat-label {
-  font: 600 10px/1 var(--font-mono);
+  font: 600 10px/1.4 var(--font-mono);
   text-transform: uppercase;
   letter-spacing: 0.9px;
   color: var(--muted);
-  margin-bottom: 10px;
+  max-width: 90px;
 }
 .deal-stat-value {
-  font: 700 26px/1.1 var(--font-sans);
+  font: 800 28px/1 var(--font-sans);
   color: var(--text);
   letter-spacing: -0.5px;
+  text-align: right;
+  flex-shrink: 0;
 }
 .deal-stat-card.ds--green  { border-left: 3px solid var(--positive); }
 .deal-stat-card.ds--green  .deal-stat-value { color: var(--positive); }
