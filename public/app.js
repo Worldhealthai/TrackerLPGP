@@ -6364,7 +6364,7 @@ function renderPortfolioPage() {
         <div style="font:500 11px/1.5 var(--font-mono);color:var(--muted);margin-top:4px">${dateStr}${byAdmin?' · <span style="color:#f59e0b">allocated by admin</span>':''}</div>
         ${r.notes ? `<div style="font:500 11px/1.4 var(--font-mono);color:var(--text-2);margin-top:6px;border-top:1px solid var(--border);padding-top:6px">${esc(r.notes)}</div>` : ''}
       </div>
-      ${!byAdmin ? `<button class="btn btn-ghost btn-sm" onclick="deletePortfolioEvent(${r.id})" style="color:var(--danger);flex-shrink:0">×</button>` : ''}
+      ${!byAdmin ? `<button class="btn btn-ghost btn-sm" onclick="deleteEmployeePortfolioEvent(${r.id})" style="color:var(--danger);flex-shrink:0">×</button>` : ''}
     </div>`;
   };
 
@@ -6444,7 +6444,7 @@ async function savePortfolioEvent() {
   }
 }
 
-async function deletePortfolioEvent(id) {
+async function deleteEmployeePortfolioEvent(id) {
   if (!confirm('Remove this event from your portfolio?')) return;
   const res = await fetch('/api/employee/portfolio/' + id, { method: 'DELETE' });
   if (res.ok) await loadEmployeePortfolio();
