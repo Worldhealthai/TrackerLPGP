@@ -233,6 +233,8 @@ async function runMigrations() {
 
   // Safe migration: add av_billing if it doesn't exist yet
   await sql(`ALTER TABLE hotel_expenses ADD COLUMN IF NOT EXISTS av_billing TEXT NOT NULL DEFAULT 'separate'`);
+  await sql(`ALTER TABLE hotel_expenses ADD COLUMN IF NOT EXISTS invoice_name TEXT DEFAULT NULL`);
+  await sql(`ALTER TABLE hotel_expenses ADD COLUMN IF NOT EXISTS invoice_data TEXT DEFAULT NULL`);
 
   // Seed initial hotel expense rows if table is empty
   const heCount = await sql('SELECT COUNT(*) AS c FROM hotel_expenses');

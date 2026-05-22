@@ -520,7 +520,7 @@ function renderHeadcountPanel(activeEmps) {
                 const initials = (e.name||'?').split(' ').map(w=>w[0]).join('').slice(0,2).toUpperCase();
                 const isSE = e.employment_type === 'self_employed';
                 const avatarBg = isSE ? '#d97706' : color;
-                const role = [e.job_title, e.department !== dept ? e.department : ''].filter(Boolean).join(' · ') || (isSE ? 'Self-Employed' : 'Payroll');
+                const role = e.job_title || (isSE ? 'Self-Employed' : 'Payroll');
                 return `<div class="hc-emp-row" onclick="event.stopPropagation();goToTracking(${e.id})">
                   <div class="hc-emp-av" style="background:${avatarBg}">${initials}</div>
                   <div class="hc-emp-info">
@@ -1293,74 +1293,8 @@ async function loadSalaryPage() {
 
     document.getElementById('salaryTotals').innerHTML = (groupCards.join('') + gbpCard) || '';
 
-    // ── Payment Board (3 categories) ──
-    const activeForBoard = rows.filter(r => !r.is_terminated);
-    const unpaidForBoard = activeForBoard.filter(r => (parseFloat(r.net_remaining) || 0) > 0);
-
-    const seGroup      = activeForBoard.filter(r => r.employment_type === 'self_employed' && (r.currency || 'GBP') === 'GBP');
-    const payrollGroup = activeForBoard.filter(r => r.employment_type === 'payroll'       && (r.currency || 'GBP') === 'GBP');
-    const intlGroup    = activeForBoard.filter(r => (r.currency || 'GBP') !== 'GBP');
-
-    function buildPbRow(emp) {
-      const remaining = parseFloat(emp.net_remaining) || 0;
-      const sym = currencySymbol(emp.currency || 'GBP');
-      const initials = (emp.name || '?').split(' ').map(w => w[0]).join('').slice(0,2).toUpperCase();
-      const isOverpaid = remaining < 0;
-      const dotCls = isOverpaid ? 'pb-dot--over' : remaining <= 0 ? 'pb-dot--paid' : 'pb-dot--due';
-      const amtCls = isOverpaid ? 'pb-amt--over' : remaining <= 0 ? 'pb-amt--paid' : 'pb-amt--due';
-      const amtText = isOverpaid
-        ? `Overpaid ${sym}${Math.abs(remaining).toLocaleString('en-GB',{maximumFractionDigits:0})}`
-        : remaining <= 0 ? '✓ Settled'
-        : `${sym}${remaining.toLocaleString('en-GB',{maximumFractionDigits:0})}`;
-      const isPaidRow = remaining <= 0;
-      const pinBtn = !emp.has_pin
-        ? `<button class="pb-pin-btn" onclick="event.stopPropagation();openEmpModal(employees.find(e=>e.id===${emp.employee_id}));document.getElementById('empPin')?.focus()" title="Set Portal PIN">🔑 PIN</button>`
-        : '';
-      return `<div class="pb-row${isPaidRow ? ' pb-row--settled' : ''}" onclick="document.getElementById('sc-emp-${emp.employee_id}')?.scrollIntoView({behavior:'smooth',block:'start'})">
-        <span class="pb-dot ${dotCls}"></span>
-        <div class="pb-avatar">${initials}</div>
-        <div class="pb-name">${esc(emp.name)}</div>
-        ${pinBtn}
-        <div class="pb-amt ${amtCls}">${amtText}</div>
-        <span class="pb-chevron">›</span>
-      </div>`;
-    }
-
-    function buildPbSection(title, icon, color, emps) {
-      if (!emps.length) return '';
-      const dueCount = emps.filter(e => (parseFloat(e.net_remaining) || 0) > 0).length;
-      return `
-        <div class="pb-section">
-          <div class="pb-section-hd" style="--sec-color:${color}">
-            <span class="pb-section-icon">${icon}</span>
-            <span class="pb-section-title">${title}</span>
-            <span class="pb-section-count">${emps.length} · <span style="color:#ef4444">${dueCount} to pay</span></span>
-          </div>
-          <div class="pb-section-list">
-            ${emps.map(buildPbRow).join('')}
-          </div>
-        </div>`;
-    }
-
-    const boardHtml = activeForBoard.length ? `
-      <div class="payment-board">
-        <div class="pb-header">
-          <div class="pb-title-group">
-            <span class="pb-title">Payment Status</span>
-            <span class="pb-subtitle">${activeForBoard.length} employees · ${year}</span>
-          </div>
-          <div class="pb-filters">
-            <button class="pb-filter active" onclick="pbFilter(this,'all')">All (${activeForBoard.length})</button>
-            <button class="pb-filter" onclick="pbFilter(this,'unpaid')">To Pay (${unpaidForBoard.length})</button>
-          </div>
-        </div>
-        <div class="pb-list" id="pbList">
-          ${buildPbSection('Self-Employed', '🟡', '#d97706', seGroup)}
-          ${buildPbSection('Payroll', '🔵', '#4f46e5', payrollGroup)}
-          ${buildPbSection('Internationals', '🌍', '#0891b2', intlGroup)}
-        </div>
-      </div>` : '';
-    document.getElementById('salaryBoard').innerHTML = boardHtml;
+    // Payment Board removed — salary reminder panel handles categorized view
+    document.getElementById('salaryBoard').innerHTML = '';
 
     // ── Per-employee cards ──
     if (!rows.length) {
@@ -2346,27 +2280,46 @@ async function renderSalaryReminderPanel() {
 
     panel.classList.remove('hidden');
     const monthName = MONTHS[month];
+
+    const seList      = unpaid.filter(e => e.employment_type === 'self_employed' && (e.currency || 'GBP') === 'GBP');
+    const payrollList = unpaid.filter(e => e.employment_type === 'payroll'       && (e.currency || 'GBP') === 'GBP');
+    const intlList    = unpaid.filter(e => (e.currency || 'GBP') !== 'GBP');
+
+    function buildReminderRow(emp) {
+      const sym = currencySymbol(emp.currency || 'GBP');
+      const grossMonthly = (parseFloat(emp.annual_salary) || 0) / 12;
+      const netMo = emp.net_monthly ? parseFloat(emp.net_monthly) : null;
+      const displayAmount = netMo ?? grossMonthly;
+      const taxLabel = netMo ? ` <span class="sr-net-label">(net take-home)</span>` : '';
+      return `<div class="salary-reminder-row">
+        <div class="salary-reminder-name">${esc(emp.name)}</div>
+        <div class="salary-reminder-amount">${sym}${displayAmount.toLocaleString('en-GB',{minimumFractionDigits:2})} /mo${taxLabel}</div>
+        <div class="salary-reminder-actions">
+          <button class="btn btn-ghost btn-sm" onclick="skipSalaryReminder(${emp.employee_id},${year},${month})">Skip</button>
+          <button class="btn btn-primary btn-sm" onclick="openSalaryPaymentModal(${emp.employee_id})">Log Payment</button>
+        </div>
+      </div>`;
+    }
+
+    function buildReminderSection(label, color, emps) {
+      if (!emps.length) return '';
+      return `<div class="sr-section">
+        <div class="sr-section-hd" style="border-left:3px solid ${color}">
+          <span class="sr-section-title" style="color:${color}">${label}</span>
+          <span class="sr-section-count">${emps.length} to pay</span>
+        </div>
+        ${emps.map(buildReminderRow).join('')}
+      </div>`;
+    }
+
     panel.innerHTML = `
       <div class="salary-reminder-header">
         <span>💳 ${unpaid.length} employee${unpaid.length > 1 ? 's' : ''} not yet paid for ${monthName} ${year}</span>
         <button class="btn btn-ghost btn-sm" onclick="dismissAllReminders()">Dismiss all</button>
       </div>
-      ${unpaid.map(emp => {
-        const sym = currencySymbol(emp.currency || 'GBP');
-        const grossMonthly = (parseFloat(emp.annual_salary) || 0) / 12;
-        const netMo = emp.net_monthly ? parseFloat(emp.net_monthly) : null;
-        const displayAmount = netMo ?? grossMonthly;
-        const taxLabel = netMo ? ` <span style="font-size:0.72rem;color:var(--muted)">(net take-home)</span>` : '';
-        return `
-          <div class="salary-reminder-row">
-            <div class="salary-reminder-name">${esc(emp.name)}</div>
-            <div class="salary-reminder-amount">${sym}${displayAmount.toLocaleString('en-GB',{minimumFractionDigits:2})} /mo${taxLabel}</div>
-            <div class="salary-reminder-actions">
-              <button class="btn btn-ghost btn-sm" onclick="skipSalaryReminder(${emp.employee_id},${year},${month})">Skip</button>
-              <button class="btn btn-primary btn-sm" onclick="openSalaryPaymentModal(${emp.employee_id})">Log Payment</button>
-            </div>
-          </div>`;
-      }).join('')}`;
+      ${buildReminderSection('Self-Employed', '#d97706', seList)}
+      ${buildReminderSection('Payroll', '#4f46e5', payrollList)}
+      ${buildReminderSection('Internationals', '#0891b2', intlList)}`;
   } catch(e) {
     panel.classList.add('hidden');
   }
@@ -2592,6 +2545,17 @@ function renderHotelTable() {
       ? `<span class="hotel-incl-badge" style="margin-left:4px">incl.</span>`
       : '';
 
+    const hasInvoice = !!r.invoice_name;
+    const invoiceCell = hasInvoice
+      ? `<div style="display:flex;gap:4px;align-items:center">
+           <a href="/api/hotel-expenses/${r.id}/invoice" target="_blank" class="btn btn-ghost btn-sm" style="font-size:0.72rem;padding:3px 7px" title="${esc(r.invoice_name)}">📄 View</a>
+           <button class="btn btn-danger btn-sm" style="padding:3px 6px" onclick="htDeleteInvoice(${r.id})" title="Remove invoice">×</button>
+         </div>`
+      : `<label class="ht-upload-btn" title="Upload invoice">
+           📎 Upload
+           <input type="file" accept=".pdf,.png,.jpg,.jpeg" style="display:none" onchange="htUploadInvoice(${r.id},this)">
+         </label>`;
+
     return `<tr class="${rowClass}" id="htr-${r.id}">
       ${cellText('event_name', r.event_name, 'font-weight:700')}
       ${cellText('hotel', r.hotel||'')}
@@ -2616,6 +2580,8 @@ function renderHotelTable() {
           <option value="paid"${r.status==='paid'?' selected':''}>Paid</option>
         </select>
       </td>
+      ${cellText('notes', r.notes||'', 'font-size:0.78rem;color:var(--muted);font-style:italic')}
+      <td style="padding:4px 10px">${invoiceCell}</td>
       <td><button class="btn btn-danger btn-sm" onclick="deleteHotelExpense(${r.id})">×</button></td>
     </tr>`;
   }).join('');
@@ -2728,6 +2694,36 @@ function htUpdateRowClass(id, status) {
   const tr = document.getElementById(`htr-${id}`);
   if (!tr) return;
   tr.className = status === 'paid' ? 'hotel-row-paid' : status === 'partial' ? 'hotel-row-partial' : '';
+}
+
+async function htUploadInvoice(id, input) {
+  const file = input.files[0];
+  if (!file) return;
+  if (file.size > 8 * 1024 * 1024) { showToast('File must be under 8 MB', 'error'); return; }
+  const reader = new FileReader();
+  reader.onload = async e => {
+    const base64 = e.target.result.split(',')[1];
+    const res = await fetch(`/api/hotel-expenses/${id}/invoice`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ invoice_name: file.name, invoice_data: base64 })
+    });
+    if (!res.ok) { showToast('Upload failed', 'error'); return; }
+    showToast('Invoice saved', 'success');
+    const idx = hotelData.findIndex(r => r.id === id);
+    if (idx !== -1) hotelData[idx].invoice_name = file.name;
+    renderHotelTable();
+  };
+  reader.readAsDataURL(file);
+}
+
+async function htDeleteInvoice(id) {
+  if (!confirm('Remove stored invoice?')) return;
+  const res = await fetch(`/api/hotel-expenses/${id}/invoice`, { method: 'DELETE' });
+  if (!res.ok) { showToast('Failed', 'error'); return; }
+  showToast('Invoice removed', 'success');
+  const idx = hotelData.findIndex(r => r.id === id);
+  if (idx !== -1) { hotelData[idx].invoice_name = null; hotelData[idx].invoice_data = null; }
+  renderHotelTable();
 }
 
 // ─── HOLIDAY REQUEST NOTIFICATIONS ───────────────────────────────────────────
