@@ -109,6 +109,8 @@ function closeMobileNav() {
 
 // ─── NAVIGATION ──────────────────────────────────────────────────────────────
 function navigate(page) {
+  // Salary section is admin-only
+  if (page === 'salary' && currentUser?.role !== 'admin') return;
   document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
   document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
   document.querySelectorAll('.bottom-nav-item').forEach(n => n.classList.remove('active'));

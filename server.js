@@ -69,6 +69,11 @@ function requireAuth(req, res, next) {
   }
 }
 
+function requireAdmin(req, res, next) {
+  if (req.admin?.role !== 'admin') return res.status(403).json({ error: 'Access restricted to admins' });
+  next();
+}
+
 // neon() returns rows array directly; wrap in { rows } for consistent usage throughout
 async function q(rawSql, params = []) {
   let i = 0;
@@ -542,7 +547,7 @@ app.delete('/api/adjustments/:id', requireAuth, async (req, res) => {
 
 // ─── MONTHLY PAYMENTS ────────────────────────────────────────────────────────
 
-app.get('/api/payments/:employeeId', requireAuth, async (req, res) => {
+app.get('/api/payments/:employeeId', requireAuth, requireAdmin, async (req, res) => {
   const { year } = req.query;
   let sql = 'SELECT * FROM monthly_payments WHERE employee_id = ?';
   const params = [req.params.employeeId];
@@ -552,7 +557,7 @@ app.get('/api/payments/:employeeId', requireAuth, async (req, res) => {
   res.json(rows);
 });
 
-app.post('/api/payments', requireAuth, async (req, res) => {
+app.post('/api/payments', requireAuth, requireAdmin, async (req, res) => {
   const { employee_id, payment_year, payment_month, amount, notes } = req.body;
   if (!employee_id || !payment_year || !payment_month || !amount)
     return res.status(400).json({ error: 'employee_id, year, month, amount required' });
@@ -563,14 +568,14 @@ app.post('/api/payments', requireAuth, async (req, res) => {
   res.json({ id: rows[0].id });
 });
 
-app.delete('/api/payments/:id', requireAuth, async (req, res) => {
+app.delete('/api/payments/:id', requireAuth, requireAdmin, async (req, res) => {
   await q('DELETE FROM monthly_payments WHERE id = ?', [req.params.id]);
   res.json({ success: true });
 });
 
 // ─── SALARY OVERVIEW ─────────────────────────────────────────────────────────
 
-app.get('/api/salary-overview', requireAuth, async (req, res) => {
+app.get('/api/salary-overview', requireAuth, requireAdmin, async (req, res) => {
   try {
     const year = parseInt(req.query.year) || new Date().getFullYear();
     // Include terminated employees so their final summary still shows
@@ -846,7 +851,7 @@ app.delete('/api/bonuses/:id', requireAuth, async (req, res) => {
 
 // ─── SALARY HISTORY ──────────────────────────────────────────────────────────
 
-app.get('/api/salary-history/:employeeId', requireAuth, async (req, res) => {
+app.get('/api/salary-history/:employeeId', requireAuth, requireAdmin, async (req, res) => {
   const { rows } = await q(
     `SELECT sh.*, sh.effective_from::TEXT AS effective_from, ad.username AS created_by_name
      FROM salary_history sh LEFT JOIN admins ad ON ad.id = sh.created_by
@@ -856,7 +861,7 @@ app.get('/api/salary-history/:employeeId', requireAuth, async (req, res) => {
   res.json(rows);
 });
 
-app.post('/api/salary-history', requireAuth, async (req, res) => {
+app.post('/api/salary-history', requireAuth, requireAdmin, async (req, res) => {
   const { employee_id, annual_salary, currency, effective_from, reason } = req.body;
   if (!employee_id || !annual_salary) return res.status(400).json({ error: 'employee_id and annual_salary required' });
   const cur = ['GBP','AED'].includes(currency) ? currency : 'GBP';
@@ -867,7 +872,7 @@ app.post('/api/salary-history', requireAuth, async (req, res) => {
   res.json({ id: rows[0].id });
 });
 
-app.delete('/api/salary-history/:id', requireAuth, async (req, res) => {
+app.delete('/api/salary-history/:id', requireAuth, requireAdmin, async (req, res) => {
   await q('DELETE FROM salary_history WHERE id = ?', [req.params.id]);
   res.json({ success: true });
 });
@@ -1023,7 +1028,7 @@ app.get('/api/contracts/expiring', requireAuth, async (req, res) => {
 
 // ─── PAYROLL CSV EXPORT ───────────────────────────────────────────────────────
 
-app.get('/api/export/payroll-csv', requireAuth, async (req, res) => {
+app.get('/api/export/payroll-csv', requireAuth, requireAdmin, async (req, res) => {
   try {
     const year = parseInt(req.query.year) || new Date().getFullYear();
     const { rows: employees } = await q('SELECT * FROM employees WHERE active = 1 ORDER BY department, name');
