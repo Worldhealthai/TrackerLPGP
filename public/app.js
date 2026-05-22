@@ -3319,36 +3319,45 @@ function renderDealsTable() {
       return `${String(dt.getFullYear()).slice(2)}-${dt.toLocaleDateString('en-GB',{month:'short'})}`;
     })() : '';
     const invDateStr = d.invoice_date ? new Date(d.invoice_date).toLocaleDateString('en-GB',{day:'2-digit',month:'2-digit',year:'2-digit'}) : '';
-    const paidDateStr = d.paid_date ? new Date(d.paid_date).toLocaleDateString('en-GB',{day:'2-digit',month:'2-digit',year:'2-digit'}) : '';
-    const rowClass = {paid:'deal-row-paid', flagged:'deal-row-flagged', issue:'deal-row-issue', urgent:'deal-row-urgent'}[d.row_status] || '';
-    const stageChip = `<span class="deal-stage-chip" style="background:${DEAL_STAGE_COLOR[d.stage]}20;color:${DEAL_STAGE_COLOR[d.stage]}">${d.stage}</span>`;
+
+    // Auto-colour logic based on payment
+    const paidAmt  = parseFloat(d.paid_inc_vat) || 0;
+    const dealAmt  = parseFloat(d.amount) || 0;
+    const hasPaid  = d.paid_inc_vat != null && paidAmt > 0;
+    const isPartial = hasPaid && paidAmt < dealAmt;
+    const rowClass = hasPaid ? 'deal-row-paid' : '';
+
     const inv1 = d.invoice1_name ? `<a class="deal-inv-link" href="/api/deals/${d.id}/invoice/1" target="_blank" title="${esc(d.invoice1_name)}" onclick="event.stopPropagation()">📄</a>` : '';
     const inv2 = d.invoice2_name ? `<a class="deal-inv-link" href="/api/deals/${d.id}/invoice/2" target="_blank" title="${esc(d.invoice2_name)}" onclick="event.stopPropagation()">📄</a>` : '';
-    const statusIcon = {none:'⬜',paid:'🟢',flagged:'🚩',issue:'🟠',urgent:'🔴'}[d.row_status||'none'];
-    // Editable cell helper — adds class + onclick, prevents clicks on links/buttons inside
+
+    // Editable cell helper
     const ec = (field, type, val, display, extra='') =>
       `<td class="deal-cell-edit" data-id="${d.id}" data-field="${field}" data-type="${type}" data-val="${String(val??'').replace(/"/g,'&quot;')}" onclick="dealCellClick(this)" ${extra}>${display}</td>`;
 
+    // Paid cell: orange background if partial payment
+    const paidDisplay = hasPaid ? `${sym}${fmt(paidAmt)}` : '<span style="color:var(--muted)">—</span>';
+    const paidExtra = `style="text-align:right${isPartial ? ';background:rgba(234,88,12,.28)' : ''}"`;
+
+    // Notes: truncated display
+    const notesDisplay = d.notes
+      ? `<span class="deal-notes-cell" title="${esc(d.notes)}">${esc(d.notes)}</span>`
+      : '<span style="color:var(--muted);font-size:0.8rem">—</span>';
+
     return `<tr id="deal-row-${d.id}" class="${rowClass}">
-      <td style="font-size:0.78rem;white-space:nowrap;color:var(--muted);pointer-events:none">${invMonth}</td>
+      ${ec('invoice_date','date',d.invoice_date||'', `<span class="deal-month-disp">${invMonth||'<span style="color:var(--muted)">—</span>'}</span>`)}
       ${ec('company','text',d.company||d.title||'', `<strong>${esc(d.company||d.title)}</strong>${d.initials?` <span class="deal-initials-badge">${esc(d.initials)}</span>`:''}`)}
-      ${ec('title','text',d.title||'', `<span style="font-size:0.82rem;color:var(--muted)">${esc(d.title)}</span>`)}
-      ${ec('stage','select',d.stage, stageChip)}
-      ${ec('paid_inc_vat','number',d.paid_inc_vat??'', d.paid_inc_vat!=null ? `${sym}${fmt(parseFloat(d.paid_inc_vat))}` : '<span style="color:var(--muted)">—</span>', 'style="text-align:right"')}
-      ${ec('amount','number',d.amount||0, `${sym}${fmt(parseFloat(d.amount)||0)}`, 'style="text-align:right"')}
+      ${ec('title','text',d.title||'', `<span class="deal-title-disp">${esc(d.title)}</span>`)}
+      ${ec('paid_inc_vat','number',d.paid_inc_vat??'', paidDisplay, paidExtra)}
+      ${ec('amount','number',d.amount||0, `${sym}${fmt(dealAmt)}`, 'style="text-align:right"')}
       ${ec('tax_vat','number',d.tax_vat??'', d.tax_vat ? `${sym}${fmt(parseFloat(d.tax_vat))}` : '<span style="color:var(--muted)">—</span>', 'style="text-align:right"')}
       ${ec('invoice_date','date',d.invoice_date||'', `<span style="font-size:0.78rem">${invDateStr||'<span style="color:var(--muted)">—</span>'}</span>`)}
-      ${ec('paid_date','date',d.paid_date||'', `<span style="font-size:0.78rem">${paidDateStr||'<span style="color:var(--muted)">—</span>'}</span>`)}
-      ${ec('bank','select-bank',d.bank||'', `<span style="font-size:0.78rem">${esc(d.bank||'')|| '<span style="color:var(--muted)">—</span>'}</span>`)}
-      ${ec('invoice_number','text',d.invoice_number||'', `<span style="font-family:monospace;font-size:0.72rem">${esc(d.invoice_number||'')}</span>${inv1}${inv2}`, 'style="font-size:0.75rem"')}
-      <td class="deal-cell-toggle" onclick="dealToggleBool(${d.id},'invoice_agreement_sent',${!!d.invoice_agreement_sent})" style="text-align:center;cursor:pointer" title="Click to toggle">${d.invoice_agreement_sent ? '✅' : '<span style="color:var(--muted)">—</span>'}</td>
+      ${ec('bank','select-bank',d.bank||'', `<span style="font-size:0.78rem">${esc(d.bank||'')||'<span style="color:var(--muted)">—</span>'}</span>`)}
+      ${ec('invoice_number','text',d.invoice_number||'', `<span style="font-family:monospace;font-size:0.72rem">${esc(d.invoice_number||'')}</span>${inv1}${inv2}`)}
       <td class="deal-cell-toggle" onclick="dealToggleBool(${d.id},'signature_received',${!!d.signature_received})" style="text-align:center;cursor:pointer" title="Click to toggle">${d.signature_received ? '✅' : '<span style="color:var(--muted)">—</span>'}</td>
-      ${ec('initials','text',d.initials||'', `<span class="deal-initials-badge">${esc(d.initials||'')}</span>`, 'style="text-align:center"')}
-      <td>
-        <div style="display:flex;gap:3px;align-items:center">
-          <button class="btn-icon deal-color-btn" title="Set row colour" onclick="showDealColorPicker(event,${d.id})" style="font-size:1rem;line-height:1">${statusIcon}</button>
-          <button class="btn-icon btn-icon--danger" title="Delete" onclick="deleteDeal(${d.id})">🗑️</button>
-        </div>
+      ${ec('initials','text',d.initials||'', d.initials ? `<span class="deal-initials-badge">${esc(d.initials)}</span>` : '<span style="color:var(--muted)">—</span>', 'style="text-align:center"')}
+      ${ec('notes','textarea',d.notes||'', notesDisplay)}
+      <td style="text-align:center">
+        <button class="btn-icon btn-icon--danger" title="Delete" onclick="deleteDeal(${d.id})">🗑️</button>
       </td>
     </tr>`;
   }).join('');
@@ -3387,6 +3396,13 @@ function dealCellClick(td) {
       if (s === val) opt.selected = true;
       input.appendChild(opt);
     });
+  } else if (type === 'textarea') {
+    input = document.createElement('textarea');
+    input.className = 'deal-inline-input';
+    input.value = val;
+    input.rows = 2;
+    input.style.resize = 'vertical';
+    input.style.minHeight = '48px';
   } else {
     input = document.createElement('input');
     input.className = 'deal-inline-input';
@@ -3400,7 +3416,7 @@ function dealCellClick(td) {
   td.innerHTML = '';
   td.appendChild(input);
   input.focus();
-  if (input.type === 'text' || input.type === 'number') input.select();
+  if (input.tagName !== 'TEXTAREA' && (input.type === 'text' || input.type === 'number')) input.select();
 
   const commit = async () => {
     let newVal = input.value;
@@ -3419,7 +3435,7 @@ function dealCellClick(td) {
   const cancel = () => { td.innerHTML = originalHTML; };
   input.addEventListener('blur', commit);
   input.addEventListener('keydown', e => {
-    if (e.key === 'Enter') { e.preventDefault(); input.blur(); }
+    if (e.key === 'Enter' && (type !== 'textarea' || e.ctrlKey || e.metaKey)) { e.preventDefault(); input.blur(); }
     if (e.key === 'Escape') { input.removeEventListener('blur', commit); cancel(); }
   });
 }
@@ -3477,14 +3493,15 @@ function renderDealTotals(filtered, tfoot) {
   const totalDeal = filtered.reduce((a,d) => a + (parseFloat(d.amount)||0), 0);
   const totalTax = filtered.reduce((a,d) => a + (parseFloat(d.tax_vat)||0), 0);
   const remaining = totalDeal - totalPaid;
+  // Columns: Month | Company | Title | Paid | Deal | Tax | InvDate | Bank | Inv# | Signed | By | Notes | Del = 13
   tfoot.innerHTML = `<tr class="deal-totals-row">
-    <td colspan="4" style="font-weight:700;font-size:0.82rem">Totals (${filtered.length} deals)</td>
+    <td colspan="3" style="font-weight:700;font-size:0.82rem">Totals (${filtered.length} deals)</td>
     <td style="text-align:right;font-weight:700">£${fmt(totalPaid)}</td>
     <td style="text-align:right;font-weight:700">£${fmt(totalDeal)}</td>
     <td style="text-align:right;font-weight:700">£${fmt(totalTax)}</td>
-    <td colspan="8" style="font-size:0.8rem;color:var(--muted)">
+    <td colspan="7" style="font-size:0.8rem;color:var(--muted)">
       Outstanding: <strong style="color:${remaining > 0 ? 'var(--danger)' : 'var(--success)'}">£${fmt(Math.abs(remaining))}</strong>
-      ${_dealQFilter !== 'all' ? `&nbsp;·&nbsp; VAT Quarter: <strong>£${fmt(totalTax)}</strong>` : ''}
+      ${_dealQFilter !== 'all' ? `&nbsp;·&nbsp; VAT: <strong>£${fmt(totalTax)}</strong>` : ''}
     </td>
   </tr>`;
   // Also update the top totals summary
