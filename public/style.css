@@ -3,39 +3,37 @@
 * { box-sizing: border-box; margin: 0; padding: 0; }
 
 :root {
-  /* SURFACES */
-  --bg:            #0a0e18;
-  --bg-2:          #0f1420;
-  --surface:       #141926;
-  --surface-2:     #1a2135;
-  --surface-3:     #1f2840;
-  --border:        #262e44;
-  --border-bright: #303a54;
-  --line:          #1a2035;
+  /* ── LIGHT MODE (default) ── */
+  --bg:            #f0f2f7;
+  --bg-2:          #e8ebf2;
+  --surface:       #ffffff;
+  --surface-2:     #f5f6fa;
+  --surface-3:     #eef0f6;
+  --border:        #d4d8e5;
+  --border-bright: #bec5d4;
+  --line:          #e8ebf2;
 
-  /* TYPE — lifted for readability */
-  --text:          #eaedf5;
-  --text-2:        #c4cad8;
-  --muted:         #9ba5bb;
-  --dim:           #6b7590;
+  --text:          #1a1f2e;
+  --text-2:        #3d4560;
+  --muted:         #5b6480;
+  --dim:           #8a94a8;
 
-  /* ACCENTS */
-  --accent:        #6ee7d4;
-  --accent-soft:   rgba(110,231,212,0.12);
-  --accent-line:   rgba(110,231,212,0.32);
+  /* Indigo/purple primary — matches target screenshot */
+  --accent:        #4f46e5;
+  --accent-soft:   rgba(79,70,229,0.10);
+  --accent-line:   rgba(79,70,229,0.30);
 
-  --positive:      #5fd396;
-  --positive-soft: rgba(95,211,150,0.10);
-  --negative:      #f06b73;
-  --negative-soft: rgba(240,107,115,0.10);
-  --warning:       #f5b860;
-  --warning-soft:  rgba(245,184,96,0.10);
-  --info:          #7eb6ff;
-  --info-soft:     rgba(126,182,255,0.10);
+  --positive:      #16a34a;
+  --positive-soft: rgba(22,163,74,0.10);
+  --negative:      #dc2626;
+  --negative-soft: rgba(220,38,38,0.10);
+  --warning:       #d97706;
+  --warning-soft:  rgba(217,119,6,0.10);
+  --info:          #2563eb;
+  --info-soft:     rgba(37,99,235,0.10);
 
-  /* Legacy aliases — app.js uses these names */
   --primary:        var(--accent);
-  --primary-dark:   #2d9a86;
+  --primary-dark:   #3730a3;
   --primary-dim:    var(--accent-soft);
   --primary-light:  var(--accent-soft);
   --danger:         var(--negative);
@@ -47,7 +45,19 @@
   --info-light:     var(--info-soft);
   --warning-light:  var(--warning-soft);
 
-  /* SCALE */
+  --shadow-sm:     0 1px 4px rgba(0,0,0,0.08);
+  --shadow:        0 4px 16px rgba(0,0,0,0.10);
+  --shadow-lg:     0 20px 60px rgba(0,0,0,0.15);
+  --shadow-card:   0 1px 3px rgba(0,0,0,0.06);
+
+  --sidebar-bg:    #1e2235;
+  --card:          var(--surface);
+  --card-raised:   var(--surface-2);
+  --border-light:  var(--border);
+  --border-white:  var(--border-bright);
+  --glow-p: none; --glow-a: none; --glow-g: none; --glow-r: none;
+
+  /* SCALE — shared by all themes */
   --sidebar-w:           232px;
   --sidebar-collapsed-w: 56px;
   --topbar-h:      56px;
@@ -59,23 +69,8 @@
   --card-pad:      20px;
   --gap:           16px;
 
-  /* TYPE STACKS */
   --font-sans:     'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif;
   --font-mono:     'JetBrains Mono', ui-monospace, 'SF Mono', Menlo, monospace;
-
-  /* SHADOWS */
-  --shadow-sm:     0 1px 3px rgba(0,0,0,0.4);
-  --shadow:        0 4px 16px rgba(0,0,0,0.5);
-  --shadow-lg:     0 20px 60px rgba(0,0,0,0.7);
-  --shadow-card:   0 1px 3px rgba(0,0,0,0.3);
-
-  /* Kept for any remaining app.js inline references */
-  --sidebar-bg:    var(--bg-2);
-  --card:          var(--surface);
-  --card-raised:   var(--surface-2);
-  --border-light:  var(--border);
-  --border-white:  var(--border-bright);
-  --glow-p: none; --glow-a: none; --glow-g: none; --glow-r: none;
 }
 
 /* ══ LIGHT MODE ══ */
@@ -327,10 +322,21 @@ body.login-body { overflow: auto; height: auto; }
    SIDEBAR
 ══════════════════════════════════════════ */
 .sidebar {
+  /* Always dark navy regardless of page theme */
+  --bg:       #0d1117;
+  --bg-2:     #161b2e;
+  --surface:  rgba(255,255,255,0.06);
+  --surface-2: rgba(255,255,255,0.10);
+  --text:     #eaedf5;
+  --text-2:   #9ba5bb;
+  --muted:    #6b7590;
+  --dim:      #4a5268;
+  --border-bright: rgba(255,255,255,0.10);
+
   width: var(--sidebar-w);
   flex-shrink: 0;
-  background: var(--bg-2);
-  border-right: 1px solid var(--border);
+  background: #0d1117;
+  border-right: 1px solid rgba(255,255,255,0.06);
   display: flex;
   flex-direction: column;
   position: fixed;
@@ -3235,11 +3241,16 @@ tbody tr:last-child td { border-bottom: none; }
 
   --bg:             #070c1b;
   --bg-2:           #0a1020;
+  --surface:        #0e1530;
+  --surface-2:      #111a36;
+  --surface-3:      #141e3d;
   --card:           #0e1530;
   --card-raised:    #111a36;
   --border:         rgba(129,140,248,0.18);
+  --border-bright:  rgba(129,140,248,0.28);
   --border-light:   rgba(129,140,248,0.09);
   --border-white:   rgba(255,255,255,0.06);
+  --line:           rgba(129,140,248,0.10);
 
   --text:           #eaefff;
   --text-2:         #c4d0f0;
@@ -3746,27 +3757,29 @@ tbody tr:last-child td { border-bottom: none; }
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 16px;
+  gap: 10px;
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: var(--radius);
-  padding: 20px 24px;
+  padding: 18px 18px;
 }
 .deal-stat-label {
-  font: 600 10px/1.5 var(--font-mono);
+  font: 600 9.5px/1.4 var(--font-mono);
   text-transform: uppercase;
-  letter-spacing: 1px;
+  letter-spacing: 0.8px;
   color: var(--muted);
-  max-width: 80px;
+  max-width: 70px;
+  flex-shrink: 0;
 }
 .deal-stat-value {
-  font-size: 28px;
+  font-size: 20px;
   font-weight: 800;
   line-height: 1;
   color: var(--text);
   letter-spacing: -0.5px;
   text-align: right;
-  flex-shrink: 0;
+  min-width: 0;
+  white-space: nowrap;
 }
 .deal-stat-card.ds--green  { border-left: 4px solid var(--positive); }
 .deal-stat-card.ds--green  .deal-stat-value { color: var(--positive); }
@@ -3790,12 +3803,15 @@ tbody tr:last-child td { border-bottom: none; }
 
 #dealsTable thead th {
   overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  white-space: normal;
+  word-break: break-word;
+  vertical-align: bottom;
+  line-height: 1.2;
+  padding: 10px 8px;
 }
 
 #dealsTable td {
-  padding: 9px 10px;
+  padding: 10px 8px;
   vertical-align: middle;
   overflow: hidden;
   text-overflow: ellipsis;
