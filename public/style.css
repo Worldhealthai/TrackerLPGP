@@ -2118,3 +2118,11 @@ tr.hotel-row-partial:hover td {
 .deal-totals-row td { border-top: 2px solid var(--border) !important; padding: 10px 12px !important; }
 
 .port-card-companies { font-size: 0.75rem; color: var(--text); border-top: 1px solid var(--border); padding-top: 6px; }
+
+/* Deal year/quarter filter add button */
+.deal-q-add {
+  font-weight: 700;
+  padding: 6px 10px !important;
+  color: var(--primary) !important;
+  border-style: dashed !important;
+}

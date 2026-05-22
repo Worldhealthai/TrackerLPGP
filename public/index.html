@@ -362,7 +362,7 @@
           <div class="table-wrap">
             <table id="subTable">
               <thead><tr>
-                <th>Name</th><th>Vendor</th><th>Amount</th><th>Cycle</th><th>Per Month (GBP)</th><th>Per Year (GBP)</th><th>Renewal</th><th>Notes</th><th></th>
+                <th>Name</th><th>Amount</th><th>Cycle</th><th>Per Month (GBP)</th><th>Per Year (GBP)</th><th>Renewal</th><th>Notes</th><th></th>
               </tr></thead>
               <tbody id="subTableBody"></tbody>
             </table>
@@ -390,21 +390,31 @@
     <span id="dealNextInvNum" style="font-weight:700;font-family:monospace"></span>
     <button class="btn btn-ghost" style="margin-left:4px;padding:3px 10px;font-size:0.78rem" onclick="copyNextInvoice()">Copy</button>
   </div>
-  <!-- Filters and actions -->
+  <!-- Year + Quarter filters -->
   <div class="filter-bar" style="align-items:center;gap:8px;flex-wrap:wrap">
-    <div class="deal-q-filters">
-      <button class="deal-q-btn active" data-q="all" onclick="setDealQ(this,'all')">All</button>
-      <button class="deal-q-btn" data-q="Q1" onclick="setDealQ(this,'Q1')" title="Nov · Dec · Jan">Q1 VAT</button>
-      <button class="deal-q-btn" data-q="Q2" onclick="setDealQ(this,'Q2')" title="Feb · Mar · Apr">Q2 VAT</button>
-      <button class="deal-q-btn" data-q="Q3" onclick="setDealQ(this,'Q3')" title="May · Jun · Jul">Q3 VAT</button>
-      <button class="deal-q-btn" data-q="Q4" onclick="setDealQ(this,'Q4')" title="Aug · Sep · Oct">Q4 VAT</button>
+    <div class="deal-q-filters" id="dealYearFilters">
+      <button class="deal-q-btn active" data-yr="all" onclick="setDealYear(this,'all')">All Years</button>
+      <button class="deal-q-btn" data-yr="2025" onclick="setDealYear(this,'2025')">2025</button>
+      <button class="deal-q-btn" data-yr="2026" onclick="setDealYear(this,'2026')">2026</button>
+      <button class="deal-q-btn" data-yr="2027" onclick="setDealYear(this,'2027')">2027</button>
+      <button class="deal-q-btn deal-q-add" onclick="addDealYear()" title="Add year">+</button>
     </div>
-    <input type="search" id="dealSearch" placeholder="Search…" oninput="renderDealsTable()" style="border:1.5px solid var(--border);border-radius:9px;padding:8px 12px;font-size:0.85rem;font-family:inherit;outline:none;background:var(--bg-2);color:var(--text);min-width:180px" />
+    <div class="deal-q-filters">
+      <button class="deal-q-btn active" data-q="all" onclick="setDealQ(this,'all')">All Qtrs</button>
+      <button class="deal-q-btn" data-q="Q1" onclick="setDealQ(this,'Q1')" title="Nov · Dec · Jan">Q1</button>
+      <button class="deal-q-btn" data-q="Q2" onclick="setDealQ(this,'Q2')" title="Feb · Mar · Apr">Q2</button>
+      <button class="deal-q-btn" data-q="Q3" onclick="setDealQ(this,'Q3')" title="May · Jun · Jul">Q3</button>
+      <button class="deal-q-btn" data-q="Q4" onclick="setDealQ(this,'Q4')" title="Aug · Sep · Oct">Q4</button>
+    </div>
+  </div>
+  <div class="filter-bar" style="align-items:center;gap:8px;flex-wrap:wrap;margin-top:-8px">
+    <input type="search" id="dealSearch" placeholder="Search company, title, invoice…" oninput="renderDealsTable()" style="border:1.5px solid var(--border);border-radius:9px;padding:8px 12px;font-size:0.85rem;font-family:inherit;outline:none;background:var(--bg-2);color:var(--text);min-width:200px" />
     <select id="dealStageFilter" onchange="renderDealsTable()" style="border:1.5px solid var(--border);border-radius:9px;padding:8px 12px;font-size:0.85rem;font-family:inherit;background:var(--bg-2);color:var(--text)">
       <option value="">All Stages</option>
       <option>Prospect</option><option>Qualified</option><option>Proposal</option>
       <option>Negotiation</option><option>Won</option><option>Lost</option>
     </select>
+    <button class="btn btn-ghost" onclick="openDealImport()">⬆ Import CSV</button>
     <button class="btn btn-primary" style="margin-left:auto" onclick="openDealModal()">+ Add Deal</button>
   </div>
   <!-- Totals summary -->
@@ -1117,7 +1127,6 @@
     <input type="hidden" id="subEditId">
     <div class="form-row">
       <div class="form-group"><label>Name *</label><input type="text" id="subName" placeholder="e.g. Slack, Adobe CC"></div>
-      <div class="form-group"><label>Vendor</label><input type="text" id="subVendor" placeholder="Provider name"></div>
     </div>
     <div class="form-row">
       <div class="form-group">
@@ -1263,6 +1272,30 @@
     <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:20px">
       <button class="btn btn-ghost" onclick="closeModal('dealModal')">Cancel</button>
       <button class="btn btn-primary" onclick="saveDeal()">Save Deal</button>
+    </div>
+  </div>
+</div>
+
+<!-- ══ MODAL: Deal CSV Import ══ -->
+<div class="modal-overlay" id="dealImportModal">
+  <div class="modal" style="max-width:560px">
+    <div class="modal-header">
+      <h2>Import Deals from CSV</h2>
+      <button class="modal-close" onclick="closeModal('dealImportModal')">✕</button>
+    </div>
+    <p style="font-size:0.85rem;color:var(--muted);margin:0 0 12px">
+      Upload a CSV file. Required column: <strong>Company</strong> or <strong>Title</strong>. Optional columns:
+      <em>Title, Stage, Amount, Currency, Paid inc VAT, Tax VAT, Invoice Number, Invoice Date, Paid Date, Bank, Sent, Signed, Initials, Notes</em>.
+      First row must be headers.
+    </p>
+    <div class="form-group">
+      <label>CSV File</label>
+      <input type="file" id="dealImportFile" accept=".csv" onchange="previewDealImport(this)">
+    </div>
+    <div id="dealImportPreview" style="font-size:0.82rem;margin-top:8px"></div>
+    <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:20px">
+      <button class="btn btn-ghost" onclick="closeModal('dealImportModal')">Cancel</button>
+      <button class="btn btn-primary" id="dealImportBtn" onclick="runDealImport()" disabled>Import</button>
     </div>
   </div>
 </div>

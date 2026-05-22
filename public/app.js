@@ -2899,7 +2899,6 @@ function renderSubTable() {
     const activeDot = s.active ? '<span style="color:var(--success)">●</span>' : '<span style="color:var(--muted)">●</span>';
     return `<tr class="${s.active ? '' : 'sub-inactive'}">
       <td>${activeDot} ${esc(s.name)}</td>
-      <td>${esc(s.vendor||'')}</td>
       <td>${sym}${fmt(parseFloat(s.amount))}</td>
       <td>${cycleLabel}</td>
       <td>£${fmt(perMonth)}</td>
@@ -2924,7 +2923,6 @@ function openSubModal(id) {
     const s = subsData.find(x => x.id === id);
     if (!s) return;
     document.getElementById('subName').value = s.name;
-    document.getElementById('subVendor').value = s.vendor || '';
     document.getElementById('subCurrency').value = s.currency;
     document.getElementById('subAmount').value = s.amount;
     document.getElementById('subCycle').value = s.billing_cycle;
@@ -2932,7 +2930,6 @@ function openSubModal(id) {
     document.getElementById('subNotes').value = s.notes || '';
   } else {
     document.getElementById('subName').value = '';
-    document.getElementById('subVendor').value = '';
     document.getElementById('subCurrency').value = 'GBP';
     document.getElementById('subAmount').value = '';
     document.getElementById('subCycle').value = 'monthly';
@@ -2949,7 +2946,7 @@ async function saveSub() {
   const amount = parseFloat(document.getElementById('subAmount').value);
   if (isNaN(amount) || amount < 0) { showToast('Enter a valid amount', 'error'); return; }
   const body = {
-    name, vendor: document.getElementById('subVendor').value.trim(),
+    name, vendor: '',
     currency: document.getElementById('subCurrency').value,
     amount, billing_cycle: document.getElementById('subCycle').value,
     renewal_date: document.getElementById('subRenewal').value || null,
@@ -3089,8 +3086,10 @@ let dealsData = [];
 let _dealInv1 = null;
 let _dealInv2 = null;
 let _dealQFilter = 'all';
+let _dealYearFilter = 'all';
 let _lastInvoiceId = null;
 let _nextInvoiceNum = null;
+let _importRows = [];
 
 async function loadDeals() {
   try {
@@ -3140,21 +3139,44 @@ function copyNextInvoice() {
   navigator.clipboard.writeText(el.textContent).then(() => showToast('Copied!', 'success'));
 }
 
+function setDealYear(btn, yr) {
+  _dealYearFilter = yr;
+  document.querySelectorAll('#dealYearFilters .deal-q-btn').forEach(b => b.classList.toggle('active', b.dataset.yr === yr));
+  renderDealsTable();
+}
+
+function addDealYear() {
+  const yr = prompt('Enter year (e.g. 2028):');
+  if (!yr || !/^\d{4}$/.test(yr.trim())) return;
+  const container = document.getElementById('dealYearFilters');
+  const addBtn = container.querySelector('.deal-q-add');
+  const btn = document.createElement('button');
+  btn.className = 'deal-q-btn';
+  btn.dataset.yr = yr.trim();
+  btn.textContent = yr.trim();
+  btn.onclick = () => setDealYear(btn, yr.trim());
+  container.insertBefore(btn, addBtn);
+}
+
 function setDealQ(btn, q) {
   _dealQFilter = q;
-  document.querySelectorAll('.deal-q-btn').forEach(b => b.classList.toggle('active', b.dataset.q === q));
+  document.querySelectorAll('[data-q]').forEach(b => b.classList.toggle('active', b.dataset.q === q));
   renderDealsTable();
 }
 
 function dealPassesFilter(d) {
   const q = _dealQFilter;
+  const yr = _dealYearFilter;
   const search = (document.getElementById('dealSearch')?.value || '').trim().toLowerCase();
   const stageFilter = document.getElementById('dealStageFilter')?.value || '';
   if (search && ![(d.company||''),(d.title||''),(d.contact_name||''),(d.invoice_number||'')].some(s => s.toLowerCase().includes(search))) return false;
   if (stageFilter && d.stage !== stageFilter) return false;
+  const date = d.invoice_date ? new Date(d.invoice_date) : null;
+  if (yr !== 'all') {
+    if (!date || String(date.getFullYear()) !== yr) return false;
+  }
   if (q !== 'all') {
     const months = DEAL_VAT_QUARTERS[q];
-    const date = d.invoice_date ? new Date(d.invoice_date) : null;
     if (!date) return false;
     if (!months.includes(date.getMonth() + 1)) return false;
   }
@@ -3425,4 +3447,186 @@ async function deleteDeal(id) {
   showToast('Deal deleted', 'success');
   loadDeals();
   loadPortfolio();
+}
+
+// ─── DEAL CSV IMPORT ──────────────────────────────────────────────────────────
+
+function openDealImport() {
+  _importRows = [];
+  document.getElementById('dealImportFile').value = '';
+  document.getElementById('dealImportPreview').innerHTML = '';
+  document.getElementById('dealImportBtn').disabled = true;
+  openModal('dealImportModal');
+}
+
+function previewDealImport(input) {
+  const file = input.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = e => {
+    const text = e.target.result;
+    _importRows = parseDealCSV(text);
+    const preview = document.getElementById('dealImportPreview');
+    const btn = document.getElementById('dealImportBtn');
+    if (!_importRows.length) {
+      preview.innerHTML = '<span style="color:var(--danger)">No valid rows found. Make sure the CSV has a Company or Title column.</span>';
+      btn.disabled = true;
+      return;
+    }
+    preview.innerHTML = `<div style="color:var(--success);margin-bottom:8px">✓ Found <strong>${_importRows.length}</strong> deals to import.</div>
+      <div style="max-height:160px;overflow-y:auto;border:1px solid var(--border);border-radius:8px;font-size:0.75rem">
+        <table style="width:100%"><thead><tr style="background:var(--bg-2)">
+          <th style="padding:4px 8px">Company</th><th style="padding:4px 8px">Title</th>
+          <th style="padding:4px 8px">Amount</th><th style="padding:4px 8px">Stage</th><th style="padding:4px 8px">Invoice #</th>
+        </tr></thead><tbody>
+          ${_importRows.slice(0,20).map(r=>`<tr>
+            <td style="padding:3px 8px">${esc(r.company||'')}</td>
+            <td style="padding:3px 8px">${esc(r.title||'')}</td>
+            <td style="padding:3px 8px">${r.amount||'—'}</td>
+            <td style="padding:3px 8px">${r.stage||'Prospect'}</td>
+            <td style="padding:3px 8px;font-size:0.7rem;font-family:monospace">${esc(r.invoice_number||'')}</td>
+          </tr>`).join('')}
+          ${_importRows.length > 20 ? `<tr><td colspan="5" style="padding:4px 8px;color:var(--muted)">...and ${_importRows.length-20} more</td></tr>` : ''}
+        </tbody></table>
+      </div>`;
+    btn.disabled = false;
+  };
+  reader.readAsText(file);
+}
+
+function parseDealCSV(text) {
+  const lines = text.split(/\r?\n/).filter(l => l.trim());
+  if (lines.length < 2) return [];
+  // Parse header row (handle quoted fields)
+  const parseRow = row => {
+    const cols = []; let cur = ''; let inQ = false;
+    for (let i = 0; i < row.length; i++) {
+      const c = row[i];
+      if (c === '"') { inQ = !inQ; }
+      else if (c === ',' && !inQ) { cols.push(cur.trim()); cur = ''; }
+      else cur += c;
+    }
+    cols.push(cur.trim());
+    return cols;
+  };
+  const headers = parseRow(lines[0]).map(h => h.toLowerCase().replace(/[^a-z0-9]/g,'_').replace(/_+/g,'_').replace(/^_|_$/g,''));
+  // Map known column names
+  const colMap = {
+    company: ['company','company_name','client','client_name'],
+    title: ['title','deal_title','deal','name','description'],
+    stage: ['stage','status','deal_stage'],
+    amount: ['amount','deal_value','value','deal_amount','contract_value'],
+    currency: ['currency','ccy'],
+    paid_inc_vat: ['paid_inc_vat','paid','paid_amount','payment','paid_inc_vat_'],
+    tax_vat: ['tax_vat','vat','tax','vat_amount','tax_amount'],
+    invoice_number: ['invoice_number','invoice_no','invoice','invoice_num','lpgp'],
+    invoice_date: ['invoice_date','date_invoice','inv_date','invoice_issued','date_invoice_issued'],
+    paid_date: ['paid_date','date_paid','payment_date'],
+    bank: ['bank','payment_method','method'],
+    invoice_agreement_sent: ['invoice_agreement_sent','sent','agreement_sent','inv_sent'],
+    signature_received: ['signature_received','signed','signature','sig'],
+    initials: ['initials','by','sales','rep'],
+    notes: ['notes','note','comments','comment']
+  };
+  const findCol = (aliases) => {
+    for (const a of aliases) {
+      const idx = headers.indexOf(a);
+      if (idx !== -1) return idx;
+    }
+    // Partial match
+    for (const a of aliases) {
+      const idx = headers.findIndex(h => h.includes(a) || a.includes(h));
+      if (idx !== -1) return idx;
+    }
+    return -1;
+  };
+  const idxMap = {};
+  for (const [field, aliases] of Object.entries(colMap)) idxMap[field] = findCol(aliases);
+
+  const VALID_STAGES = new Set(['Prospect','Qualified','Proposal','Negotiation','Won','Lost']);
+  const results = [];
+  for (let i = 1; i < lines.length; i++) {
+    const cols = parseRow(lines[i]);
+    const get = field => (idxMap[field] >= 0 ? (cols[idxMap[field]] || '').trim() : '');
+    const company = get('company');
+    const title = get('title') || company;
+    if (!company && !title) continue;
+    const stageRaw = get('stage');
+    // Normalize stage
+    const stage = VALID_STAGES.has(stageRaw) ? stageRaw
+      : stageRaw.toLowerCase().includes('won') ? 'Won'
+      : stageRaw.toLowerCase().includes('lost') ? 'Lost'
+      : stageRaw.toLowerCase().includes('prop') ? 'Proposal'
+      : stageRaw.toLowerCase().includes('neg') ? 'Negotiation'
+      : stageRaw.toLowerCase().includes('qual') ? 'Qualified'
+      : 'Prospect';
+    const parseDate = s => {
+      if (!s) return null;
+      // Try DD/MM/YYYY or DD/MM/YY
+      const m = s.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{2,4})$/);
+      if (m) {
+        const yr = m[3].length === 2 ? '20'+m[3] : m[3];
+        return `${yr}-${m[2].padStart(2,'0')}-${m[1].padStart(2,'0')}`;
+      }
+      // Try YYYY-MM-DD
+      if (/^\d{4}-\d{2}-\d{2}/.test(s)) return s.slice(0,10);
+      return null;
+    };
+    const parseBool = s => ['yes','true','1','y','✓','✅'].includes((s||'').toLowerCase());
+    results.push({
+      company, title, stage,
+      amount: get('amount').replace(/[£$€,\s]/g,'') || '0',
+      currency: get('currency').toUpperCase() || 'GBP',
+      paid_inc_vat: get('paid_inc_vat').replace(/[£$€,\s]/g,'') || null,
+      tax_vat: get('tax_vat').replace(/[£$€,\s]/g,'') || null,
+      invoice_number: get('invoice_number'),
+      invoice_date: parseDate(get('invoice_date')),
+      paid_date: parseDate(get('paid_date')),
+      bank: get('bank'),
+      invoice_agreement_sent: parseBool(get('invoice_agreement_sent')),
+      signature_received: parseBool(get('signature_received')),
+      initials: get('initials').toUpperCase(),
+      notes: get('notes')
+    });
+  }
+  return results;
+}
+
+async function runDealImport() {
+  if (!_importRows.length) return;
+  const btn = document.getElementById('dealImportBtn');
+  btn.disabled = true;
+  btn.textContent = 'Importing…';
+  let ok = 0, fail = 0;
+  for (const row of _importRows) {
+    const body = {
+      title: row.title || row.company,
+      company: row.company,
+      contact_name: '',
+      initials: row.initials || '',
+      stage: row.stage || 'Prospect',
+      currency: row.currency || 'GBP',
+      amount: parseFloat(row.amount) || 0,
+      paid_inc_vat: row.paid_inc_vat ? parseFloat(row.paid_inc_vat) : null,
+      tax_vat: row.tax_vat ? parseFloat(row.tax_vat) : null,
+      invoice_number: row.invoice_number || '',
+      invoice_date: row.invoice_date || null,
+      paid_date: row.paid_date || null,
+      bank: row.bank || '',
+      invoice_agreement_sent: !!row.invoice_agreement_sent,
+      signature_received: !!row.signature_received,
+      notes: row.notes || '',
+      event_ids: []
+    };
+    // Auto-set row_status for Won deals
+    if (row.stage === 'Won' && row.paid_inc_vat) body.row_status = 'paid';
+    try {
+      const res = await fetch('/api/deals', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(body) });
+      if (res.ok) ok++; else fail++;
+    } catch { fail++; }
+  }
+  btn.textContent = 'Import';
+  closeModal('dealImportModal');
+  showToast(`Imported ${ok} deal${ok !== 1 ? 's' : ''}${fail ? ` (${fail} failed)` : ''}`, ok > 0 ? 'success' : 'error');
+  if (ok > 0) loadDeals();
 }
