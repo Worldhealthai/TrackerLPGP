@@ -3778,18 +3778,35 @@ tbody tr:last-child td { border-bottom: none; }
 /* ── Deals table card ── */
 .deal-table-card { padding: 0; overflow: hidden; }
 
-/* Table column widths */
-.deal-th-month  { width: 72px; }
-.deal-th-company { min-width: 160px; }
-.deal-th-num    { width: 110px; text-align: right !important; }
-.deal-th-date   { width: 100px; }
-.deal-th-bank   { width: 70px; }
-.deal-th-inv    { width: 152px; }
-.deal-th-sm     { width: 52px; text-align: center !important; }
-.deal-th-del    { width: 36px; }
+#dealsTable {
+  table-layout: fixed;
+  width: 100%;
+  border-collapse: collapse;
+}
 
-#dealsTable td { white-space: normal; word-break: break-word; vertical-align: top; padding: 9px 12px; }
-#dealsTable td.deal-cell-edit { white-space: normal; }
+/* Right-align numeric columns, center icon columns */
+#dealsTable .dt-r { text-align: right !important; }
+#dealsTable .dt-c { text-align: center !important; }
+
+#dealsTable thead th {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+#dealsTable td {
+  padding: 9px 10px;
+  vertical-align: middle;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Let notes column wrap instead of truncate */
+#dealsTable td:nth-child(11) { white-space: normal; word-break: break-word; vertical-align: top; }
+
+/* Editable cell keeps normal text flow */
+#dealsTable td.deal-cell-edit { cursor: pointer; }
 
 /* Row states */
 .deal-row-paid    { background: rgba(22,163,74,.12) !important; }
@@ -4217,14 +4234,14 @@ tbody tr:last-child td { border-bottom: none; }
   overflow: hidden;
   font-size: 0.78rem;
   color: var(--muted);
-  max-width: 200px;
   cursor: pointer;
+  white-space: normal;
 }
 /* Month cell display */
 .deal-month-disp {
-  font-size: 0.78rem;
+  font-size: 0.8rem;
   white-space: nowrap;
-  color: var(--muted);
+  color: var(--text);
   font-weight: 600;
 }
 /* Deal title display */
@@ -4247,7 +4264,9 @@ tbody tr:last-child td { border-bottom: none; }
 .deal-cell-company {
   cursor: pointer;
   transition: background 0.1s;
-  padding: 8px 10px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .deal-cell-company:hover { background: rgba(79,70,229,0.08) !important; }
 .deal-co-link { color: var(--primary); }
