@@ -717,7 +717,8 @@ app.get('/api/salary-overview', requireAuth, requireAdmin, async (req, res) => {
         excess_deduction:    dayCalc.excess_deduction,
         breakdown:           dayCalc.breakdown,
         net_remaining:       netRemaining,
-        pct_paid:            pctPaid
+        pct_paid:            pctPaid,
+        has_pin:             !!emp.portal_pin
       };
     }));
 
@@ -1152,6 +1153,21 @@ app.delete('/api/hotel-expenses/:id', requireAuth, async (req, res) => {
   try {
     await q('DELETE FROM hotel_expenses WHERE id = ?', [req.params.id]);
     res.json({ ok: true });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// PATCH: update individual fields of a hotel expense row
+app.patch('/api/hotel-expenses/:id', requireAuth, async (req, res) => {
+  try {
+    const allowed = ['event_name','hotel','cost','av_amount','av_currency','av_billing','paid_amount','paid_currency','staff_hotel','flights','printing','status','notes'];
+    const fields = Object.keys(req.body).filter(k => allowed.includes(k));
+    if (!fields.length) return res.status(400).json({ error: 'No valid fields' });
+    const sets = fields.map(f => `${f}=?`).join(', ');
+    const vals = fields.map(f => req.body[f] === '' ? null : req.body[f]);
+    const { rows } = await q(`UPDATE hotel_expenses SET ${sets} WHERE id=? RETURNING *`, [...vals, req.params.id]);
+    if (!rows.length) return res.status(404).json({ error: 'Not found' });
+    // Refresh in-memory for summary recalc (client will re-fetch)
+    res.json(rows[0]);
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 

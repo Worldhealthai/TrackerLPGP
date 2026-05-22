@@ -882,6 +882,93 @@ tbody tr:hover td strong { color: var(--primary); }
 [data-theme="dark"] .pb-row:hover { background: rgba(129,140,248,0.05); }
 [data-theme="dark"] .pb-dot--due  { box-shadow: 0 0 0 2px rgba(248,113,113,0.2), 0 0 8px rgba(248,113,113,0.35); }
 
+/* Payment board category sections */
+.pb-section { border-bottom: 1px solid var(--border-light); }
+.pb-section:last-child { border-bottom: none; }
+.pb-section-hd {
+  display: flex; align-items: center; gap: 10px;
+  padding: 9px 20px; background: var(--bg);
+  border-bottom: 1px solid var(--border-light);
+}
+.pb-section-icon { font-size: 10px; }
+.pb-section-title {
+  font-size: 0.68rem; font-weight: 800; text-transform: uppercase;
+  letter-spacing: 0.8px; color: var(--text); flex: 1;
+}
+.pb-section-count { font-size: 0.72rem; color: var(--muted); }
+.pb-section-list .pb-row:last-child { border-bottom: none; }
+.pb-pin-btn {
+  font-size: 0.65rem; padding: 3px 7px; border-radius: 6px; border: 1px solid var(--border);
+  background: var(--bg); color: var(--muted); cursor: pointer; font-family: inherit;
+  flex-shrink: 0; transition: all 0.15s; white-space: nowrap;
+}
+.pb-pin-btn:hover { border-color: var(--primary); color: var(--primary); background: var(--primary-light); }
+
+/* ── Headcount panel with expandable departments ── */
+.hc-panel .dash-panel-body { padding: 0; }
+.hc-dept {
+  border-bottom: 1px solid var(--border-light); cursor: pointer;
+  transition: background 0.12s;
+}
+.hc-dept:last-child { border-bottom: none; }
+.hc-dept-hd {
+  display: flex; align-items: center; gap: 10px;
+  padding: 11px 16px;
+}
+.hc-dept:hover .hc-dept-hd { background: var(--bg); }
+.hc-dept-bar { width: 3px; height: 18px; border-radius: 2px; flex-shrink: 0; }
+.hc-dept-name { font-size: 0.88rem; font-weight: 700; color: var(--text); flex: 1; }
+.hc-dept-badges { display: flex; gap: 5px; }
+.hc-dept-pct { font-size: 0.72rem; color: var(--muted); font-weight: 600; min-width: 30px; text-align: right; }
+.hc-dept-chevron {
+  color: var(--muted-light); font-size: 1rem; transition: transform 0.2s;
+}
+.hc-dept.hc-open .hc-dept-chevron { transform: rotate(90deg); }
+.hc-dept-track {
+  height: 3px; background: var(--border-light); margin: 0 16px 8px;
+  border-radius: 2px; overflow: hidden;
+}
+.hc-dept-fill { height: 100%; border-radius: 2px; transition: width 0.5s; }
+.hc-emp-list {
+  display: none; padding: 0 16px 10px;
+}
+.hc-dept.hc-open .hc-emp-list { display: block; }
+.hc-emp-row {
+  display: flex; align-items: center; gap: 10px;
+  padding: 7px 10px; border-radius: 9px; cursor: pointer;
+  transition: background 0.12s;
+}
+.hc-emp-row:hover { background: var(--bg); }
+.hc-emp-av {
+  width: 30px; height: 30px; border-radius: 8px; flex-shrink: 0;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 0.65rem; font-weight: 800; color: #fff;
+}
+.hc-emp-info { flex: 1; min-width: 0; }
+.hc-emp-name { font-size: 0.82rem; font-weight: 600; color: var(--text); }
+.hc-emp-role { font-size: 0.7rem; color: var(--muted); }
+
+/* ── Hotel inline editing ── */
+.ht-cell { cursor: pointer; transition: background 0.1s; min-width: 60px; }
+.ht-cell:hover { background: var(--primary-light) !important; }
+.ht-empty { color: var(--muted-light); user-select: none; }
+.ht-input {
+  width: 100%; padding: 4px 6px; border: 1.5px solid var(--primary);
+  border-radius: 5px; background: var(--card); color: var(--text);
+  font-size: 0.82rem; font-family: inherit; outline: none;
+  box-shadow: 0 0 0 3px rgba(79,70,229,0.12);
+}
+.ht-num { text-align: right; font-variant-numeric: tabular-nums; }
+.ht-cur-sel { padding: 0 !important; }
+.ht-select {
+  width: 100%; padding: 6px 5px; border: none; background: transparent;
+  color: var(--text); font-size: 0.78rem; font-family: inherit; cursor: pointer;
+  outline: none;
+}
+.ht-select:focus { background: var(--primary-light); border-radius: 4px; }
+.ht-status-sel { font-weight: 700; }
+[data-theme="dark"] .ht-input { background: var(--card); color: var(--text); }
+
 /* ══════════════════════════════════════════
    SALARY PAGE (legacy card)
 ══════════════════════════════════════════ */

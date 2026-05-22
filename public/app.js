@@ -477,29 +477,62 @@ function renderHeadcountPanel(activeEmps) {
   const depts = {};
   activeEmps.forEach(e => {
     const d = e.department || 'Unassigned';
-    if (!depts[d]) depts[d] = { count: 0, payroll: 0, se: 0 };
+    if (!depts[d]) depts[d] = { count: 0, payroll: 0, se: 0, emps: [] };
     depts[d].count++;
     if (e.employment_type === 'self_employed') depts[d].se++;
     else depts[d].payroll++;
+    depts[d].emps.push(e);
   });
   const sorted = Object.entries(depts).sort((a,b) => b[1].count - a[1].count);
   if (!sorted.length) { el.innerHTML = ''; return; }
+
+  function deptColor(i) {
+    const colors = ['#4f46e5','#0891b2','#16a34a','#d97706','#dc2626','#7c3aed','#be185d'];
+    return colors[i % colors.length];
+  }
+
   el.innerHTML = `
-    <div class="dash-panel">
+    <div class="dash-panel hc-panel">
       <div class="dash-panel-header">
         <span class="dash-panel-icon">🏢</span>
         <span class="dash-panel-title">Headcount by Department</span>
         <span class="dash-panel-count">${activeEmps.length} total</span>
       </div>
-      <div class="dash-panel-body">
-        ${sorted.map(([dept, info]) => `
-          <div class="dash-panel-row">
-            <div style="font-weight:600;font-size:0.88rem">${esc(dept)}</div>
-            <div style="display:flex;gap:6px;align-items:center">
-              ${info.payroll ? `<span class="badge badge-blue">${info.payroll} payroll</span>` : ''}
-              ${info.se ? `<span class="badge badge-yellow">${info.se} self-emp</span>` : ''}
+      <div class="dash-panel-body hc-body">
+        ${sorted.map(([dept, info], idx) => {
+          const color = deptColor(idx);
+          const pct = Math.round((info.count / activeEmps.length) * 100);
+          return `
+          <div class="hc-dept" onclick="this.classList.toggle('hc-open')">
+            <div class="hc-dept-hd">
+              <div class="hc-dept-bar" style="background:${color}"></div>
+              <div class="hc-dept-name">${esc(dept)}</div>
+              <div class="hc-dept-badges">
+                ${info.payroll ? `<span class="badge badge-blue">${info.payroll} payroll</span>` : ''}
+                ${info.se ? `<span class="badge badge-yellow">${info.se} self-emp</span>` : ''}
+              </div>
+              <div class="hc-dept-pct">${pct}%</div>
+              <div class="hc-dept-chevron">›</div>
             </div>
-          </div>`).join('')}
+            <div class="hc-dept-track"><div class="hc-dept-fill" style="width:${pct}%;background:${color}"></div></div>
+            <div class="hc-emp-list">
+              ${info.emps.map(e => {
+                const initials = (e.name||'?').split(' ').map(w=>w[0]).join('').slice(0,2).toUpperCase();
+                const isSE = e.employment_type === 'self_employed';
+                const avatarBg = isSE ? '#d97706' : color;
+                const role = [e.job_title, e.department !== dept ? e.department : ''].filter(Boolean).join(' · ') || (isSE ? 'Self-Employed' : 'Payroll');
+                return `<div class="hc-emp-row" onclick="event.stopPropagation();goToTracking(${e.id})">
+                  <div class="hc-emp-av" style="background:${avatarBg}">${initials}</div>
+                  <div class="hc-emp-info">
+                    <div class="hc-emp-name">${esc(e.name)}</div>
+                    <div class="hc-emp-role">${esc(role)}</div>
+                  </div>
+                  <span class="badge ${isSE ? 'badge-yellow' : 'badge-blue'}" style="font-size:0.6rem">${isSE ? 'SE' : 'PR'}</span>
+                </div>`;
+              }).join('')}
+            </div>
+          </div>`;
+        }).join('')}
       </div>
     </div>`;
 }
@@ -1110,6 +1143,11 @@ function pbFilter(btn, filter) {
   document.querySelectorAll('#pbList .pb-row').forEach(row => {
     row.style.display = (filter === 'unpaid' && row.classList.contains('pb-row--settled')) ? 'none' : '';
   });
+  // Hide section headers if all their rows are hidden
+  document.querySelectorAll('#pbList .pb-section').forEach(sec => {
+    const visible = [...sec.querySelectorAll('.pb-row')].some(r => r.style.display !== 'none');
+    sec.style.display = visible ? '' : 'none';
+  });
 }
 
 function activeSalaryTab() {
@@ -1255,15 +1293,61 @@ async function loadSalaryPage() {
 
     document.getElementById('salaryTotals').innerHTML = (groupCards.join('') + gbpCard) || '';
 
-    // ── Payment Board ──
+    // ── Payment Board (3 categories) ──
     const activeForBoard = rows.filter(r => !r.is_terminated);
     const unpaidForBoard = activeForBoard.filter(r => (parseFloat(r.net_remaining) || 0) > 0);
+
+    const seGroup      = activeForBoard.filter(r => r.employment_type === 'self_employed' && (r.currency || 'GBP') === 'GBP');
+    const payrollGroup = activeForBoard.filter(r => r.employment_type === 'payroll'       && (r.currency || 'GBP') === 'GBP');
+    const intlGroup    = activeForBoard.filter(r => (r.currency || 'GBP') !== 'GBP');
+
+    function buildPbRow(emp) {
+      const remaining = parseFloat(emp.net_remaining) || 0;
+      const sym = currencySymbol(emp.currency || 'GBP');
+      const initials = (emp.name || '?').split(' ').map(w => w[0]).join('').slice(0,2).toUpperCase();
+      const isOverpaid = remaining < 0;
+      const dotCls = isOverpaid ? 'pb-dot--over' : remaining <= 0 ? 'pb-dot--paid' : 'pb-dot--due';
+      const amtCls = isOverpaid ? 'pb-amt--over' : remaining <= 0 ? 'pb-amt--paid' : 'pb-amt--due';
+      const amtText = isOverpaid
+        ? `Overpaid ${sym}${Math.abs(remaining).toLocaleString('en-GB',{maximumFractionDigits:0})}`
+        : remaining <= 0 ? '✓ Settled'
+        : `${sym}${remaining.toLocaleString('en-GB',{maximumFractionDigits:0})}`;
+      const isPaidRow = remaining <= 0;
+      const pinBtn = !emp.has_pin
+        ? `<button class="pb-pin-btn" onclick="event.stopPropagation();openEmpModal(employees.find(e=>e.id===${emp.employee_id}));document.getElementById('empPin')?.focus()" title="Set Portal PIN">🔑 PIN</button>`
+        : '';
+      return `<div class="pb-row${isPaidRow ? ' pb-row--settled' : ''}" onclick="document.getElementById('sc-emp-${emp.employee_id}')?.scrollIntoView({behavior:'smooth',block:'start'})">
+        <span class="pb-dot ${dotCls}"></span>
+        <div class="pb-avatar">${initials}</div>
+        <div class="pb-name">${esc(emp.name)}</div>
+        ${pinBtn}
+        <div class="pb-amt ${amtCls}">${amtText}</div>
+        <span class="pb-chevron">›</span>
+      </div>`;
+    }
+
+    function buildPbSection(title, icon, color, emps) {
+      if (!emps.length) return '';
+      const dueCount = emps.filter(e => (parseFloat(e.net_remaining) || 0) > 0).length;
+      return `
+        <div class="pb-section">
+          <div class="pb-section-hd" style="--sec-color:${color}">
+            <span class="pb-section-icon">${icon}</span>
+            <span class="pb-section-title">${title}</span>
+            <span class="pb-section-count">${emps.length} · <span style="color:#ef4444">${dueCount} to pay</span></span>
+          </div>
+          <div class="pb-section-list">
+            ${emps.map(buildPbRow).join('')}
+          </div>
+        </div>`;
+    }
+
     const boardHtml = activeForBoard.length ? `
       <div class="payment-board">
         <div class="pb-header">
           <div class="pb-title-group">
             <span class="pb-title">Payment Status</span>
-            <span class="pb-subtitle">${activeForBoard.length} employee${activeForBoard.length !== 1 ? 's' : ''} · ${year}</span>
+            <span class="pb-subtitle">${activeForBoard.length} employees · ${year}</span>
           </div>
           <div class="pb-filters">
             <button class="pb-filter active" onclick="pbFilter(this,'all')">All (${activeForBoard.length})</button>
@@ -1271,27 +1355,9 @@ async function loadSalaryPage() {
           </div>
         </div>
         <div class="pb-list" id="pbList">
-          ${activeForBoard.map(emp => {
-            const remaining = parseFloat(emp.net_remaining) || 0;
-            const sym = currencySymbol(emp.currency || 'GBP');
-            const initials = (emp.name || '?').split(' ').map(w => w[0]).join('').slice(0,2).toUpperCase();
-            const isOverpaid = remaining < 0;
-            const dotCls = isOverpaid ? 'pb-dot--over' : remaining <= 0 ? 'pb-dot--paid' : 'pb-dot--due';
-            const amtCls = isOverpaid ? 'pb-amt--over' : remaining <= 0 ? 'pb-amt--paid' : 'pb-amt--due';
-            const amtText = isOverpaid
-              ? `Overpaid ${sym}${Math.abs(remaining).toLocaleString('en-GB',{maximumFractionDigits:0})}`
-              : remaining <= 0 ? '✓ Settled'
-              : `${sym}${remaining.toLocaleString('en-GB',{maximumFractionDigits:0})}`;
-            const isPaidRow = remaining <= 0;
-            return `<div class="pb-row${isPaidRow ? ' pb-row--settled' : ''}" onclick="document.getElementById('sc-emp-${emp.employee_id}')?.scrollIntoView({behavior:'smooth',block:'start'})">
-              <span class="pb-dot ${dotCls}"></span>
-              <div class="pb-avatar">${initials}</div>
-              <div class="pb-name">${esc(emp.name)}</div>
-              <span class="badge ${emp.employment_type === 'self_employed' ? 'badge-yellow' : 'badge-blue'} pb-type-badge">${emp.employment_type === 'self_employed' ? 'SE' : 'PR'}</span>
-              <div class="pb-amt ${amtCls}">${amtText}</div>
-              <span class="pb-chevron">›</span>
-            </div>`;
-          }).join('')}
+          ${buildPbSection('Self-Employed', '🟡', '#d97706', seGroup)}
+          ${buildPbSection('Payroll', '🔵', '#4f46e5', payrollGroup)}
+          ${buildPbSection('Internationals', '🌍', '#0891b2', intlGroup)}
         </div>
       </div>` : '';
     document.getElementById('salaryBoard').innerHTML = boardHtml;
@@ -2498,32 +2564,59 @@ function renderHotelTable() {
     pending: '<span class="badge badge-grey">Pending</span>'
   };
 
+  const CURRENCIES = ['USD','GBP','EUR','CHF','AED','CAD','AUD'];
+  const curOpts = CURRENCIES.map(c => `<option>${c}</option>`).join('');
+
   tbody.innerHTML = filtered.map(r => {
     const rowClass = r.status === 'paid' ? 'hotel-row-paid' : r.status === 'partial' ? 'hotel-row-partial' : '';
     const avSym   = hotelCurrencySymbol(r.av_currency || 'USD');
     const paidSym = hotelCurrencySymbol(r.paid_currency || 'USD');
-    const avBillingBadge = r.av_billing === 'included' ? ' <span class="hotel-incl-badge">incl.</span>' : '';
-    const avStr   = r.av_amount != null ? `${avSym}${fmtHotelNum(r.av_amount)}${avBillingBadge}` : '—';
-    const paidStr = r.paid_amount != null ? `${paidSym}${fmtHotelNum(r.paid_amount)}` : '—';
-    const shStr   = r.staff_hotel != null ? `${fmtHotelNum(r.staff_hotel)}` : '—';
-    const flStr   = r.flights    != null ? `${fmtHotelNum(r.flights)}` : '—';
-    const prStr   = r.printing   != null ? `${fmtHotelNum(r.printing)}` : '—';
-    return `<tr class="${rowClass}" title="${esc(r.notes||'')}">
-      <td><strong>${esc(r.event_name)}</strong></td>
-      <td style="font-size:0.82rem">${esc(r.hotel||'—')}</td>
-      <td style="font-size:0.82rem;color:var(--text-2)">${esc(r.cost||'—')}</td>
-      <td style="font-size:0.82rem">${avStr}</td>
-      <td style="font-size:0.82rem;font-weight:600">${paidStr}</td>
-      <td style="font-size:0.82rem;color:var(--muted)">${shStr}</td>
-      <td style="font-size:0.82rem;color:var(--muted)">${flStr}</td>
-      <td style="font-size:0.82rem;color:var(--muted)">${prStr}</td>
-      <td>${STATUS_BADGE[r.status] || ''}</td>
-      <td>
-        <div style="display:flex;gap:4px">
-          <button class="btn btn-ghost btn-sm" onclick="openHotelModal(${r.id})">Edit</button>
-          <button class="btn btn-danger btn-sm" onclick="deleteHotelExpense(${r.id})">×</button>
-        </div>
+
+    function cellText(field, val, style='') {
+      const display = val != null && val !== '' ? esc(String(val)) : '<span class="ht-empty">—</span>';
+      return `<td class="ht-cell" data-id="${r.id}" data-field="${field}" data-val="${val != null ? esc(String(val)) : ''}" onclick="htEditCell(this)" style="${style}">${display}</td>`;
+    }
+    function cellNum(field, val, style='') {
+      const display = val != null ? fmtHotelNum(val) : '<span class="ht-empty">—</span>';
+      return `<td class="ht-cell ht-num" data-id="${r.id}" data-field="${field}" data-val="${val != null ? val : ''}" onclick="htEditCell(this)" style="${style}">${display}</td>`;
+    }
+    function cellCur(field, val) {
+      return `<td class="ht-cell ht-cur-sel" data-id="${r.id}" data-field="${field}" data-val="${val||'USD'}">
+        <select class="ht-select" onchange="htPatchField(${r.id},'${field}',this.value)" onclick="event.stopPropagation()">
+          ${CURRENCIES.map(c=>`<option${c===(val||'USD')?' selected':''}>${c}</option>`).join('')}
+        </select>
+      </td>`;
+    }
+
+    const avBilling = r.av_billing === 'included'
+      ? `<span class="hotel-incl-badge" style="margin-left:4px">incl.</span>`
+      : '';
+
+    return `<tr class="${rowClass}" id="htr-${r.id}">
+      ${cellText('event_name', r.event_name, 'font-weight:700')}
+      ${cellText('hotel', r.hotel||'')}
+      ${cellText('cost', r.cost||'')}
+      ${cellCur('av_currency', r.av_currency)}
+      ${cellNum('av_amount', r.av_amount)}
+      <td class="ht-cell ht-cur-sel" data-id="${r.id}" data-field="av_billing" data-val="${r.av_billing||'separate'}">
+        <select class="ht-select" onchange="htPatchField(${r.id},'av_billing',this.value)" onclick="event.stopPropagation()">
+          <option value="separate"${(r.av_billing||'separate')==='separate'?' selected':''}>Sep.</option>
+          <option value="included"${r.av_billing==='included'?' selected':''}>Incl.</option>
+        </select>
       </td>
+      ${cellCur('paid_currency', r.paid_currency)}
+      ${cellNum('paid_amount', r.paid_amount, 'font-weight:600')}
+      ${cellNum('staff_hotel', r.staff_hotel, 'color:var(--muted)')}
+      ${cellNum('flights', r.flights, 'color:var(--muted)')}
+      ${cellNum('printing', r.printing, 'color:var(--muted)')}
+      <td class="ht-cell ht-cur-sel" data-id="${r.id}" data-field="status">
+        <select class="ht-select ht-status-sel" onchange="htPatchField(${r.id},'status',this.value);htUpdateRowClass(${r.id},this.value)" onclick="event.stopPropagation()">
+          <option value="pending"${(r.status||'pending')==='pending'?' selected':''}>Pending</option>
+          <option value="partial"${r.status==='partial'?' selected':''}>Partial</option>
+          <option value="paid"${r.status==='paid'?' selected':''}>Paid</option>
+        </select>
+      </td>
+      <td><button class="btn btn-danger btn-sm" onclick="deleteHotelExpense(${r.id})">×</button></td>
     </tr>`;
   }).join('');
 }
@@ -2585,6 +2678,56 @@ async function deleteHotelExpense(id) {
   if (!res.ok) { showToast('Delete failed', 'error'); return; }
   showToast('Deleted', 'success');
   loadHotelExpenses();
+}
+
+// ─── Hotel inline editing ─────────────────────────────────────────────────────
+
+function htEditCell(td) {
+  if (td.querySelector('input')) return; // already editing
+  const id    = td.dataset.id;
+  const field = td.dataset.field;
+  const val   = td.dataset.val;
+  const isNum = td.classList.contains('ht-num');
+
+  const input = document.createElement('input');
+  input.type  = isNum ? 'number' : 'text';
+  input.value = val;
+  input.className = 'ht-input';
+  if (isNum) { input.step = '0.01'; input.min = '0'; }
+  td.innerHTML = '';
+  td.appendChild(input);
+  input.focus();
+  input.select();
+
+  function commit() {
+    const newVal = input.value.trim();
+    if (newVal !== val) htPatchField(parseInt(id), field, newVal === '' ? null : (isNum ? parseFloat(newVal) : newVal));
+    td.dataset.val = newVal;
+    td.innerHTML = newVal !== '' ? esc(isNum ? fmtHotelNum(newVal) : newVal) : '<span class="ht-empty">—</span>';
+  }
+  input.addEventListener('blur', commit);
+  input.addEventListener('keydown', e => { if (e.key === 'Enter') input.blur(); if (e.key === 'Escape') { td.innerHTML = val !== '' ? esc(isNum ? fmtHotelNum(val) : val) : '<span class="ht-empty">—</span>'; } });
+}
+
+async function htPatchField(id, field, value) {
+  try {
+    const res = await fetch(`/api/hotel-expenses/${id}`, {
+      method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ [field]: value })
+    });
+    if (!res.ok) { showToast('Save failed', 'error'); return; }
+    // Update local data
+    const updated = await res.json();
+    const idx = hotelData.findIndex(r => r.id === id);
+    if (idx !== -1) hotelData[idx] = updated;
+    renderHotelSummary(); // refresh totals
+  } catch { showToast('Save failed', 'error'); }
+}
+
+function htUpdateRowClass(id, status) {
+  const tr = document.getElementById(`htr-${id}`);
+  if (!tr) return;
+  tr.className = status === 'paid' ? 'hotel-row-paid' : status === 'partial' ? 'hotel-row-partial' : '';
 }
 
 // ─── HOLIDAY REQUEST NOTIFICATIONS ───────────────────────────────────────────
