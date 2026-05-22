@@ -523,16 +523,18 @@
 
       <!-- ══ DEAL TRACKER ══ -->
 <div class="page" id="page-deals">
+
   <!-- Last invoice banner -->
-  <div id="dealLastInvoice" style="display:none;background:var(--bg-2);border:1.5px solid var(--border);border-radius:10px;padding:10px 16px;margin-bottom:12px;font-size:0.85rem;align-items:center;gap:10px">
-    <span style="color:var(--muted)">Last invoice:</span>
-    <a id="dealLastInvLink" href="#" style="font-weight:700;color:var(--primary);text-decoration:none" onclick="scrollToLastInvoice(event)"></a>
-    <span style="color:var(--muted)">→ Next suggested:</span>
-    <span id="dealNextInvNum" style="font-weight:700;font-family:monospace;color:var(--text)"></span>
-    <button class="btn btn-ghost" style="margin-left:4px;padding:3px 10px;font-size:0.78rem" onclick="copyNextInvoice()">Copy</button>
+  <div id="dealLastInvoice" class="deal-inv-banner">
+    <span class="deal-inv-label">Last invoice:</span>
+    <a id="dealLastInvLink" href="#" class="deal-inv-link" onclick="scrollToLastInvoice(event)"></a>
+    <span class="deal-inv-arrow">→ Next suggested:</span>
+    <span id="dealNextInvNum" class="deal-inv-next"></span>
+    <button class="deal-inv-copy btn btn-ghost" onclick="copyNextInvoice()">Copy</button>
   </div>
-  <!-- Year + Quarter filters -->
-  <div class="filter-bar" style="align-items:center;gap:8px;flex-wrap:wrap;border-left:4px solid var(--accent)">
+
+  <!-- Year + Quarter filter row -->
+  <div class="deal-filter-card">
     <div class="deal-q-filters" id="dealYearFilters">
       <button class="deal-q-btn active" data-yr="all" onclick="setDealYear(this,'all')">All Years</button>
       <button class="deal-q-btn" data-yr="2025" onclick="setDealYear(this,'2025')">2025</button>
@@ -540,6 +542,7 @@
       <button class="deal-q-btn" data-yr="2027" onclick="setDealYear(this,'2027')">2027</button>
       <button class="deal-q-btn deal-q-add" onclick="addDealYear()" title="Add year">+</button>
     </div>
+    <div class="deal-q-sep"></div>
     <div class="deal-q-filters">
       <button class="deal-q-btn active" data-q="all" onclick="setDealQ(this,'all')">All Qtrs</button>
       <button class="deal-q-btn" data-q="Q1" onclick="setDealQ(this,'Q1')" title="Nov · Dec · Jan">Q1</button>
@@ -548,38 +551,42 @@
       <button class="deal-q-btn" data-q="Q4" onclick="setDealQ(this,'Q4')" title="Aug · Sep · Oct">Q4</button>
     </div>
   </div>
-  <div class="filter-bar" style="align-items:center;gap:8px;flex-wrap:wrap;margin-top:-8px;border-left:4px solid var(--accent)">
-    <input type="search" id="dealSearch" placeholder="Search company, title, invoice…" oninput="renderDealsTable()" style="border:1.5px solid var(--border);border-radius:9px;padding:8px 12px;font-size:0.85rem;font-family:inherit;outline:none;background:var(--bg-2);color:var(--text);min-width:200px" />
-    <select id="dealStageFilter" onchange="renderDealsTable()" style="border:1.5px solid var(--border);border-radius:9px;padding:8px 12px;font-size:0.85rem;font-family:inherit;background:var(--bg-2);color:var(--text)">
+
+  <!-- Search + Actions filter row -->
+  <div class="deal-filter-card deal-filter-actions">
+    <input type="search" id="dealSearch" class="deal-search-input" placeholder="Search company, title, inv…" oninput="renderDealsTable()" />
+    <select id="dealStageFilter" class="deal-select" onchange="renderDealsTable()">
       <option value="">All Stages</option>
       <option>Prospect</option><option>Qualified</option><option>Proposal</option>
       <option>Negotiation</option><option>Won</option><option>Lost</option>
     </select>
-    <select id="dealEventFilter" onchange="setDealEvent(this.value)" style="border:1.5px solid var(--border);border-radius:9px;padding:8px 12px;font-size:0.85rem;font-family:inherit;background:var(--bg-2);color:var(--text)">
+    <select id="dealEventFilter" class="deal-select" onchange="setDealEvent(this.value)">
       <option value="">All Events</option>
     </select>
     <button class="btn btn-ghost" onclick="openDealImport()">⬆ Import CSV</button>
-    <button class="btn btn-primary" style="margin-left:auto" onclick="openDealModal()">+ Add Deal</button>
+    <button class="btn btn-primary deal-add-btn" onclick="openDealModal()">+ Add Deal</button>
   </div>
-  <!-- Totals summary -->
-  <div id="dealTotals" style="margin-bottom:12px"></div>
-  <!-- Table -->
-  <div class="card" style="padding:0;overflow:hidden">
-    <div class="table-wrap" style="overflow-x:auto">
-      <table id="dealsTable" style="min-width:1000px">
+
+  <!-- Stat summary cards -->
+  <div id="dealTotals"></div>
+
+  <!-- Deals table -->
+  <div class="card deal-table-card">
+    <div class="table-wrap">
+      <table id="dealsTable">
         <thead><tr>
-          <th style="width:72px">Month</th>
-          <th>Company</th>
-          <th style="width:108px">Paid inc VAT</th>
-          <th style="width:96px">Deal Value</th>
-          <th style="width:78px">Tax/VAT</th>
-          <th style="width:92px">Invoice Date</th>
-          <th style="width:68px">Bank</th>
-          <th style="width:148px">Invoice #</th>
-          <th style="width:52px">Signed</th>
-          <th style="width:48px">By</th>
+          <th class="deal-th-month">Month</th>
+          <th class="deal-th-company">Company</th>
+          <th class="deal-th-num">Paid inc VAT</th>
+          <th class="deal-th-num">Deal Value</th>
+          <th class="deal-th-num">Tax/VAT</th>
+          <th class="deal-th-date">Invoice Date</th>
+          <th class="deal-th-bank">Bank</th>
+          <th class="deal-th-inv">Invoice #</th>
+          <th class="deal-th-sm">Signed</th>
+          <th class="deal-th-sm">By</th>
           <th>Notes</th>
-          <th style="width:36px"></th>
+          <th class="deal-th-del"></th>
         </tr></thead>
         <tbody id="dealsTableBody"></tbody>
         <tfoot id="dealsTfoot"></tfoot>
