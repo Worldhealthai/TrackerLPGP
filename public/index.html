@@ -37,6 +37,10 @@
       <div class="nav-item admin-only hidden" data-page="admins"><span class="icon">🔐</span> Admin Users</div>
     </div>
     <div class="sidebar-footer">
+      <button class="sidebar-collapse-btn" id="sidebarCollapseBtn" onclick="toggleSidebar()" title="Collapse sidebar">
+        <span class="sidebar-collapse-icon">◀</span>
+        <span class="sidebar-collapse-label">Collapse</span>
+      </button>
       <div class="sidebar-footer-info">
         Shift: 8 hrs &nbsp;·&nbsp; Break: 40 min<br>
         Payroll: 20 days/yr &nbsp;·&nbsp; Self-Emp: 5 days/yr
@@ -432,7 +436,6 @@
         <thead><tr>
           <th style="width:72px">Month</th>
           <th>Company</th>
-          <th>Deal Title</th>
           <th style="width:108px">Paid inc VAT</th>
           <th style="width:96px">Deal Value</th>
           <th style="width:78px">Tax/VAT</th>

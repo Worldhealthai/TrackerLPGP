@@ -237,6 +237,9 @@ async function runMigrations() {
   await sql(`ALTER TABLE hotel_expenses ADD COLUMN IF NOT EXISTS event_year INT`);
   await sql(`ALTER TABLE hotel_expenses ADD COLUMN IF NOT EXISTS total_cost_num NUMERIC(12,2)`);
 
+  // One-time: move 2025 invoice_dates to 2026 (deals were for 2026 events, signed in 2025)
+  await sql(`UPDATE deals SET invoice_date = invoice_date + INTERVAL '1 year' WHERE EXTRACT(YEAR FROM invoice_date) = 2025 AND invoice_date IS NOT NULL`);
+
   // ── Subscriptions ──────────────────────────────────────────────────────────
   await sql(`
     CREATE TABLE IF NOT EXISTS subscriptions (

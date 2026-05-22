@@ -48,6 +48,17 @@ function _updateThemeBtn(theme) {
   }
 }
 
+// ─── SIDEBAR COLLAPSE ─────────────────────────────────────────────────────────
+function toggleSidebar() {
+  const collapsed = document.body.classList.toggle('sidebar-collapsed');
+  localStorage.setItem('sidebar-collapsed', collapsed ? '1' : '0');
+}
+(function applySidebarState() {
+  if (localStorage.getItem('sidebar-collapsed') === '1') {
+    document.body.classList.add('sidebar-collapsed');
+  }
+})();
+
 // ─── INIT ─────────────────────────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', async () => {
   const res = await fetch('/api/me');
@@ -466,6 +477,8 @@ function renderRevenueIntelPanel(deals, expiring, evtRevData) {
   const totalRev   = deals.reduce((a,d) => a + (parseFloat(d.amount)||0), 0);
   const totalPaid  = deals.reduce((a,d) => a + (parseFloat(d.paid_inc_vat)||0), 0);
   const totalOut   = Math.max(0, totalRev - totalPaid);
+  const totalVAT = deals.reduce((a,d) => (parseFloat(d.paid_inc_vat)||0) > 0 ? a + (parseFloat(d.tax_vat)||0) : a, 0);
+  const totalPaidExVat = Math.max(0, totalPaid - totalVAT);
   const paidDeals  = deals.filter(d => (parseFloat(d.paid_inc_vat)||0) > 0).length;
   const collRate   = deals.length > 0 ? Math.round(paidDeals / deals.length * 100) : 0;
 
@@ -575,8 +588,9 @@ function renderRevenueIntelPanel(deals, expiring, evtRevData) {
             <div class="ri-metric-val ri-blue">£${fmtK(totalRev)}</div>
           </div>
           <div class="ri-metric">
-            <div class="ri-metric-label">Collected</div>
+            <div class="ri-metric-label">Collected (inc VAT)</div>
             <div class="ri-metric-val ri-green">£${fmtK(totalPaid)}</div>
+            <div style="font-size:0.65rem;color:rgba(255,255,255,0.4);margin-top:2px">£${fmtK(totalPaidExVat)} ex VAT</div>
           </div>
           <div class="ri-metric">
             <div class="ri-metric-label">Outstanding</div>
@@ -3452,8 +3466,12 @@ function renderDealsTable() {
     const inv2 = d.invoice2_name ? `<a class="deal-inv-link" href="/api/deals/${d.id}/invoice/2" target="_blank" title="${esc(d.invoice2_name)}" onclick="event.stopPropagation()">📄</a>` : '';
 
     // Editable cell helper
-    const ec = (field, type, val, display, extra='') =>
-      `<td class="deal-cell-edit" data-id="${d.id}" data-field="${field}" data-type="${type}" data-val="${String(val??'').replace(/"/g,'&quot;')}" onclick="dealCellClick(this)" ${extra}>${display}</td>`;
+    const ec = (field, type, val, display, extra='') => {
+      const hlKey = `dhl:${d.id}-${field}`;
+      const isHl = localStorage.getItem(hlKey) === '1';
+      const hlCls = isHl ? ' deal-cell-orange' : '';
+      return `<td class="deal-cell-edit${hlCls}" data-id="${d.id}" data-field="${field}" data-type="${type}" data-val="${String(val??'').replace(/"/g,'&quot;')}" data-hlkey="${hlKey}" onclick="dealCellClick(this)" ${extra}>${display}</td>`;
+    };
 
     // Paid cell: orange background if partial payment
     const paidDisplay = hasPaid ? `${sym}${fmt(paidAmt)}` : '<span style="color:var(--muted)">—</span>';
@@ -3464,10 +3482,12 @@ function renderDealsTable() {
       ? `<span class="deal-notes-cell" title="${esc(d.notes)}">${esc(d.notes)}</span>`
       : '<span style="color:var(--muted);font-size:0.8rem">—</span>';
 
+    const coHlKey = `dhl:${d.id}-company`;
+    const coHl = localStorage.getItem(coHlKey) === '1';
+
     return `<tr id="deal-row-${d.id}" class="${rowClass}">
       ${ec('invoice_date','date',d.invoice_date||'', `<span class="deal-month-disp">${invMonth||'<span style="color:var(--muted)">—</span>'}</span>`)}
-      ${ec('company','text',d.company||d.title||'', `<strong>${esc(d.company||d.title)}</strong>${d.initials?` <span class="deal-initials-badge">${esc(d.initials)}</span>`:''}`)}
-      ${ec('title','text',d.title||'', `<span class="deal-title-disp">${esc(d.title)}</span>`)}
+      <td class="deal-cell-company${coHl?' deal-cell-orange':''}" data-id="${d.id}" data-hlkey="${coHlKey}" onclick="dealCompanyClick(event,${d.id},this)" title="Click to open deal · Shift+click to highlight"><strong class="deal-co-link">${esc(d.company||d.title)}</strong>${d.initials?` <span class="deal-initials-badge">${esc(d.initials)}</span>`:''}</td>
       ${ec('paid_inc_vat','number',d.paid_inc_vat??'', paidDisplay, paidExtra)}
       ${ec('amount','number',d.amount||0, `${sym}${fmt(dealAmt)}`, 'style="text-align:right"')}
       ${ec('tax_vat','number',d.tax_vat??'', d.tax_vat ? `${sym}${fmt(parseFloat(d.tax_vat))}` : '<span style="color:var(--muted)">—</span>', 'style="text-align:right"')}
@@ -3487,9 +3507,30 @@ function renderDealsTable() {
   renderDealsByInitials(filtered);
 }
 
+function dealCompanyClick(evt, id, td) {
+  if (evt.shiftKey) {
+    const hlKey = td.dataset.hlkey || `dhl:${id}-company`;
+    const isHl = localStorage.getItem(hlKey) === '1';
+    if (isHl) { localStorage.removeItem(hlKey); td.classList.remove('deal-cell-orange'); }
+    else { localStorage.setItem(hlKey, '1'); td.classList.add('deal-cell-orange'); }
+    return;
+  }
+  openDealModal(id);
+}
+
 function dealCellClick(td) {
   // Don't open editor if clicking a link/button inside the cell
   if (event.target.tagName === 'A' || event.target.tagName === 'BUTTON' || event.target.closest('a,button')) return;
+  // Shift+click = toggle orange highlight
+  if (event.shiftKey) {
+    const hlKey = td.dataset.hlkey;
+    if (hlKey) {
+      const isHl = localStorage.getItem(hlKey) === '1';
+      if (isHl) { localStorage.removeItem(hlKey); td.classList.remove('deal-cell-orange'); }
+      else { localStorage.setItem(hlKey, '1'); td.classList.add('deal-cell-orange'); }
+    }
+    return;
+  }
   // Already editing
   if (td.querySelector('input,select')) return;
   const id = parseInt(td.dataset.id);
