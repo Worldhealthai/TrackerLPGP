@@ -1,3 +1,30 @@
+// ─── THEME ───────────────────────────────────────────────────────────────────
+function toggleTheme() {
+  const isLight = document.body.classList.toggle('light-mode');
+  localStorage.setItem('theme', isLight ? 'light' : 'dark');
+  updateThemeButton(isLight);
+}
+function updateThemeButton(isLight) {
+  const btn   = document.getElementById('themeToggleBtn');
+  const label = document.getElementById('themeLabel');
+  const icon  = document.getElementById('themeIcon');
+  if (!btn) return;
+  if (isLight) {
+    if (label) label.textContent = 'Dark';
+    if (icon)  icon.innerHTML = '<path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>';
+  } else {
+    if (label) label.textContent = 'Light';
+    if (icon)  icon.innerHTML = '<circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/>';
+  }
+}
+(function applyStoredTheme() {
+  const stored = localStorage.getItem('theme');
+  if (stored === 'light') {
+    document.body.classList.add('light-mode');
+    document.addEventListener('DOMContentLoaded', () => updateThemeButton(true));
+  }
+})();
+
 // ─── STATE ───────────────────────────────────────────────────────────────────
 let currentUser = null;
 let employees = [];
@@ -64,6 +91,17 @@ document.addEventListener('DOMContentLoaded', async () => {
   const res = await fetch('/api/me');
   if (!res.ok) { window.location.href = '/login.html'; return; }
   currentUser = await res.json();
+  window.currentUser = currentUser;
+
+  // Check user role before initializing
+  if (currentUser.role === 'employee') {
+    await initEmployeePortal(currentUser);
+    return;
+  }
+  if (currentUser.role === 'accounts') {
+    await initAccountsPortal(currentUser);
+    return;
+  }
 
   const initials = currentUser.username.slice(0,2).toUpperCase();
   document.getElementById('userLabel').innerHTML = `<div class="sidebar-user-pill"><div class="sidebar-user-avatar">${esc(initials)}</div><span class="sidebar-user-name">${esc(currentUser.username)}</span><span class="sidebar-user-role">${esc(currentUser.role)}</span></div>`;
@@ -91,16 +129,18 @@ document.addEventListener('DOMContentLoaded', async () => {
   });
 
   // Hamburger / drawer
-  document.getElementById('hamburgerBtn').addEventListener('click', toggleMobileNav);
-  document.getElementById('navOverlay').addEventListener('click', closeMobileNav);
+  document.getElementById('hamburgerBtn')?.addEventListener('click', toggleMobileNav);
+  document.getElementById('navOverlay')?.addEventListener('click', closeMobileNav);
+  initSidebarCollapse();
 
-  document.getElementById('logoutBtn').addEventListener('click', async () => {
+  document.getElementById('logoutBtn')?.addEventListener('click', async () => {
     await fetch('/api/logout', { method: 'POST' });
     window.location.href = '/login.html';
   });
 
-  await loadEmployees();
+  await loadEmployees().catch(err => console.error('loadEmployees failed:', err));
   loadDashboard();
+  refreshCalendarBadge();
 
   // Notification bell — admin only
   if (currentUser.role === 'admin') {
@@ -129,6 +169,19 @@ function closeMobileNav() {
   document.getElementById('navOverlay').classList.remove('open');
 }
 
+// ─── SIDEBAR COLLAPSE ─────────────────────────────────────────────────────────
+function initSidebarCollapse() {
+  const sidebar = document.querySelector('.sidebar');
+  const btn = document.getElementById('sidebarCollapseBtn');
+  if (!sidebar || !btn) return;
+  const collapsed = localStorage.getItem('sidebarCollapsed') === '1';
+  if (collapsed) sidebar.classList.add('collapsed');
+  btn.addEventListener('click', () => {
+    const isNowCollapsed = sidebar.classList.toggle('collapsed');
+    localStorage.setItem('sidebarCollapsed', isNowCollapsed ? '1' : '0');
+  });
+}
+
 // ─── NAVIGATION ──────────────────────────────────────────────────────────────
 function navigate(page) {
   // Salary section is admin-only
@@ -147,14 +200,15 @@ function navigate(page) {
   if (page === 'salary') { loadSalaryPage(); renderSalaryReminderPanel(); }
   if (page === 'hotels') loadHotelExpenses();
   if (page === 'subscriptions') loadSubscriptions();
-  if (page === 'portfolio') loadPortfolio();
-  if (page === 'deals') loadDeals();
+  if (page === 'portfolio') { loadPortfolio(); loadAdminPortfolio(); }
+  if (page === 'deals') { loadDeals(); loadDealTracker(); }
 }
 
 // ─── EMPLOYEES ───────────────────────────────────────────────────────────────
 async function loadEmployees() {
   const res = await fetch('/api/employees');
-  employees = await res.json();
+  const raw = await res.json();
+  employees = Array.isArray(raw) ? raw : [];
   ['trackEmp', 'repEmp', 'calEmpFilter', 'salaryEmpFilter'].forEach(id => {
     const sel = document.getElementById(id);
     const prev = sel.value;
@@ -171,6 +225,23 @@ async function loadEmployees() {
 async function loadEmpTable() {
   const res = await fetch('/api/employees/all');
   allEmployeesData = await res.json();
+
+  // Populate dept filter
+  const deptSel = document.getElementById('empDeptFilter');
+  if (deptSel) {
+    const depts = [...new Set(allEmployeesData.map(e => e.department).filter(Boolean))].sort();
+    deptSel.innerHTML = '<option value="">All</option>' + depts.map(d => `<option value="${esc(d)}">${esc(d)}</option>`).join('');
+  }
+
+  // Update count tag and sub
+  const activeEmps = allEmployeesData.filter(e => e.active);
+  const countTag = document.getElementById('empCountTag');
+  if (countTag) countTag.textContent = activeEmps.length;
+  const payrollCount = activeEmps.filter(e => e.employment_type === 'payroll').length;
+  const seCount = activeEmps.filter(e => e.employment_type === 'self_employed').length;
+  const empSub = document.getElementById('empSub');
+  if (empSub) empSub.textContent = `// ${payrollCount} payroll · ${seCount} self-employed`;
+
   renderEmpTable();
 }
 
@@ -180,14 +251,17 @@ function filterEmpTable() {
 
 function renderEmpTable() {
   const search = (document.getElementById('empSearch')?.value || '').trim().toLowerCase();
-  const list = search
-    ? allEmployeesData.filter(e => (e.name || '').toLowerCase().includes(search))
-    : allEmployeesData;
+  const deptFilter = (document.getElementById('empDeptFilter')?.value || '').toLowerCase();
+  const typeFilter = document.getElementById('empTypeFilter')?.value || '';
+  let list = allEmployeesData;
+  if (search) list = list.filter(e => (e.name || '').toLowerCase().includes(search) || (e.department || '').toLowerCase().includes(search));
+  if (deptFilter) list = list.filter(e => (e.department || '').toLowerCase() === deptFilter);
+  if (typeFilter) list = list.filter(e => e.employment_type === typeFilter);
   const tbody = document.getElementById('empTable');
   tbody.innerHTML = '';
   if (!list.length) {
-    const msg = search ? 'No employees match your search.' : 'No employees yet.';
-    tbody.innerHTML = `<tr><td colspan="6"><div class="empty-state"><div class="icon">👥</div><div>${msg}</div></div></td></tr>`;
+    const msg = (search || deptFilter || typeFilter) ? 'No employees match your search.' : 'No employees yet.';
+    tbody.innerHTML = `<tr><td colspan="8"><div class="empty-state"><div class="icon">👥</div><div>${msg}</div></div></td></tr>`;
     return;
   }
   list.forEach(emp => {
@@ -196,11 +270,17 @@ function renderEmpTable() {
     const terminated = !emp.active && emp.termination_date;
     const statusBadge = emp.active ? 'badge-green' : (terminated ? 'badge-red' : 'badge-grey');
     const statusLabel = emp.active ? 'Active' : (terminated ? `Terminated ${emp.termination_date.slice(0,10)}` : 'Inactive');
+    const initials = (emp.name || '?').split(' ').filter(Boolean).slice(0,2).map(w => w[0]).join('').toUpperCase();
     const tr = document.createElement('tr');
     tr.innerHTML = `
       <td>
-        <div style="font-weight:700;color:var(--text)">${esc(emp.name)}</div>
-        ${emp.email ? `<div style="font-size:0.74rem;color:var(--muted);margin-top:2px">${esc(emp.email)}</div>` : ''}
+        <div style="display:flex;align-items:center;gap:10px">
+          <div style="width:28px;height:28px;border-radius:7px;background:var(--accent-soft);border:1px solid var(--accent-line);color:var(--accent);font:700 10px/1 var(--font-mono);display:grid;place-items:center;flex-shrink:0">${initials}</div>
+          <div>
+            <div style="font-weight:600;color:var(--text);font-size:12.5px">${esc(emp.name)}</div>
+            <div style="font-size:10.5px;color:var(--muted);font-family:var(--font-mono)">${esc(emp.job_title||emp.department||'')}</div>
+          </div>
+        </div>
       </td>
       <td>
         ${emp.department ? `<div style="font-weight:600;font-size:0.83rem">${esc(emp.department)}</div>` : ''}
@@ -348,6 +428,7 @@ async function reactivateEmployee(id) {
 
 // ─── DASHBOARD ───────────────────────────────────────────────────────────────
 async function loadDashboard() {
+  try {
   const year = new Date().getFullYear();
   const now = new Date();
   const month = now.getMonth() + 1;
@@ -363,15 +444,17 @@ async function loadDashboard() {
     </div>
   `;
 
-  const [summaryRes, salaryRes, upcomingRes, expiringRes, allEmpRes, hotelRes, dealsRes, evtRevRes] = await Promise.all([
+  const [summaryRes, salaryRes, upcomingRes, expiringRes, allEmpRes, hotelRes, dealsRes, evtRevRes, calCurRes, calNextRes] = await Promise.all([
     fetch(`/api/summary?from=${year}-01-01&to=${year}-12-31`),
     fetch(`/api/salary-overview?year=${year}`),
-    fetch(`/api/calendar-reminders/upcoming?days=7`),
+    fetch(`/api/calendar-reminders/upcoming?days=30`),
     fetch(`/api/contracts/expiring?days=60`),
     fetch(`/api/employees/all`),
     fetch(`/api/hotel-expenses`),
     fetch(`/api/deals`),
-    fetch(`/api/deals/revenue-by-event`)
+    fetch(`/api/deals/revenue-by-event`),
+    fetch(`/api/calendar?year=${year}&month=${month}`),
+    fetch(`/api/calendar?year=${month === 12 ? year + 1 : year}&month=${month === 12 ? 1 : month + 1}`)
   ]);
 
   const summary       = summaryRes.ok   ? await summaryRes.json()   : [];
@@ -382,6 +465,12 @@ async function loadDashboard() {
   const dashDeals     = dealsRes.ok     ? await dealsRes.json()     : [];
   const hotelData     = hotelRes.ok     ? await hotelRes.json()     : [];
   const evtRevData    = evtRevRes.ok    ? await evtRevRes.json()    : [];
+  const calCur        = calCurRes.ok    ? await calCurRes.json()    : [];
+  const calNext       = calNextRes.ok   ? await calNextRes.json()   : [];
+  const todayStr      = now.toISOString().slice(0,10);
+  const upcomingDayOffs = [...(Array.isArray(calCur) ? calCur : []), ...(Array.isArray(calNext) ? calNext : [])]
+    .filter(r => r.record_date >= todayStr && parseFloat(r.is_day_off) > 0)
+    .sort((a,b) => a.record_date.localeCompare(b.record_date));
 
   const activeEmps    = allEmps.filter(e => e.active);
   const unpaidCount   = getUnpaidThisMonth(salaryData, year, month).length;
@@ -450,10 +539,13 @@ async function loadDashboard() {
   renderRevenueIntelPanel(dashDeals, expiring, evtRevData);
 
   // Headcount by department
-  renderHeadcountPanel(activeEmps);
+  renderHeadcountPanel(activeEmps, payrollCount, seCount, totalHeadcount, year);
 
-  // Upcoming reminders widget
-  renderUpcomingWidget(upcoming);
+  // Upcoming reminders panel (calendar reminders + day offs)
+  renderDashUpcoming(upcoming, upcomingDayOffs);
+
+  // Activity feed
+  renderDashActivity(summary, expiring, hotelData, salaryData);
 
   const tbody = document.getElementById('dashTable');
   tbody.innerHTML = '';
@@ -479,6 +571,11 @@ async function loadDashboard() {
     `;
     tbody.appendChild(tr);
   });
+  } catch(e) {
+    console.error('loadDashboard error:', e);
+    const el = document.getElementById('dashStats');
+    if (el) el.innerHTML = `<div style="padding:20px;color:var(--negative);font-family:var(--font-mono);font-size:12px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius)">Dashboard error: ${e.message}</div>`;
+  }
 }
 
 function renderRevenueIntelPanel(deals, expiring, evtRevData) {
@@ -667,8 +764,47 @@ function riFilterEvent(eventId, eventName) {
   }, 300);
 }
 
-function renderHeadcountPanel(activeEmps) {
-  const el = document.getElementById('headcountPanel');
+function renderContractExpiryPanel(expiring, miniCardsHtml) {
+  var el = document.getElementById('contractExpiryPanel');
+  if (!el) return;
+
+  var html = '<div style="display:flex;flex-direction:column;gap:12px;height:100%">';
+
+  // Always show the 3 mini action cards stacked
+  if (miniCardsHtml) html += miniCardsHtml;
+
+  // Expiry alert below if contracts are expiring
+  if (expiring && expiring.length) {
+    var today = new Date().toISOString().slice(0,10);
+    html += '<div class="dash-panel dash-panel--alert" style="margin-top:4px">' +
+      '<div class="dash-panel-header">' +
+        '<span class="dash-panel-icon">⚠️</span>' +
+        '<span class="dash-panel-title">Contracts Expiring</span>' +
+        '<span class="dash-panel-count">' + expiring.length + '</span>' +
+      '</div>' +
+      '<div class="dash-panel-body">' +
+        expiring.map(function(e) {
+          var expired = e.contract_end_date < today;
+          var badge = expired ? 'badge-red' : 'badge-yellow';
+          var label = expired ? 'Expired' : 'Ends ' + e.contract_end_date;
+          return '<div class="dash-panel-row">' +
+            '<div>' +
+              '<div style="font-weight:700;font-size:0.88rem">' + esc(e.name) + '</div>' +
+              ((e.job_title || e.department) ? '<div style="font-size:0.74rem;color:var(--muted)">' + esc([e.job_title,e.department].filter(Boolean).join(' · ')) + '</div>' : '') +
+            '</div>' +
+            '<span class="badge ' + badge + '">' + label + '</span>' +
+          '</div>';
+        }).join('') +
+      '</div>' +
+    '</div>';
+  }
+
+  html += '</div>';
+  el.innerHTML = html;
+}
+
+function renderHeadcountPanel(activeEmps, payrollCount, seCount, totalHeadcount, year) {
+  var el = document.getElementById('headcountPanel');
   if (!el) return;
   const depts = {};
   activeEmps.forEach(e => {
@@ -733,6 +869,129 @@ function renderHeadcountPanel(activeEmps) {
     </div>`;
 }
 
+function renderDashUpcoming(upcoming, dayOffs) {
+  var el = document.getElementById('upcomingPanel');
+  if (!el) return;
+  var MONS = ['JAN','FEB','MAR','APR','MAY','JUN','JUL','AUG','SEP','OCT','NOV','DEC'];
+  var BELL = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>';
+
+  // Build unified entries
+  var entries = [];
+  (upcoming || []).forEach(function(r) {
+    var sym = r.currency === 'GBP' ? '£' : r.currency === 'USD' ? '$' : (r.currency ? r.currency + ' ' : '');
+    entries.push({
+      date:  (r.virtual_date || '').slice(0,10),
+      title: esc(r.title || ''),
+      cat:   (r.category || '').toUpperCase(),
+      amt:   r.amount ? sym + parseFloat(r.amount).toLocaleString('en-GB',{maximumFractionDigits:0}) : '',
+      isDayOff: false
+    });
+  });
+  (dayOffs || []).forEach(function(r) {
+    var half = parseFloat(r.is_day_off) === 0.5;
+    entries.push({
+      date:  r.record_date || '',
+      title: esc(r.employee_name || 'Employee'),
+      cat:   half ? 'HALF DAY OFF' : 'FULL DAY OFF',
+      amt:   '',
+      isDayOff: true
+    });
+  });
+  entries.sort(function(a,b){ return a.date.localeCompare(b.date); });
+
+  var header =
+    '<div class="card-header">' +
+      '<span class="card-title" style="display:flex;align-items:center;gap:7px">' + BELL + ' Upcoming</span>' +
+      '<span style="font:700 11px/1 var(--font-mono);color:var(--muted);letter-spacing:0.5px">NEXT 30D</span>' +
+    '</div>';
+
+  if (!entries.length) {
+    el.innerHTML = '<div class="card" style="height:100%">' + header +
+      '<div class="empty-state" style="padding:32px 0"><div class="icon">🔔</div><div>Nothing upcoming</div></div></div>';
+    return;
+  }
+
+  var rows = entries.slice(0, 7).map(function(e) {
+    var d   = new Date(e.date + 'T00:00:00Z');
+    var day = d.getUTCDate();
+    var mon = MONS[d.getUTCMonth()];
+    var catCol = e.isDayOff ? '#f59e0b' : 'var(--muted)';
+    return '<div style="display:flex;gap:14px;padding:13px 18px;border-bottom:1px solid var(--border);align-items:center">' +
+      '<div style="width:42px;min-width:42px;text-align:center;background:#1a1f2e;border:1px solid var(--border);border-radius:8px;padding:7px 0">' +
+        '<div style="font:800 17px/1 var(--font-mono);color:var(--text)">' + day + '</div>' +
+        '<div style="font:600 9px/1 var(--font-mono);color:var(--muted);margin-top:4px;letter-spacing:0.8px">' + mon + '</div>' +
+      '</div>' +
+      '<div style="flex:1;min-width:0">' +
+        '<div style="font:600 13px/1.2 var(--font-sans);color:var(--text)">' + e.title + '</div>' +
+        (e.cat ? '<div style="font:600 10px/1 var(--font-mono);color:' + catCol + ';margin-top:5px;letter-spacing:0.8px">' + e.cat + '</div>' : '') +
+      '</div>' +
+      (e.amt ? '<div style="font:700 13px/1 var(--font-mono);color:var(--text);white-space:nowrap">' + e.amt + '</div>' : '') +
+    '</div>';
+  }).join('');
+
+  el.innerHTML = '<div class="card" style="height:100%">' + header + '<div style="padding:0">' + rows + '</div></div>';
+}
+
+function renderDashActivity(summary, expiring, hotelData, salaryData) {
+  const el = document.getElementById('activityPanel');
+  if (!el) return;
+
+  const items = [];
+  const ICONS = {
+    pay:     '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="5" width="20" height="14" rx="2"/><line x1="2" y1="10" x2="22" y2="10"/></svg>',
+    breach:  '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>',
+    hotel:   '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>',
+    expiry:  '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>',
+    deduct:  '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"/></svg>',
+  };
+
+  // Salary payments from salaryData
+  salaryData.filter(e => !e.is_terminated && (e.payments||[]).length).slice(0,2).forEach(e => {
+    const last = e.payments[e.payments.length - 1];
+    const sym = e.currency === 'AED' ? 'AED ' : '£';
+    items.push({ icon: ICONS.pay, tone: 'pos', title: 'Logged payment', detail: sym + parseFloat(last.amount||0).toLocaleString('en-GB') + ' &rarr; ' + esc(e.name) });
+  });
+
+  // Allowance breaches
+  summary.filter(r => (parseFloat(r.excess_days)||0) > 0).slice(0,2).forEach(r => {
+    items.push({ icon: ICONS.breach, tone: 'neg', title: 'Allowance breach', detail: esc(r.name) + ' &middot; ' + r.year_days_off + '/' + r.allowance_days + ' days &middot; &pound;' + parseFloat(r.excess_day_deduction||0).toFixed(2) + ' deduct' });
+  });
+
+  // Contract expiring
+  expiring.slice(0,2).forEach(e => {
+    const days = Math.floor((new Date(e.contract_end_date) - new Date()) / 86400000);
+    items.push({ icon: ICONS.expiry, tone: 'warn', title: 'Contract expiring', detail: esc(e.name) + ' &middot; ' + e.contract_end_date + ' &middot; ' + Math.abs(days) + 'd' });
+  });
+
+  // Hotel events
+  hotelData.filter(h => h.status !== 'paid').slice(0,2).forEach(h => {
+    const sym = hotelCurrencySymbol(h.paid_currency || 'USD');
+    const amtStr = h.paid_amount ? sym + parseFloat(h.paid_amount).toLocaleString('en-GB') + ' &middot; ' : '';
+    items.push({ icon: ICONS.hotel, tone: 'info', title: 'Hotel expense', detail: esc(h.event_name) + ' &middot; ' + amtStr + h.status });
+  });
+
+  if (!items.length) { el.innerHTML = ''; return; }
+
+  const TONE_COLOR = { pos:'var(--positive)', neg:'var(--negative)', warn:'var(--warning)', info:'var(--info)' };
+  const rows = items.slice(0,5).map(it =>
+    '<div style="display:flex;gap:10px;padding:11px 16px;border-bottom:1px solid var(--line);align-items:flex-start">' +
+      '<div style="width:28px;height:28px;border-radius:6px;background:var(--surface-2);border:1px solid var(--border);display:grid;place-items:center;flex-shrink:0;color:' + TONE_COLOR[it.tone] + '">' + it.icon + '</div>' +
+      '<div style="flex:1;min-width:0">' +
+        '<div style="font:600 12.5px/1.3 var(--font-sans);color:var(--text)">' + it.title + '</div>' +
+        '<div style="font:400 11px/1.4 var(--font-mono);color:var(--muted);margin-top:3px">' + it.detail + '</div>' +
+      '</div>' +
+    '</div>'
+  ).join('');
+
+  el.innerHTML = '<div class="card" style="margin-bottom:0">' +
+    '<div class="card-header" style="padding:12px 16px">' +
+      '<span class="card-title" style="display:flex;align-items:center;gap:6px"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg> Activity</span>' +
+      '<span style="font-size:0.72rem;color:var(--muted);font-family:var(--font-mono)">last 24h</span>' +
+    '</div>' +
+    '<div style="padding:0">' + rows + '</div>' +
+  '</div>';
+}
+
 function goToTracking(empId) {
   navigate('tracking');
   document.getElementById('trackEmp').value = empId;
@@ -795,7 +1054,7 @@ async function loadEmployeeRecords() {
             </span>
             <span style="font-size:1rem;font-weight:800;color:var(--danger)">−£${deduction.toFixed(2)} deduction</span>
           </div>
-          <div style="font-size:0.78rem;opacity:0.85;background:rgba(255,255,255,0.5);border-radius:6px;padding:6px 10px;display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+          <div style="font-size:0.78rem;background:rgba(0,0,0,0.25);border-radius:6px;padding:6px 10px;display:flex;gap:8px;align-items:center;flex-wrap:wrap">
             <span>📐</span>
             <span>${used} used − ${allowance} free = <strong>${excess} excess</strong></span>
             <span style="opacity:0.4">·</span>
@@ -870,6 +1129,7 @@ async function loadEmployeeRecords() {
   }
 
   // Payments section kept hidden — salary management is in the Salary page
+  document.getElementById('paymentsSection')?.classList.add('hidden');
 }
 
 // ─── RECORD MODAL ────────────────────────────────────────────────────────────
@@ -1159,114 +1419,185 @@ async function deletePayment(id) {
 }
 
 // ─── REPORTS ─────────────────────────────────────────────────────────────────
+function _repTile(label, value, sub, color) {
+  return '<div style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:20px 22px;display:flex;flex-direction:column;gap:8px">' +
+    '<div style="font:600 10px/1 var(--font-mono);text-transform:uppercase;letter-spacing:1.2px;color:var(--muted)">' + label + '</div>' +
+    '<div style="font:700 30px/1 var(--font-mono);color:' + color + ';letter-spacing:-1px">' + value + '</div>' +
+    '<div style="font:500 11px/1 var(--font-mono);color:var(--muted)">' + sub + '</div>' +
+  '</div>';
+}
+
 async function loadReport() {
-  const from = document.getElementById('repFrom').value;
-  const to   = document.getElementById('repTo').value;
-  const empId = document.getElementById('repEmp').value;
+  const from    = document.getElementById('repFrom').value;
+  const to      = document.getElementById('repTo').value;
+  const empId   = document.getElementById('repEmp').value;
   const container = document.getElementById('reportContent');
 
   if (!from || !to) return showToast('Please select a date range', 'info');
 
-  container.innerHTML = `<div class="empty-state"><div class="icon">⏳</div><div>Generating report…</div></div>`;
+  container.innerHTML = '<div class="empty-state"><div class="icon">⏳</div><div>Generating report…</div></div>';
 
   try {
     const params = new URLSearchParams({ from, to });
-    const summaryRes = await fetch('/api/summary?' + params);
-    if (!summaryRes.ok) {
-      const err = await summaryRes.json().catch(() => ({}));
-      throw new Error(err.error || `Server error ${summaryRes.status}`);
-    }
-    const summary = await summaryRes.json();
-    if (!Array.isArray(summary)) throw new Error(summary.error || 'Unexpected response from server');
+    const year   = new Date(from).getFullYear();
 
-    const filtered = empId ? summary.filter(e => e.employee_id === parseInt(empId)) : summary;
+    const [summaryRes, salaryRes] = await Promise.all([
+      fetch('/api/summary?' + params),
+      fetch('/api/salary-overview?year=' + year)
+    ]);
+
+    if (!summaryRes.ok) throw new Error('Server error ' + summaryRes.status);
+    const summary = await summaryRes.json();
+    if (!Array.isArray(summary)) throw new Error(summary.error || 'Unexpected response');
+
+    const salaryData = salaryRes.ok ? await salaryRes.json() : [];
+    const filtered   = empId ? summary.filter(e => e.employee_id === parseInt(empId)) : summary;
 
     if (!filtered.length) {
-      container.innerHTML = `<div class="empty-state"><div class="icon">📋</div><div>No records found for the selected range.</div></div>`;
+      container.innerHTML = '<div class="empty-state"><div class="icon">📋</div><div>No records found for the selected range.</div></div>';
       return;
     }
 
-    const grandTotal   = filtered.reduce((a, b) => a + (b.total_deduction || 0), 0);
-    const grandTimeDeduct = filtered.reduce((a, b) => a + (b.total_time_deduction || 0), 0);
-    const grandDayDeduct  = filtered.reduce((a, b) => a + (b.excess_day_deduction || 0), 0);
+    // ── Period stats ──────────────────────────────────────────────────────────
+    const fromDate   = new Date(from);
+    const toDate     = new Date(to);
+    const periodDays = Math.ceil((toDate - fromDate) / 86400000) + 1;
+    const dateLabel  = fromDate.toLocaleDateString('en-GB',{day:'numeric',month:'short',year:'numeric'})
+                     + ' – ' + toDate.toLocaleDateString('en-GB',{day:'numeric',month:'short',year:'numeric'});
 
-    let html = `
-      <div class="card" style="margin-bottom:20px">
-        <div class="card-header"><span class="card-title">Report: ${from} → ${to}</span></div>
-        <div class="stats-grid">
-          <div class="stat-card blue"><div class="stat-label">Employees</div><div class="stat-value">${filtered.length}</div></div>
-          <div class="stat-card yellow"><div class="stat-label">Time Deductions</div><div class="stat-value">£${grandTimeDeduct.toFixed(2)}</div></div>
-          <div class="stat-card yellow"><div class="stat-label">Day-Off Deductions</div><div class="stat-value">£${grandDayDeduct.toFixed(2)}</div></div>
-          <div class="stat-card red"><div class="stat-label">Total Deductions</div><div class="stat-value">£${grandTotal.toFixed(2)}</div></div>
-        </div>
-      </div>`;
+    const filteredIds = new Set(filtered.map(e => e.employee_id));
+    const relSalary   = salaryData.filter(e => !empId || filteredIds.has(e.employee_id));
 
-    for (const emp of filtered) {
-      const typeLabel  = emp.employment_type === 'self_employed' ? 'Self-Employed (5 days/yr)' : 'Payroll (20 days/yr)';
-      const typeBadge  = emp.employment_type === 'self_employed' ? 'badge-yellow' : 'badge-blue';
-      const annualSal  = parseFloat(emp.annual_salary) || 0;
-      const totalPaid  = parseFloat(emp.total_paid_year) || 0;
-      const remaining  = parseFloat(emp.salary_remaining) || 0;
-      const excessDeduct = parseFloat(emp.excess_day_deduction) || 0;
+    // Total payroll paid in period (use payment_month/payment_year to bucket)
+    const fromYM = year * 100 + fromDate.getMonth() + 1;
+    const toYM   = new Date(to).getFullYear() * 100 + new Date(to).getMonth() + 1;
+    let totalPayrollPaid = 0;
+    relSalary.forEach(e => {
+      (e.payments || []).forEach(p => {
+        const ym = (parseInt(p.payment_year) || 0) * 100 + (parseInt(p.payment_month) || 0);
+        if (ym >= fromYM && ym <= toYM) totalPayrollPaid += parseFloat(p.amount || 0);
+      });
+    });
 
-      const recRes = await fetch(`/api/records/${emp.employee_id}?from=${from}&to=${to}`);
-      if (!recRes.ok) continue;
-      const records = await recRes.json();
+    const totalDeduct  = filtered.reduce((a, b) => a + (parseFloat(b.total_deduction) || 0), 0);
+    const timeDeduct   = filtered.reduce((a, b) => a + (parseFloat(b.total_time_deduction) || 0), 0);
+    const dayDeduct    = filtered.reduce((a, b) => a + (parseFloat(b.excess_day_deduction) || 0), 0);
+    const deductPct    = totalPayrollPaid > 0 ? ((totalDeduct / totalPayrollPaid) * 100).toFixed(1) : '0.0';
+    const activeCount  = filtered.length;
 
-      html += `
-        <div class="card" style="margin-bottom:16px">
-          <div class="card-header">
-            <div>
-              <span class="card-title">${esc(emp.name)}</span>
-              <span class="badge ${typeBadge}" style="margin-left:8px">${typeLabel}</span>
-            </div>
-            ${annualSal > 0 ? `<div style="font-size:0.82rem;color:var(--muted);text-align:right">
-              Salary: £${annualSal.toLocaleString('en-GB',{minimumFractionDigits:2})} &nbsp;·&nbsp;
-              Paid: £${totalPaid.toLocaleString('en-GB',{minimumFractionDigits:2})} &nbsp;·&nbsp;
-              <strong>Remaining: £${remaining.toLocaleString('en-GB',{minimumFractionDigits:2})}</strong>
-            </div>` : ''}
-          </div>
-          <div style="margin-bottom:14px;display:flex;gap:16px;flex-wrap:wrap;font-size:0.86rem">
-            <span>Days off this year: <strong>${emp.year_days_off} / ${emp.allowance_days}</strong></span>
-            ${emp.excess_days > 0
-              ? `<span class="text-danger fw-bold">${emp.excess_days} excess = £${excessDeduct.toFixed(2)} deduction</span>`
-              : '<span class="text-success">Within allowance ✓</span>'}
-            <span>Time deductions: <strong>£${(emp.total_time_deduction||0).toFixed(2)}</strong></span>
-            <span class="text-danger fw-bold">Total: £${(emp.total_deduction||0).toFixed(2)}</span>
-          </div>`;
+    // ── Monthly trend data ────────────────────────────────────────────────────
+    const MONTHS_SHORT = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+    const curMonth     = new Date().getMonth();
+    const monthlyTotals = new Array(12).fill(0);
+    relSalary.forEach(e => {
+      (e.payments || []).forEach(p => {
+        const m = parseInt(p.payment_month) - 1;
+        const y = parseInt(p.payment_year);
+        if (!isNaN(m) && y === year && m >= 0 && m < 12) monthlyTotals[m] += parseFloat(p.amount || 0);
+      });
+    });
 
-      if (records.length) {
-        html += `<div class="table-wrap"><table>
-          <thead><tr><th>Date</th><th>Break</th><th>Phone</th><th>Wasted</th><th>Late</th><th>Day Off</th><th>Adj</th><th>Mins</th><th>Amount</th><th>Notes</th></tr></thead>
-          <tbody>`;
-        records.forEach(r => {
-          const adjSign    = r.manual_adj_minutes > 0 ? '+' : '';
-          const dayOffLabel = r.is_day_off === 1 ? '<span class="badge badge-red">Full</span>'
-                            : r.is_day_off === 0.5 ? '<span class="badge badge-yellow">Half</span>' : '—';
-          html += `<tr${r.is_day_off > 0 ? ' class="day-off-row"' : ''}>
-            <td><strong>${r.record_date}</strong></td>
-            <td>${r.break_minutes}m${Math.max(0,r.break_minutes-ALLOWED_BREAK)>0?` <span class="badge badge-red">+${Math.max(0,r.break_minutes-ALLOWED_BREAK)}m</span>`:''}</td>
-            <td>${r.phone_minutes>0?r.phone_minutes+'m':'—'}</td>
-            <td>${r.wasted_minutes>0?r.wasted_minutes+'m':'—'}</td>
-            <td>${r.late_minutes>0?r.late_minutes+'m':'—'}</td>
-            <td>${dayOffLabel}</td>
-            <td>${r.manual_adj_minutes!==0?`${adjSign}${r.manual_adj_minutes}m`:'—'}</td>
-            <td><strong>${r.total_deductible_minutes}m</strong></td>
-            <td class="${(r.total_deduction||0)>0?'text-danger fw-bold':''}">£${(r.total_deduction||0).toFixed(2)}</td>
-            <td style="max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(r.notes||'')||'—'}</td>
-          </tr>`;
-        });
-        html += `</tbody></table></div>`;
-      } else {
-        html += `<div style="color:var(--muted);font-size:0.85rem;padding:8px 0">No daily records in this period.</div>`;
-      }
-      html += `</div>`;
-    }
+    const chartLabels = MONTHS_SHORT.slice(0, curMonth + 1);
+    const chartVals   = monthlyTotals.slice(0, curMonth + 1);
+    const maxVal      = Math.max(...chartVals, 1);
+
+    // ── Build HTML ────────────────────────────────────────────────────────────
+    let html = '';
+
+    // Stat tiles
+    html += '<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:20px">';
+    html += _repTile('Period', periodDays + ' days', dateLabel, 'var(--text)');
+    html += _repTile('Total Payroll', '£' + Math.round(totalPayrollPaid).toLocaleString('en-GB'), 'paid this period', 'var(--positive)');
+    html += _repTile('Total Deductions', '£' + Math.round(totalDeduct).toLocaleString('en-GB'), deductPct + '% of gross', 'var(--negative)');
+    html += _repTile('Active Records', String(activeCount), 'across ' + activeCount + ' staff', 'var(--primary)');
+    html += '</div>';
+
+    // Chart + breakdown row
+    html += '<div style="display:grid;grid-template-columns:3fr 2fr;gap:16px;margin-bottom:20px">';
+
+    // Payroll trend chart
+    html += '<div class="card">';
+    html += '<div class="card-header"><span class="card-title">Payroll Trend</span>' +
+            '<span style="font:500 11px/1 var(--font-mono);color:var(--muted)">' + year + ' · monthly</span></div>';
+    html += '<div style="display:flex;align-items:flex-end;gap:6px;height:150px;padding:4px 4px 0">';
+    chartLabels.forEach(function(m, i) {
+      var val  = chartVals[i];
+      var barH = val > 0 ? Math.max(10, Math.round((val / maxVal) * 110)) : 4;
+      var lbl  = val > 0 ? (val >= 1000 ? '£' + (val/1000).toFixed(1) + 'k' : '£' + Math.round(val)) : '';
+      var isNow = (i === curMonth);
+      var barBg = isNow ? 'var(--primary)' : '#2a3040';
+      html += '<div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:4px;min-width:0">';
+      html += '<div style="font:600 9px/1 var(--font-mono);color:' + (isNow ? 'var(--primary)' : 'var(--muted)') + ';text-align:center;white-space:nowrap">' + lbl + '</div>';
+      html += '<div style="background:' + barBg + ';border-radius:3px 3px 0 0;width:100%;height:' + barH + 'px"></div>';
+      html += '<div style="font:500 9px/1 var(--font-mono);color:' + (isNow ? 'var(--text)' : 'var(--muted)') + '">' + m + '</div>';
+      html += '</div>';
+    });
+    html += '</div></div>';
+
+    // Deductions breakdown
+    html += '<div class="card">';
+    html += '<div class="card-header"><span class="card-title">Deductions Breakdown</span></div>';
+    var deductBase = timeDeduct + dayDeduct || 1;
+    var cats = [
+      { label: 'Time deductions', val: timeDeduct, color: 'var(--primary)' },
+      { label: 'Day-off overage', val: dayDeduct, color: 'var(--negative)' }
+    ];
+    cats.forEach(function(c) {
+      var pct = Math.round((c.val / deductBase) * 100);
+      html += '<div style="margin-bottom:16px">';
+      html += '<div style="display:flex;justify-content:space-between;font:500 11px/1 var(--font-mono);color:var(--muted);margin-bottom:7px">';
+      html += '<span>' + c.label + '</span><span>£' + c.val.toFixed(0) + ' &middot; ' + pct + '%</span></div>';
+      html += '<div style="height:6px;background:var(--border);border-radius:3px">';
+      html += '<div style="height:100%;width:' + pct + '%;background:' + c.color + ';border-radius:3px"></div>';
+      html += '</div></div>';
+    });
+    html += '</div>';
+    html += '</div>'; // end 2-col row
+
+    // Payroll ledger table
+    html += '<div class="card">';
+    html += '<div class="card-header"><span class="card-title">Payroll Ledger YTD</span>' +
+            '<span style="font:500 11px/1 var(--font-mono);color:var(--muted)">' + year + '</span></div>';
+    html += '<div class="table-wrap"><table><thead><tr>';
+    html += '<th>Employee</th><th>Type</th>';
+    chartLabels.forEach(function(m) { html += '<th style="text-align:right">' + m + '</th>'; });
+    html += '<th style="text-align:right;color:var(--primary)">YTD Total</th>';
+    html += '</tr></thead><tbody>';
+
+    relSalary.forEach(function(emp) {
+      var initials = (emp.name || '').split(' ').map(function(w){ return w[0]||''; }).join('').slice(0,2).toUpperCase();
+      var typeLabel = emp.employment_type === 'self_employed' ? 'SE' : 'PR';
+      var typeCls   = emp.employment_type === 'self_employed' ? 'badge-yellow' : 'badge-blue';
+      var empMonthly = new Array(12).fill(0);
+      (emp.payments || []).forEach(function(p) {
+        var m = parseInt(p.payment_month) - 1;
+        var y = parseInt(p.payment_year);
+        if (!isNaN(m) && y === year && m >= 0 && m < 12) empMonthly[m] += parseFloat(p.amount || 0);
+      });
+      var ytd = empMonthly.slice(0, curMonth + 1).reduce(function(a,b){ return a+b; }, 0);
+
+      html += '<tr>';
+      html += '<td><div style="display:flex;align-items:center;gap:10px">';
+      html += '<div style="width:30px;height:30px;border-radius:50%;background:var(--primary);display:flex;align-items:center;justify-content:center;font:700 10px/1 var(--font-mono);color:#000;flex-shrink:0">' + initials + '</div>';
+      html += '<div><div style="font-weight:700;font-size:0.84rem">' + esc(emp.name || '') + '</div>';
+      html += '<div style="font-size:0.71rem;color:var(--muted)">' + esc(emp.job_title || '') + '</div></div></div></td>';
+      html += '<td><span class="badge ' + typeCls + '">' + typeLabel + '</span></td>';
+      chartLabels.forEach(function(m, i) {
+        var v = empMonthly[i];
+        html += '<td style="text-align:right;font:500 12px/1 var(--font-mono);color:' + (v > 0 ? 'var(--text)' : 'var(--dim)') + '">' +
+                (v > 0 ? '£' + v.toLocaleString('en-GB',{maximumFractionDigits:0}) : '&mdash;') + '</td>';
+      });
+      html += '<td style="text-align:right;font:700 13px/1 var(--font-mono);color:var(--primary)">' +
+              (ytd > 0 ? '£' + ytd.toLocaleString('en-GB') : '&mdash;') + '</td>';
+      html += '</tr>';
+    });
+
+    html += '</tbody></table></div></div>';
 
     container.innerHTML = html;
 
   } catch (e) {
-    container.innerHTML = `<div class="alert alert-error">Failed to generate report: ${esc(e.message)}</div>`;
+    container.innerHTML = '<div class="alert alert-error">Failed to generate report: ' + esc(e.message) + '</div>';
   }
 }
 
@@ -1275,13 +1606,28 @@ async function loadAdmins() {
   const res = await fetch('/api/admins');
   if (!res.ok) return;
   const admins = await res.json();
+
+  // Update adminSub
+  const adminCount = admins.length;
+  const adminRoleCount = admins.filter(a => a.role === 'admin').length;
+  const managerCount = admins.filter(a => a.role === 'manager').length;
+  const accountsCount = admins.filter(a => a.role === 'accounts').length;
+  const adminSub = document.getElementById('adminSub');
+  if (adminSub) adminSub.textContent = `// ${adminCount} account${adminCount !== 1 ? 's' : ''} · ${adminRoleCount} admin · ${managerCount} manager` + (accountsCount ? ` · ${accountsCount} accounts` : '');
+
   const tbody = document.getElementById('adminTable');
   tbody.innerHTML = '';
   admins.forEach(a => {
+    const initials = (a.username || '?').slice(0, 2).toUpperCase();
     const tr = document.createElement('tr');
     tr.innerHTML = `
-      <td><strong>${esc(a.username)}</strong></td>
-      <td><span class="badge ${a.role==='admin'?'badge-blue':'badge-grey'}">${a.role}</span></td>
+      <td>
+        <div style="display:flex;align-items:center;gap:10px">
+          <div style="width:28px;height:28px;border-radius:7px;background:var(--accent-soft);border:1px solid var(--accent-line);color:var(--accent);font:700 10px/1 var(--font-mono);display:grid;place-items:center;flex-shrink:0">${initials}</div>
+          <strong>${esc(a.username)}</strong>
+        </div>
+      </td>
+      <td><span class="badge ${a.role==='admin'?'badge-green':a.role==='accounts'?'badge-teal':'badge-blue'}">${a.role.toUpperCase()}</span></td>
       <td>${a.created_at.slice(0,10)}</td>
       <td style="text-align:right">
         <button class="btn btn-ghost btn-sm" onclick="resetPw(${a.id})">Reset PW</button>
@@ -1289,6 +1635,61 @@ async function loadAdmins() {
       </td>`;
     tbody.appendChild(tr);
   });
+
+  // Append roles + recent sign-ins section (remove old one if present)
+  const oldExtra = document.getElementById('adminExtraSection');
+  if (oldExtra) oldExtra.remove();
+
+  const signinRows = admins.map(a => {
+    const initials = (a.username || '?').slice(0, 2).toUpperCase();
+    return `
+      <div style="display:flex;align-items:center;gap:10px;padding:10px 16px;border-bottom:1px solid var(--border)">
+        <span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--positive);flex-shrink:0"></span>
+        <div style="width:28px;height:28px;border-radius:7px;background:var(--accent-soft);border:1px solid var(--accent-line);color:var(--accent);font:700 10px/1 var(--font-mono);display:grid;place-items:center;flex-shrink:0">${initials}</div>
+        <div style="flex:1;min-width:0">
+          <div style="font:600 12.5px/1 var(--font-mono);color:var(--text)">${esc(a.username)}</div>
+          <div style="font:400 10.5px/1 var(--font-mono);color:var(--muted);margin-top:3px">${a.created_at.slice(0,10)}</div>
+        </div>
+        <span class="badge ${a.role==='admin'?'badge-green':'badge-blue'}" style="font-size:0.65rem">${a.role.toUpperCase()}</span>
+      </div>`;
+  }).join('');
+
+  const extraSection = document.createElement('div');
+  extraSection.id = 'adminExtraSection';
+  extraSection.innerHTML = `
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:16px">
+      <div class="card" style="margin-bottom:0">
+        <div class="card-header">
+          <span class="card-title">Roles</span>
+        </div>
+        <div style="padding:16px">
+          <div style="margin-bottom:14px">
+            <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
+              <span class="badge badge-green">ADMIN</span>
+              <span style="font:600 12.5px/1 var(--font-sans);color:var(--text)">Full access</span>
+            </div>
+            <div style="font:400 11.5px/1.5 var(--font-mono);color:var(--muted)">Manage admins, delete records, terminate employees, all exports.</div>
+          </div>
+          <div>
+            <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
+              <span class="badge badge-blue">MANAGER</span>
+              <span style="font:600 12.5px/1 var(--font-sans);color:var(--text)">Day-to-day</span>
+            </div>
+            <div style="font:400 11.5px/1.5 var(--font-mono);color:var(--muted)">Add records, log payments, edit employees · no admin or termination.</div>
+          </div>
+        </div>
+      </div>
+      <div class="card" style="margin-bottom:0">
+        <div class="card-header">
+          <span class="card-title">Recent sign-ins</span>
+          <span style="font:600 10px/1 var(--font-mono);color:var(--muted);text-transform:uppercase;letter-spacing:0.6px">Last 7 days</span>
+        </div>
+        <div id="adminSignins">${signinRows || '<div style="padding:16px;color:var(--muted);font-size:0.85rem">No accounts yet.</div>'}</div>
+      </div>
+    </div>`;
+
+  const adminPage = document.getElementById('page-admins');
+  if (adminPage) adminPage.appendChild(extraSection);
 }
 
 function openAdminModal() { openModal('adminModal'); }
@@ -1401,6 +1802,16 @@ async function loadSalaryPage() {
       const labels = { all:'All', payroll:'Payroll', self_employed:'Self-Employed', terminated:'Terminated' };
       t.textContent = `${labels[key]} (${counts[key]})`;
     });
+
+    // Update salary page tag and sub
+    const salaryPageTag = document.getElementById('salaryPageTag');
+    if (salaryPageTag) salaryPageTag.textContent = year;
+    const salarySub = document.getElementById('salarySub');
+    if (salarySub) {
+      const activeCount = searched.filter(e => !e.is_terminated).length;
+      const flagged = searched.filter(e => !e.is_terminated && (parseFloat(e.excess_days) || 0) > 0).length;
+      salarySub.textContent = `// ${activeCount} account${activeCount !== 1 ? 's' : ''} · ${flagged > 0 ? flagged + ' flagged' : 'all clear'}`;
+    }
 
     const tab = activeSalaryTab();
     let rows = [...searched];
@@ -1558,6 +1969,7 @@ async function loadSalaryPage() {
       return;
     }
 
+    container.style.cssText = 'display:grid;grid-template-columns:repeat(auto-fill,minmax(380px,1fr));gap:16px;margin-top:16px';
     container.innerHTML = rows.map(emp => {
       const annualSalary    = parseFloat(emp.annual_salary) || 0;
       const salaryTarget    = parseFloat(emp.salary_target ?? emp.annual_salary) || 0;
@@ -1580,15 +1992,38 @@ async function loadSalaryPage() {
       const paye            = emp.paye_breakdown || null;
       const netMonthly      = emp.net_monthly ? parseFloat(emp.net_monthly) : null;
 
-      // First-month suggestion: use end-of-month calculation (not earned-to-today)
+      // First-month suggestion: server-provided or client-side fallback
       const pr = emp.pro_rated;
       const fm = emp.first_month_full;
-      // Partial = employee started mid-month (not day 1)
       const isPartialFirstMonth = fm && fm.first_month_days < fm.first_month_total_days;
       const payeNetFactor = paye && annualSalary > 0 ? paye.net_annual / annualSalary : 1;
-      const suggestedFirstMonthNet = isPartialFirstMonth
+      let suggestedFirstMonthNet = isPartialFirstMonth
         ? parseFloat((fm.first_month_pay * payeNetFactor).toFixed(2))
         : null;
+      let fmMeta = isPartialFirstMonth ? {
+        monthName: MONTHS[parseInt(fm.first_month.split('-')[1]) - 1] || fm.first_month,
+        startDate: fm.start_date || emp.start_date,
+        daysWorked: fm.first_month_days,
+        daysTotal: fm.first_month_total_days
+      } : null;
+
+      // Client-side fallback: derive from emp.start_date when server didn't provide fm data
+      if (suggestedFirstMonthNet === null && emp.start_date && !emp.is_terminated) {
+        const sd = new Date(emp.start_date + 'T00:00:00');
+        const startDay = sd.getDate();
+        if (startDay > 1) {
+          const daysInMonth = new Date(sd.getFullYear(), sd.getMonth() + 1, 0).getDate();
+          const daysWorked = daysInMonth - startDay + 1;
+          const netM = (paye ? paye.net_monthly : null) || netMonthly || (annualSalary / 12);
+          suggestedFirstMonthNet = parseFloat((netM * (daysWorked / daysInMonth)).toFixed(2));
+          fmMeta = {
+            monthName: MONTHS[sd.getMonth()],
+            startDate: emp.start_date,
+            daysWorked,
+            daysTotal: daysInMonth
+          };
+        }
+      }
 
       const initials = (emp.name || '?').split(' ').map(w => w[0]).join('').slice(0,2).toUpperCase();
       const typeLabel = emp.employment_type === 'self_employed' ? 'Self-Employed' : 'Payroll';
@@ -1625,7 +2060,7 @@ async function loadSalaryPage() {
             <div class="sc-emp-badges">
               <span class="badge ${typeBadge}" style="font-size:0.67rem">${typeLabel}</span>
               <span class="badge badge-grey" style="font-size:0.67rem">${cur}</span>
-              ${emp.start_date ? `<span class="sc-emp-since">${isTerminated ? 'Started' : 'Since'} ${emp.start_date}</span>` : ''}
+              ${emp.start_date ? `<span class="sc-emp-since">${isTerminated ? 'Started' : 'Since'} ${emp.start_date}</span>` : `<span class="badge" style="background:#7f1d1d;color:#fca5a5;font-size:0.67rem;cursor:pointer" onclick="openEditEmployee(${emp.employee_id})">⚠ No start date — click to set</span>`}
             </div>
           </div>
           <div class="sc-annual">
@@ -1646,50 +2081,55 @@ async function loadSalaryPage() {
           </div>
         </div>
 
-        ${suggestedFirstMonthNet !== null ? (() => {
-          const firstMonthName = MONTHS[parseInt(fm.first_month.split('-')[1])] || fm.first_month;
-          const afterLabel = paye
-            ? `after PAYE/NI${paye.pension > 0 ? '/pension' : ''}`
-            : 'gross';
-          return `<div class="sc-firstmonth-tip">
-            <span class="sc-fm-icon">💡</span>
-            <div>
-              Suggested payment for ${firstMonthName} (started ${fm.start_date}):
-              <strong>${sym}${suggestedFirstMonthNet.toLocaleString('en-GB',{minimumFractionDigits:2})}</strong>
-              <span class="sc-fm-sub">${fm.first_month_days} of ${fm.first_month_total_days} working days · ${afterLabel}</span>
-            </div>
-          </div>`;
-        })() : ''}
 
-        <div class="sc-figures">
-          ${paye ? `
-          <div class="sc-fig">
-            <div class="sc-fig-lbl">Gross / month</div>
-            <div class="sc-fig-val">${sym}${paye.gross_monthly.toLocaleString('en-GB',{maximumFractionDigits:0})}</div>
-            <div class="sc-fig-sub">before deductions</div>
-          </div>
-          <div class="sc-fig sc-fig-hi">
-            <div class="sc-fig-lbl">Take-home / month</div>
-            <div class="sc-fig-val">${sym}${paye.net_monthly.toLocaleString('en-GB',{maximumFractionDigits:0})}</div>
-            <div class="sc-fig-sub">after PAYE + NI${paye.pension > 0 ? ' + pension' : ''}</div>
-          </div>` : `
-          <div class="sc-fig">
-            <div class="sc-fig-lbl">Monthly pay</div>
-            <div class="sc-fig-val">${sym}${(annualSalary/12).toLocaleString('en-GB',{maximumFractionDigits:0})}</div>
-            <div class="sc-fig-sub">${sym}${annualSalary.toLocaleString('en-GB',{maximumFractionDigits:0})}/yr</div>
-          </div>
-          <div class="sc-fig ${excessDays > 0 ? 'sc-fig-bad' : 'sc-fig-ok'}">
-            <div class="sc-fig-lbl">Days off</div>
-            <div class="sc-fig-val">${totalDaysOff} <span style="font-size:0.75rem;font-weight:600;color:#9ca3af">/ ${allowanceDays}</span></div>
-            <div class="sc-fig-sub">${allowanceLabel}</div>
-            ${excessDays > 0 ? `<div class="sc-fig-deduct">−${sym}${excessDeduction.toLocaleString('en-GB',{minimumFractionDigits:2,maximumFractionDigits:2})} deducted</div>` : ''}
-          </div>`}
-          <div class="sc-fig ${figOutClass}">
-            <div class="sc-fig-lbl">Outstanding</div>
-            <div class="sc-fig-val">${isOverpaid ? '−' : ''}${sym}${Math.abs(netRemaining).toLocaleString('en-GB',{maximumFractionDigits:0})}</div>
-            <div class="sc-fig-sub">${isOverpaid ? 'overpaid' : isTerminated ? 'final balance' : `${year} balance`}</div>
-          </div>
-        </div>
+        ${(() => {
+          const monthlyVal = paye ? paye.net_monthly : annualSalary / 12;
+          const monthlyLbl = paye ? 'Take-home / mo' : 'Monthly pay';
+          const monthlySub = paye
+            ? ('after PAYE + NI' + (paye.pension > 0 ? ' + pension' : ''))
+            : (sym + annualSalary.toLocaleString('en-GB',{maximumFractionDigits:0}) + '/yr');
+          const outColor = isOverpaid ? 'var(--positive)' : netRemaining === 0 ? 'var(--muted)' : 'var(--negative)';
+          const outSub   = isOverpaid ? 'overpaid' : isTerminated ? 'final balance' : (year + ' balance');
+          const showFirstMonth = suggestedFirstMonthNet !== null && fmMeta && !isOverpaid;
+          const fmMonthName = fmMeta ? (fmMeta.monthName || '') : '';
+          const fmSub = fmMeta ? fmMeta.daysWorked + ' of ' + fmMeta.daysTotal + ' days · ' + fmMonthName : '';
+          // For first-month starters not yet paid: make pro-rated amount the primary "pay this" figure
+          const firstMonthUnpaid = showFirstMonth && totalPaidEmp === 0;
+          return '<div style="display:flex;border-top:1px solid var(--border);border-bottom:1px solid var(--border)">' +
+            '<div style="flex:1;padding:16px 20px;border-right:1px solid var(--border)">' +
+              '<div style="font:600 9px/1 var(--font-mono);text-transform:uppercase;letter-spacing:1px;color:var(--muted);margin-bottom:8px">' + monthlyLbl + '</div>' +
+              '<div style="font:700 22px/1 var(--font-mono);color:var(--text)">' + sym + monthlyVal.toLocaleString('en-GB',{maximumFractionDigits:0}) + '</div>' +
+              '<div style="font:500 10px/1 var(--font-mono);color:var(--muted);margin-top:6px">' + monthlySub + '</div>' +
+            '</div>' +
+            (firstMonthUnpaid
+              // ── First-month starter, not paid yet: show pro-rated amount as the "pay this" number ──
+              ? '<div style="flex:1;padding:16px 20px;background:rgba(251,191,36,0.06)">' +
+                  '<div style="font:600 9px/1 var(--font-mono);text-transform:uppercase;letter-spacing:1px;color:#f59e0b;margin-bottom:8px">Pay This Month</div>' +
+                  '<div style="font:700 22px/1 var(--font-mono);color:#f59e0b">' + sym + Math.round(suggestedFirstMonthNet).toLocaleString('en-GB') + '</div>' +
+                  '<div style="font:500 10px/1 var(--font-mono);color:var(--muted);margin-top:6px">' + fmSub + '</div>' +
+                  '<div style="font:500 10px/1 var(--font-mono);color:var(--muted);margin-top:4px;opacity:.7">year balance: ' + sym + Math.abs(netRemaining).toLocaleString('en-GB',{maximumFractionDigits:0}) + '</div>' +
+                '</div>'
+              // ── Normal: monthly + year balance (+ optional 1st month middle column if partially paid) ──
+              : (showFirstMonth
+                  ? '<div style="flex:1;padding:16px 20px;border-right:1px solid var(--border);background:rgba(251,191,36,0.05)">' +
+                      '<div style="font:600 9px/1 var(--font-mono);text-transform:uppercase;letter-spacing:1px;color:#f59e0b;margin-bottom:8px">1st Month Due</div>' +
+                      '<div style="font:700 22px/1 var(--font-mono);color:#f59e0b">' + sym + Math.round(suggestedFirstMonthNet).toLocaleString('en-GB') + '</div>' +
+                      '<div style="font:500 10px/1 var(--font-mono);color:var(--muted);margin-top:6px">' + fmSub + '</div>' +
+                    '</div>'
+                  : '') +
+                '<div style="flex:1;padding:16px 20px">' +
+                  '<div style="font:600 9px/1 var(--font-mono);text-transform:uppercase;letter-spacing:1px;color:var(--muted);margin-bottom:8px">Year Balance</div>' +
+                  '<div style="font:700 22px/1 var(--font-mono);color:' + outColor + '">' + (isOverpaid ? '−' : '') + sym + Math.abs(netRemaining).toLocaleString('en-GB',{maximumFractionDigits:0}) + '</div>' +
+                  '<div style="font:500 10px/1 var(--font-mono);color:var(--muted);margin-top:6px">' + outSub + '</div>' +
+                '</div>'
+            ) +
+          '</div>' +
+          (!paye && excessDays > 0
+            ? '<div style="padding:8px 20px;font:500 11px/1 var(--font-mono);color:var(--negative);border-bottom:1px solid var(--border)">' +
+              '⚠ ' + excessDays + ' excess day' + (excessDays > 1 ? 's' : '') + ' — −' + sym + excessDeduction.toLocaleString('en-GB',{minimumFractionDigits:2}) + ' deducted' +
+              '</div>'
+            : '');
+        })()}
 
         <div class="sc-sections">
 
@@ -1701,9 +2141,6 @@ async function loadSalaryPage() {
               <span class="sc-chevron">›</span>
             </button>
             <div class="sc-sec-body">
-              <div class="sc-sec-actions">
-                <button class="btn btn-primary btn-sm" onclick="openSalaryPaymentModal(${emp.employee_id})">+ Log Payment</button>
-              </div>
               ${payments.length ? payments.map(p => `
                 <div class="sc-item">
                   <span class="sc-item-date">${MONTHS[p.payment_month]?.slice(0,3)||p.payment_month} ${p.payment_year}</span>
@@ -1808,9 +2245,29 @@ async function loadSalaryPage() {
           </div>` : ''}
 
           <!-- Pro-rated breakdown -->
-          ${(emp.pro_rated || emp.first_month_full) ? (() => {
+          ${(emp.pro_rated || emp.first_month_full || (suggestedFirstMonthNet !== null && fmMeta)) ? (() => {
             const pr = emp.pro_rated;
             const fmr = emp.first_month_full;
+            // Client-side fallback only (no server data)
+            if (!pr && !fmr && suggestedFirstMonthNet !== null && fmMeta) {
+              const grossMonthly = annualSalary / 12;
+              const grossProrata = grossMonthly * (fmMeta.daysWorked / fmMeta.daysTotal);
+              const payLabel = paye ? ('Net after PAYE/NI' + (paye.pension > 0 ? '/pension' : '')) : 'Pro-rata amount';
+              return `
+          <div class="sc-section">
+            <button class="sc-sec-toggle" onclick="toggleSection(this)">
+              <span class="sc-sec-title">Pro-Rated Pay — started ${fmMeta.startDate}</span>
+              <span class="sc-chevron">›</span>
+            </button>
+            <div class="sc-sec-body">
+              <div class="sc-breakdown">
+                <div class="sc-breakdown-title">First month payment — ${fmMeta.monthName}</div>
+                <div class="sc-breakdown-row"><span>${fmMeta.daysWorked} of ${fmMeta.daysTotal} days in ${fmMeta.monthName}</span><span>${sym}${grossProrata.toLocaleString('en-GB',{minimumFractionDigits:2})} gross</span></div>
+                <div class="sc-breakdown-row total"><span>${payLabel}</span><span>${sym}${suggestedFirstMonthNet.toLocaleString('en-GB',{minimumFractionDigits:2})}</span></div>
+              </div>
+            </div>
+          </div>`;
+            }
             const showFmFull = fmr && fmr.first_month_days < fmr.first_month_total_days;
             const fmrName = fmr ? (MONTHS[parseInt(fmr.first_month.split('-')[1])] || fmr.first_month) : null;
             const fmrGross = fmr ? fmr.first_month_pay : 0;
@@ -1908,6 +2365,98 @@ async function loadSalaryPage() {
 
 function toggleSection(btn) {
   btn.closest('.sc-section').classList.toggle('open');
+}
+
+function showSalaryBreakdown(key) {
+  const rows = window._salaryRows || [];
+  const AED_TO_GBP = window._salaryAedRate || (1/4.67);
+  const fmtGBP = v => '£' + Math.abs(v).toLocaleString('en-GB', {minimumFractionDigits:2, maximumFractionDigits:2});
+  const fmtCur = (v, cur) => {
+    const sym = cur === 'GBP' ? '£' : cur === 'USD' ? '$' : (cur + ' ');
+    return sym + Math.abs(v).toLocaleString('en-GB', {minimumFractionDigits:2, maximumFractionDigits:2});
+  };
+  const toGBP = (v, cur) => cur === 'AED' ? v * AED_TO_GBP : v;
+
+  const titles = { paid: 'Total Paid — Breakdown', due: 'Total Salaries — Breakdown', outstanding: 'Outstanding Balance — Breakdown', bonuses: 'Total Bonuses — Breakdown' };
+  const notes  = { paid: 'Payments logged this year per employee', due: 'Net annual salary target incl. PAYE/NI deductions', outstanding: 'Remaining balance after payments & deductions (excl. bonuses)', bonuses: 'Bonus payments logged per employee' };
+
+  // Build per-employee rows
+  const empRows = rows.map(emp => {
+    const cur = emp.currency || 'GBP';
+    let nativeVal, gbpVal, label;
+    if (key === 'paid') {
+      nativeVal = parseFloat(emp.total_paid) || 0;
+      gbpVal    = toGBP(nativeVal, cur);
+      label     = nativeVal;
+    } else if (key === 'due') {
+      nativeVal = parseFloat(emp.salary_target ?? emp.annual_salary) || 0;
+      gbpVal    = toGBP(nativeVal, cur);
+    } else if (key === 'outstanding') {
+      nativeVal = parseFloat(emp.net_remaining) || 0;
+      gbpVal    = toGBP(nativeVal, cur);
+    } else { // bonuses
+      nativeVal = parseFloat(emp.total_bonuses) || 0;
+      gbpVal    = toGBP(nativeVal, cur);
+    }
+    return { emp, cur, nativeVal, gbpVal };
+  }).filter(r => Math.abs(r.nativeVal) > 0.005)
+    .sort((a, b) => Math.abs(b.gbpVal) - Math.abs(a.gbpVal));
+
+  const totalGBP = empRows.reduce((s, r) => s + r.gbpVal, 0);
+
+  const rowsHtml = empRows.map(({ emp, cur, nativeVal, gbpVal }) => {
+    const isNeg = nativeVal < 0;
+    const valColor = key === 'outstanding' ? (isNeg ? 'var(--positive)' : 'var(--negative)') : 'var(--text)';
+    const deductHtml = key === 'outstanding' ? (() => {
+      const od  = parseFloat(emp.total_office_deductions) || 0;
+      const ed  = parseFloat(emp.excess_deduction) || 0;
+      const paid = parseFloat(emp.total_paid) || 0;
+      const target = parseFloat(emp.salary_target ?? emp.annual_salary) || 0;
+      const parts = [];
+      if (paid > 0)  parts.push('<span style="color:var(--positive)">−' + fmtCur(paid, cur) + ' paid</span>');
+      if (od > 0)    parts.push('<span style="color:var(--negative)">−' + fmtCur(od, cur) + ' deductions</span>');
+      if (ed > 0)    parts.push('<span style="color:var(--negative)">−' + fmtCur(ed, cur) + ' excess days</span>');
+      return parts.length ? '<div style="font:500 10px/1.4 var(--font-mono);color:var(--muted);margin-top:3px">' + parts.join(' · ') + '</div>' : '';
+    })() : '';
+    return '<div style="display:flex;align-items:center;gap:12px;padding:11px 0;border-bottom:1px solid var(--border)">' +
+      '<div style="width:32px;height:32px;border-radius:50%;background:var(--primary);display:flex;align-items:center;justify-content:center;font:700 11px/1 var(--font-mono);color:#000;flex-shrink:0">' +
+        (emp.name||'?').split(' ').map(w=>w[0]).join('').slice(0,2).toUpperCase() +
+      '</div>' +
+      '<div style="flex:1;min-width:0">' +
+        '<div style="font:600 13px/1 var(--font-sans);color:var(--text)">' + esc(emp.name||'') + '</div>' +
+        '<div style="font:500 10px/1 var(--font-mono);color:var(--muted);margin-top:2px">' + esc(emp.job_title||emp.department||'') + '</div>' +
+        deductHtml +
+      '</div>' +
+      '<div style="text-align:right;flex-shrink:0">' +
+        '<div style="font:700 14px/1 var(--font-mono);color:' + valColor + '">' + (isNeg ? '−' : '') + fmtCur(nativeVal, cur) + '</div>' +
+        (cur !== 'GBP' ? '<div style="font:500 10px/1 var(--font-mono);color:var(--muted);margin-top:3px">≈ ' + fmtGBP(gbpVal) + ' GBP</div>' : '') +
+      '</div>' +
+    '</div>';
+  }).join('');
+
+  const modal = document.createElement('div');
+  modal.className = 'modal-overlay';
+  modal.innerHTML =
+    '<div class="modal" style="max-width:520px;max-height:80vh;display:flex;flex-direction:column">' +
+      '<div class="modal-header" style="flex-shrink:0">' +
+        '<h3 class="modal-title">' + titles[key] + '</h3>' +
+        '<button class="modal-close" onclick="this.closest(\'.modal-overlay\').remove()">×</button>' +
+      '</div>' +
+      '<div style="padding:0 20px 8px;flex-shrink:0">' +
+        '<div style="font:500 11px/1 var(--font-mono);color:var(--muted)">' + notes[key] + '</div>' +
+        (key === 'outstanding' ? '<div style="font:500 11px/1 var(--font-mono);color:var(--muted);margin-top:4px">Excludes bonuses · AED converted at 1 AED = ' + AED_TO_GBP.toFixed(4) + ' GBP</div>' : '') +
+      '</div>' +
+      '<div style="overflow-y:auto;padding:0 20px 8px;flex:1">' +
+        (rowsHtml || '<div style="color:var(--muted);padding:20px 0;font:500 12px/1 var(--font-mono)">No data.</div>') +
+      '</div>' +
+      '<div style="padding:16px 20px;border-top:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;flex-shrink:0;background:var(--surface)">' +
+        '<span style="font:600 11px/1 var(--font-mono);color:var(--muted)">TOTAL (' + empRows.length + ' employee' + (empRows.length !== 1 ? 's' : '') + ')</span>' +
+        '<span style="font:700 18px/1 var(--font-mono);color:var(--text)">' + fmtGBP(totalGBP) + '</span>' +
+      '</div>' +
+    '</div>';
+  modal.addEventListener('click', e => { if (e.target === modal) modal.remove(); });
+  document.body.appendChild(modal);
+  requestAnimationFrame(() => modal.classList.add('open'));
 }
 
 // ─── HR NOTES ─────────────────────────────────────────────────────────────────
@@ -2197,12 +2746,24 @@ async function loadCalendar() {
 
   const empFilter = document.getElementById('calEmpFilter').value;
 
-  const [calRes, remRes] = await Promise.all([
+  const [calRes, remRes, pendingRes] = await Promise.all([
     fetch(`/api/calendar?year=${calYear}&month=${calMonth}`),
-    fetch(`/api/calendar-reminders?year=${calYear}&month=${calMonth}`)
+    fetch(`/api/calendar-reminders?year=${calYear}&month=${calMonth}`),
+    fetch(`/api/day-off-requests`)
   ]);
   calData = await calRes.json();
   calReminders = remRes.ok ? await remRes.json() : [];
+  const pendingRequests = pendingRes.ok ? await pendingRes.json() : [];
+  renderDayOffRequestsBanner(pendingRequests);
+  updateCalendarBadge(pendingRequests.length);
+
+  // Update calSub
+  const calSub = document.getElementById('calSub');
+  if (calSub) {
+    const daysOffCount = calData.length;
+    const reminderCount = calReminders.length;
+    calSub.textContent = `// ${MONTHS[calMonth]} ${calYear} · ${daysOffCount} day${daysOffCount !== 1 ? 's' : ''} off · ${reminderCount} reminder${reminderCount !== 1 ? 's' : ''}`;
+  }
 
   const byDate = {};
   calData.forEach(r => { if (!byDate[r.record_date]) byDate[r.record_date] = []; byDate[r.record_date].push(r); });
@@ -2282,6 +2843,11 @@ async function renderCalSummary(byDate, empFilter) {
   dates.forEach(date => {
     const entries = byDate[date].filter(r => !empFilter || String(r.employee_id) === empFilter);
     if (!entries.length) return;
+    entries.forEach(r => {
+      const v = parseFloat(r.is_day_off);
+      if (v === 1) fullDaysTotal++;
+      else if (v === 0.5) halfDaysTotal++;
+    });
     const chips = entries.map(r => {
       const cls = parseFloat(r.is_day_off) === 1 ? 'chip-full' : 'chip-half';
       const label = parseFloat(r.is_day_off) === 1 ? 'Full' : 'Half';
@@ -2308,6 +2874,63 @@ async function renderCalSummary(byDate, empFilter) {
 
   summary.innerHTML = html;
   summary.classList.remove('hidden');
+}
+
+function renderDayOffRequestsBanner(pending) {
+  let banner = document.getElementById('dayOffRequestsBanner');
+  if (!banner) {
+    const calPage = document.getElementById('page-calendar');
+    if (!calPage) return;
+    banner = document.createElement('div');
+    banner.id = 'dayOffRequestsBanner';
+    calPage.insertBefore(banner, calPage.firstChild);
+  }
+  if (!pending.length) { banner.innerHTML = ''; return; }
+
+  const MONS = ['JAN','FEB','MAR','APR','MAY','JUN','JUL','AUG','SEP','OCT','NOV','DEC'];
+  const rows = pending.map(r => {
+    const d = new Date(r.request_date);
+    const typeLabel = parseFloat(r.is_day_off) === 1 ? 'Full day' : 'Half day';
+    return '<div style="display:flex;align-items:center;gap:12px;padding:10px 16px;border-bottom:1px solid var(--border)">' +
+      '<div style="width:36px;text-align:center;background:#1a1f2e;border:1px solid var(--border);border-radius:6px;padding:5px 0;flex-shrink:0">' +
+        '<div style="font:800 13px/1 var(--font-mono);color:var(--text)">' + d.getUTCDate() + '</div>' +
+        '<div style="font:600 9px/1 var(--font-mono);color:var(--muted)">' + MONS[d.getUTCMonth()] + '</div>' +
+      '</div>' +
+      '<div style="flex:1">' +
+        '<div style="font:600 13px/1 var(--font-sans);color:var(--text)">' + esc(r.employee_name) + '</div>' +
+        '<div style="font:500 11px/1 var(--font-mono);color:var(--muted);margin-top:3px">' + typeLabel + (r.department ? ' · ' + esc(r.department) : '') + '</div>' +
+        (r.reason ? '<div style="font:500 11px/1.4 var(--font-sans);color:var(--text-2);margin-top:4px;padding:4px 8px;background:var(--surface);border-radius:4px;border-left:2px solid var(--warning)">' + esc(r.reason) + '</div>' : '') +
+      '</div>' +
+      '<div style="display:flex;gap:6px">' +
+        '<button class="btn btn-primary btn-sm" onclick="approveLeave(' + r.id + ')">Approve</button>' +
+        '<button class="btn btn-danger btn-sm" onclick="declineLeave(' + r.id + ')">Decline</button>' +
+      '</div>' +
+    '</div>';
+  }).join('');
+
+  banner.innerHTML =
+    '<div class="card" style="margin-bottom:16px;border:1px solid var(--warning)">' +
+      '<div class="card-header" style="background:var(--warning)22">' +
+        '<span class="card-title">Pending Day-Off Requests</span>' +
+        '<span style="font:700 11px/1 var(--font-mono);color:var(--muted)">' + pending.length + ' pending</span>' +
+      '</div>' +
+      '<div>' + rows + '</div>' +
+    '</div>';
+}
+
+async function approveLeave(id) {
+  const res = await fetch('/api/day-off-requests/' + id + '/approve', { method: 'PUT' });
+  if (res.ok) { showToast('Day off approved', 'success'); loadCalendar(); }
+  else showToast('Failed to approve', 'error');
+}
+
+async function declineLeave(id) {
+  const reason = prompt('Reason for declining (optional):') ?? '';
+  const res = await fetch('/api/day-off-requests/' + id + '/decline', {
+    method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ reason })
+  });
+  if (res.ok) { showToast('Request declined', 'success'); loadCalendar(); }
+  else showToast('Failed to decline', 'error');
 }
 
 function openDayModal(dateStr, entries, remindersToday = []) {
@@ -2501,6 +3124,22 @@ function updateSalaryBadge(count) {
   });
 }
 
+function updateCalendarBadge(count) {
+  ['calNavBadge', 'calBellBadge'].forEach(id => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    if (count > 0) { el.textContent = count; el.classList.remove('hidden'); }
+    else el.classList.add('hidden');
+  });
+}
+
+async function refreshCalendarBadge() {
+  try {
+    const res = await fetch('/api/day-off-requests');
+    if (res.ok) updateCalendarBadge((await res.json()).length);
+  } catch {}
+}
+
 // ─── SALARY REMINDER PANEL ────────────────────────────────────────────────────
 function getUnpaidThisMonth(overview, year, month) {
   return (overview || []).filter(emp => {
@@ -2586,6 +3225,16 @@ function skipSalaryReminder(empId, year, month) {
   renderSalaryReminderPanel();
 }
 
+function toggleSalaryReminder() {
+  const body = document.getElementById('salaryReminderBody');
+  const btn  = document.getElementById('salaryReminderToggleBtn');
+  if (!body) return;
+  const opening = body.style.display === 'none';
+  body.style.display = opening ? '' : 'none';
+  if (btn) btn.innerHTML = opening ? '&#9650; Hide' : '&#9660; Show';
+  localStorage.setItem('salaryReminderOpen', opening ? '1' : '0');
+}
+
 function dismissAllReminders() {
   const now   = new Date();
   const year  = now.getFullYear();
@@ -2607,6 +3256,7 @@ function openCalReminderModal(dateStr = null) {
   document.getElementById('crAmount').value   = '';
   document.getElementById('crCurrency').value = 'GBP';
   document.getElementById('crNotes').value    = '';
+  document.getElementById('crVisibleToStaff').checked = false;
   openModal('calReminderModal');
 }
 
@@ -2623,7 +3273,7 @@ async function saveCalReminder() {
   const res = await fetch('/api/calendar-reminders', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ title, category, reminder_date: reminderDate, recurrence, amount: amount || null, currency, notes })
+    body: JSON.stringify({ title, category, reminder_date: reminderDate, recurrence, amount: amount || null, currency, notes, visible_to_staff: document.getElementById('crVisibleToStaff').checked })
   });
   if (!res.ok) { const e = await res.json(); return showToast(e.error || 'Save failed', 'error'); }
   closeModal('calReminderModal');
@@ -2704,6 +3354,12 @@ function hotelCurrencySymbol(c) {
 function fmtHotelNum(v) {
   if (v == null || v === '') return '—';
   return parseFloat(v).toLocaleString('en-GB', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
+function fmtHotelAmount(v) {
+  if (v >= 1000000) return (v / 1000000).toFixed(1) + 'M';
+  if (v >= 1000)    return (v / 1000).toFixed(1) + 'k';
+  return v.toFixed(0);
 }
 
 function renderHotelSummary() {
@@ -2863,6 +3519,15 @@ function renderHotelTable() {
       <td><button class="btn btn-danger btn-sm" onclick="deleteHotelExpense(${r.id})">×</button></td>
     </tr>`;
   }).join('');
+}
+
+function toggleHotelDetail(id) {
+  const detail = document.getElementById('hotel-detail-' + id);
+  const chev   = document.getElementById('hotel-chev-' + id);
+  if (!detail) return;
+  const open = detail.style.display !== 'none';
+  detail.style.display = open ? 'none' : 'table-row';
+  if (chev) chev.style.transform = open ? '' : 'rotate(90deg)';
 }
 
 function openHotelModal(id) {
@@ -3697,6 +4362,1552 @@ function renderDealTotals(filtered, tfoot) {
     </div>`;
 }
 
+// ─── EMPLOYEE PORTAL ──────────────────────────────────────────────────────────
+async function checkUserRole() {
+  try {
+    const res = await fetch('/api/me');
+    if (!res.ok) return null;
+    return await res.json();
+  } catch { return null; }
+}
+
+async function initEmployeePortal(user) {
+  window.currentUser = user;
+
+  initSidebarCollapse();
+
+  // Wire logout
+  document.getElementById('logoutBtn')?.addEventListener('click', async () => {
+    await fetch('/api/logout', { method: 'POST' });
+    window.location.href = '/login.html';
+  });
+
+  // Hide non-allowed nav items
+  const EMP_PAGES = ['dashboard', 'calendar', 'portfolio'];
+  document.querySelectorAll('.nav-item').forEach(el => {
+    if (!EMP_PAGES.includes(el.dataset.page)) el.style.display = 'none';
+  });
+  document.querySelectorAll('.bottom-nav-item').forEach(el => {
+    if (!EMP_PAGES.includes(el.dataset.page)) el.style.display = 'none';
+  });
+  const addEmpBtn = document.getElementById('addEmpBtn');
+  if (addEmpBtn) addEmpBtn.style.display = 'none';
+
+  document.title = 'LPGP – My Portal';
+
+  // Override navigate
+  window.navigate = function(page) {
+    if (!EMP_PAGES.includes(page)) return;
+    document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+    document.querySelectorAll('.nav-item, .bottom-nav-item').forEach(n => n.classList.remove('active'));
+    const pageEl = document.getElementById('page-' + page);
+    if (pageEl) pageEl.classList.add('active');
+    document.querySelectorAll('[data-page="' + page + '"]').forEach(n => n.classList.add('active'));
+    if (page === 'dashboard')  loadEmployeeDashboard(user);
+    if (page === 'calendar')   loadEmployeeCalendar();
+    if (page === 'portfolio')  loadEmployeePortfolio();
+  };
+
+  // Attach click handlers since admin init was skipped
+  document.querySelectorAll('.nav-item').forEach(el => {
+    el.addEventListener('click', () => window.navigate(el.dataset.page));
+  });
+  document.querySelectorAll('.bottom-nav-item').forEach(el => {
+    el.addEventListener('click', () => window.navigate(el.dataset.page));
+  });
+
+  // Poll notifications
+  loadEmpNotifications();
+  setInterval(loadEmpNotifications, 30000);
+
+  // Show dashboard
+  window.navigate('dashboard');
+}
+
+// ─── ACCOUNTS PORTAL ─────────────────────────────────────────────────────────
+async function initAccountsPortal(user) {
+  window.currentUser = user;
+  initSidebarCollapse();
+
+  document.getElementById('logoutBtn')?.addEventListener('click', async () => {
+    await fetch('/api/logout', { method: 'POST' });
+    window.location.href = '/login.html';
+  });
+
+  const initials = user.username.slice(0,2).toUpperCase();
+  document.getElementById('userLabel').innerHTML =
+    '<div class="sidebar-user-pill"><div class="sidebar-user-avatar">' + esc(initials) + '</div>' +
+    '<span class="sidebar-user-name">' + esc(user.username) + '</span>' +
+    '<span class="sidebar-user-role" style="font:500 9px/1 var(--font-mono);color:var(--accent);text-transform:uppercase;letter-spacing:.5px">Accounts</span></div>';
+
+  document.title = 'LPGP – Accounts';
+
+  const ACC_PAGES = ['dashboard', 'calendar', 'deals'];
+
+  // Hide pages not allowed
+  document.querySelectorAll('.nav-item').forEach(el => {
+    if (!ACC_PAGES.includes(el.dataset.page)) el.style.display = 'none';
+  });
+  document.querySelectorAll('.nav-section-label').forEach(el => el.style.display = 'none');
+
+  window.navigate = function(page) {
+    if (!ACC_PAGES.includes(page)) return;
+    document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+    document.querySelectorAll('.nav-item, .bottom-nav-item').forEach(n => n.classList.remove('active'));
+    const pageEl = document.getElementById('page-' + page);
+    if (pageEl) pageEl.classList.add('active');
+    document.querySelectorAll('[data-page="' + page + '"]').forEach(n => n.classList.add('active'));
+    const titles = { dashboard: 'Accounts Dashboard', calendar: 'Calendar', deals: 'Deal Tracker' };
+    document.getElementById('pageTitle').textContent = titles[page] || page;
+    if (page === 'dashboard') loadAccountsDashboard(user);
+    if (page === 'calendar')  loadCalendar();
+    if (page === 'deals')     loadDealTracker();
+  };
+
+  document.querySelectorAll('.nav-item').forEach(el => {
+    el.addEventListener('click', () => { if (ACC_PAGES.includes(el.dataset.page)) window.navigate(el.dataset.page); });
+  });
+
+  window.navigate('dashboard');
+}
+
+async function loadAccountsDashboard(user) {
+  const page = document.getElementById('page-dashboard');
+  if (!page) return;
+  page.innerHTML = '<div style="padding:32px 24px"><div style="font:500 11px/1 var(--font-mono);color:var(--muted)">Loading…</div></div>';
+
+  let deals = [];
+  try {
+    const r = await fetch('/api/deal-tracker');
+    if (r.ok) deals = await r.json();
+  } catch(e) {}
+
+  const active = deals.filter(d => d.status !== 'cancelled');
+  const totalPaid  = active.reduce((s,d) => s + (parseFloat(d.paid_inc_vat)||0), 0);
+  const totalDeal  = active.reduce((s,d) => s + (parseFloat(d.deal_amount)||0), 0);
+  const outstanding = totalDeal - totalPaid;
+  const fmtAmt = v => '£' + v.toLocaleString('en-GB',{minimumFractionDigits:2,maximumFractionDigits:2});
+
+  let lastInv = '', nextInv = '';
+  let maxN = -1;
+  active.forEach(d => {
+    if (!d.invoice_number) return;
+    const m = String(d.invoice_number).match(/(\d+)\s*$/);
+    if (m) { const n = parseInt(m[1]); if (n > maxN) { maxN = n; lastInv = d.invoice_number; } }
+  });
+  if (maxN >= 0) nextInv = lastInv.replace(/\d+$/, String(maxN + 1));
+
+  const card = (label, val, color) =>
+    '<div style="flex:1;min-width:140px;background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:18px 20px">' +
+      '<div style="font:600 9px/1 var(--font-mono);color:var(--muted);letter-spacing:.5px;text-transform:uppercase;margin-bottom:8px">' + label + '</div>' +
+      '<div style="font:700 22px/1 var(--font-sans);color:' + (color||'var(--text)') + '">' + val + '</div>' +
+    '</div>';
+
+  const greeting = 'Good ' + (new Date().getHours() < 12 ? 'morning' : new Date().getHours() < 17 ? 'afternoon' : 'evening') + ', ' + user.username;
+
+  page.innerHTML =
+    '<div style="padding:28px 24px">' +
+      '<div style="margin-bottom:24px">' +
+        '<div style="font:700 20px/1.2 var(--font-sans);color:var(--text);margin-bottom:4px">' + esc(greeting) + '</div>' +
+        '<div style="font:500 11px/1 var(--font-mono);color:var(--muted)">Accounts overview · ' + active.length + ' active deal' + (active.length!==1?'s':'') + '</div>' +
+      '</div>' +
+
+      '<div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:20px">' +
+        card('Total Paid', fmtAmt(totalPaid), 'var(--positive)') +
+        card('Total Deal Value', fmtAmt(totalDeal)) +
+        card('Outstanding', fmtAmt(outstanding), outstanding > 0 ? 'var(--negative)' : 'var(--positive)') +
+        (lastInv ?
+          '<div style="flex:1;min-width:180px;background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:18px 20px">' +
+            '<div style="font:600 9px/1 var(--font-mono);color:var(--muted);letter-spacing:.5px;text-transform:uppercase;margin-bottom:8px">Last Invoice</div>' +
+            '<div style="font:600 12px/1.3 var(--font-mono);color:var(--text);word-break:break-all">' + esc(lastInv) + '</div>' +
+            '<div style="font:500 11px/1 var(--font-mono);color:var(--primary);margin-top:10px">Next → ' + esc(nextInv) + '</div>' +
+          '</div>'
+        : '') +
+      '</div>' +
+
+      '<div style="display:flex;gap:12px;flex-wrap:wrap">' +
+        '<button class="btn btn-primary" onclick="window.navigate(\'deals\')" style="gap:8px">' +
+          '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>' +
+          'Open Deal Tracker' +
+        '</button>' +
+        '<button class="btn btn-ghost" onclick="window.navigate(\'calendar\')" style="gap:8px">' +
+          '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>' +
+          'View Calendar' +
+        '</button>' +
+      '</div>' +
+    '</div>';
+}
+
+async function loadEmpNotifications() {
+  const res = await fetch('/api/employee/notifications');
+  if (!res.ok) return;
+  const notifs = await res.json();
+  const unread = notifs.filter(n => !n.is_read).length;
+
+  // Badge button above Sign Out in sidebar-footer
+  let badge = document.getElementById('empNotifBadge');
+  if (!badge) {
+    badge = document.createElement('button');
+    badge.id = 'empNotifBadge';
+    badge.className = 'btn btn-ghost btn-sm';
+    badge.style.cssText = 'width:100%;justify-content:center;margin-bottom:6px;gap:6px';
+    const logoutBtn = document.getElementById('logoutBtn');
+    if (logoutBtn) logoutBtn.parentNode.insertBefore(badge, logoutBtn);
+  }
+  badge.onclick = () => openEmpNotificationsModal(notifs);
+  const bellSvg = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>';
+  if (unread > 0) {
+    badge.innerHTML = bellSvg + ' Notifications <span style="background:var(--negative);color:#fff;font:700 9px/1 var(--font-mono);padding:2px 5px;border-radius:8px;margin-left:2px">' + unread + '</span>';
+    badge.style.borderColor = 'var(--negative)';
+    badge.style.color = 'var(--text)';
+  } else {
+    badge.innerHTML = bellSvg + ' Notifications';
+    badge.style.borderColor = '';
+    badge.style.color = '';
+  }
+}
+
+function openEmpNotificationsModal(notifs) {
+  fetch('/api/employee/notifications/read-all', { method: 'PUT' });
+  setTimeout(loadEmpNotifications, 500);
+
+  const existing = document.getElementById('empNotifModal');
+  if (existing) existing.remove();
+
+  const TYPE_COLOR = { approved: 'var(--positive)', declined: 'var(--negative)', info: 'var(--primary)' };
+  const TYPE_ICON  = { approved: '✓', declined: '✕', info: 'ℹ' };
+  const rows = notifs.length
+    ? notifs.map(n => {
+        const d = new Date(n.created_at).toLocaleDateString('en-GB', {day:'2-digit', month:'short', year:'numeric'});
+        const color = TYPE_COLOR[n.type] || 'var(--muted)';
+        const icon  = TYPE_ICON[n.type]  || 'ℹ';
+        const unreadDot = !n.is_read ? '<span style="width:6px;height:6px;border-radius:50%;background:var(--negative);display:inline-block;margin-right:6px;flex-shrink:0;margin-top:2px"></span>' : '';
+        return '<div style="display:flex;gap:10px;padding:14px 0;border-bottom:1px solid var(--border)">' +
+          unreadDot +
+          '<div style="flex:1">' +
+            '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">' +
+              '<span style="font:700 11px/1 var(--font-mono);text-transform:uppercase;color:' + color + '">' + icon + ' ' + n.type + '</span>' +
+              '<span style="font:500 10px/1 var(--font-mono);color:var(--muted)">' + d + '</span>' +
+            '</div>' +
+            '<div style="font:500 13px/1.5 var(--font-sans);color:var(--text)">' + esc(n.message) + '</div>' +
+          '</div>' +
+        '</div>';
+      }).join('')
+    : '<div style="color:var(--muted);font-size:0.85rem;padding:24px 0;text-align:center">No notifications yet</div>';
+
+  const modal = document.createElement('div');
+  modal.id = 'empNotifModal';
+  modal.className = 'modal-overlay';
+  modal.innerHTML =
+    '<div class="modal" style="max-width:440px">' +
+      '<div class="modal-header"><span class="modal-title">Notifications</span>' +
+        '<button class="modal-close" onclick="document.getElementById(\'empNotifModal\').remove()">×</button></div>' +
+      '<div style="padding:0 20px 4px;max-height:440px;overflow-y:auto">' + rows + '</div>' +
+      '<div style="padding:14px 20px;border-top:1px solid var(--border)">' +
+        '<button class="btn btn-ghost btn-sm" style="width:100%" onclick="document.getElementById(\'empNotifModal\').remove()">Close</button>' +
+      '</div>' +
+    '</div>';
+  modal.addEventListener('click', e => { if (e.target === modal) modal.remove(); });
+  document.body.appendChild(modal);
+}
+
+async function loadEmployeeDashboard(user) {
+  const el = document.getElementById('dashStats');
+  if (!el) return;
+  el.innerHTML = '<div class="skeleton" style="height:200px;border-radius:16px"></div>';
+
+  try {
+    const [profileRes, remindersRes, salaryRes] = await Promise.all([
+      fetch('/api/employee/profile'),
+      fetch('/api/employee/reminders'),
+      fetch('/api/employee/salary')
+    ]);
+    const profile   = profileRes.ok   ? await profileRes.json()   : {};
+    const reminders = remindersRes.ok  ? await remindersRes.json() : [];
+    const sal       = salaryRes.ok    ? await salaryRes.json()    : null;
+
+    const daysUsed      = parseFloat(profile.days_used) || 0;
+    const allowance     = profile.allowance_days || 20;
+    const excessDays    = parseFloat(profile.excess_days) || 0;
+    const excessDeduct  = parseFloat(profile.excess_deduction) || 0;
+    const remaining     = Math.max(0, allowance - daysUsed);
+    const pct           = Math.min(100, Math.round((daysUsed / allowance) * 100));
+    const initials      = (profile.name || '?').split(' ').map(w => w[0]).join('').slice(0,2).toUpperCase();
+    const barColor      = pct > 80 ? 'var(--negative)' : pct > 60 ? 'var(--warning)' : 'var(--positive)';
+    const MONS = ['JAN','FEB','MAR','APR','MAY','JUN','JUL','AUG','SEP','OCT','NOV','DEC'];
+
+    window._empReminders = reminders;
+    function remindersCardHtml() {
+      const pending = (window._empReminders||[]).filter(r => !r.is_done);
+      const done    = (window._empReminders||[]).filter(r => r.is_done);
+      const fmtDate = d => { if (!d) return ''; const dt = new Date(d+'T12:00:00'); return dt.toLocaleDateString('en-GB',{day:'numeric',month:'short'}); };
+      const itemHtml = r => {
+        const isPast = r.reminder_date && r.reminder_date.slice(0,10) < new Date().toLocaleDateString('en-CA');
+        return '<div style="display:flex;align-items:center;gap:10px;padding:9px 0;border-bottom:1px solid var(--border)">' +
+          '<div onclick="empToggleReminder(' + r.id + ')" style="width:18px;height:18px;border:2px solid ' + (r.is_done?'var(--primary)':'var(--border)') + ';border-radius:4px;flex-shrink:0;cursor:pointer;display:flex;align-items:center;justify-content:center;background:' + (r.is_done?'var(--primary)':'transparent') + '">' +
+            (r.is_done ? '<svg width="10" height="10" viewBox="0 0 12 12" fill="none" stroke="#fff" stroke-width="2.5" stroke-linecap="round"><polyline points="2,6 5,9 10,3"/></svg>' : '') +
+          '</div>' +
+          '<div style="flex:1;min-width:0">' +
+            '<div style="font:600 13px/1 var(--font-sans);color:' + (r.is_done?'var(--dim)':'var(--text)') + ';' + (r.is_done?'text-decoration:line-through':'') + ';white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + esc(r.title) + '</div>' +
+            (r.reminder_date ? '<div style="font:500 10px/1 var(--font-mono);color:' + (isPast&&!r.is_done?'var(--negative)':'var(--muted)') + ';margin-top:3px">' + fmtDate(r.reminder_date) + (isPast&&!r.is_done?' · overdue':'') + '</div>' : '') +
+          '</div>' +
+          '<button onclick="empDeleteReminder(' + r.id + ')" style="background:none;border:none;color:var(--dim);cursor:pointer;font-size:14px;padding:2px 4px;flex-shrink:0">×</button>' +
+        '</div>';
+      };
+      const listHtml = pending.map(itemHtml).join('') + (done.length ? '<div style="font:600 9px/1 var(--font-mono);color:var(--dim);letter-spacing:.5px;margin:10px 0 4px">COMPLETED</div>' + done.slice(0,3).map(itemHtml).join('') : '');
+      return '<div id="empRemindersList">' + (listHtml || '<div style="color:var(--muted);font:500 12px/1.5 var(--font-mono);padding:12px 0;text-align:center">No reminders yet.<br>Add one below.</div>') + '</div>' +
+        '<div style="display:flex;gap:8px;margin-top:12px;padding-top:12px;border-top:1px solid var(--border)">' +
+          '<input id="empReminderInput" class="form-control" style="flex:1;font-size:12px;padding:7px 10px" placeholder="Add a reminder..." onkeydown="if(event.keyCode===13)empAddReminder()">' +
+          '<input id="empReminderDate" class="form-control" type="date" style="width:130px;font-size:12px;padding:7px 8px">' +
+          '<button class="btn btn-primary btn-sm" onclick="empAddReminder()">+</button>' +
+        '</div>';
+    }
+
+    // ── Salary card HTML (employee read-only view) ──
+    let salHtml = '';
+    if (sal && sal.annual_salary > 0) {
+      const s = sal;
+      const sSym = s.currency === 'GBP' ? '£' : s.currency === 'USD' ? '$' : (s.currency + ' ');
+      const paye = s.paye_breakdown;
+      const monthlyVal = paye ? paye.net_monthly : s.annual_salary / 12;
+      const monthlyLbl = paye ? 'Take-home / mo' : 'Monthly pay';
+      const monthlySub = paye
+        ? ('after PAYE + NI' + (paye.pension > 0 ? ' + pension' : ''))
+        : (sSym + s.annual_salary.toLocaleString('en-GB',{maximumFractionDigits:0}) + '/yr');
+      const netRemaining = parseFloat(s.net_remaining) || 0;
+      const isOverpaid   = netRemaining < 0;
+      const outColor = isOverpaid ? 'var(--positive)' : netRemaining === 0 ? 'var(--muted)' : 'var(--negative)';
+      const pctPaid  = parseInt(s.pct_paid) || 0;
+      const barW     = Math.min(100, pctPaid);
+      const barCol   = pctPaid >= 100 ? 'var(--positive)' : pctPaid > 60 ? 'var(--primary)' : 'var(--warning)';
+
+      // First-month logic (same as admin salary card)
+      const fm = s.first_month_full;
+      const isPartialFirstMonth = fm && fm.first_month_days < fm.first_month_total_days;
+      const payeNetFactor = paye && s.annual_salary > 0 ? paye.net_annual / s.annual_salary : 1;
+      let sugFirstMonthNet = isPartialFirstMonth ? parseFloat((fm.first_month_pay * payeNetFactor).toFixed(2)) : null;
+      let fmMeta2 = isPartialFirstMonth ? {
+        monthName: MONTHS[parseInt(fm.first_month.split('-')[1]) - 1] || fm.first_month,
+        daysWorked: fm.first_month_days, daysTotal: fm.first_month_total_days
+      } : null;
+      if (sugFirstMonthNet === null && s.start_date) {
+        const sd2 = new Date(s.start_date + 'T00:00:00');
+        if (sd2.getDate() > 1) {
+          const dim = new Date(sd2.getFullYear(), sd2.getMonth() + 1, 0).getDate();
+          const dw  = dim - sd2.getDate() + 1;
+          const nm  = paye ? paye.net_monthly : s.annual_salary / 12;
+          sugFirstMonthNet = parseFloat((nm * (dw / dim)).toFixed(2));
+          fmMeta2 = { monthName: MONTHS[sd2.getMonth()], daysWorked: dw, daysTotal: dim };
+        }
+      }
+      const showFM = sugFirstMonthNet !== null && fmMeta2 && !isOverpaid;
+
+      const payments = Array.isArray(s.payments) ? s.payments : [];
+      const paymentsHtml = payments.length
+        ? payments.map(p => '<div style="display:flex;justify-content:space-between;padding:9px 0;border-bottom:1px solid var(--border);font:500 12px/1 var(--font-mono);color:var(--muted)">' +
+            '<span>' + (MONTHS[p.payment_month - 1] || p.payment_month) + ' ' + p.payment_year + '</span>' +
+            '<span style="color:var(--positive)">+' + sSym + parseFloat(p.amount||0).toLocaleString('en-GB',{minimumFractionDigits:2}) + '</span>' +
+          '</div>').join('')
+        : '<div style="color:var(--muted);font:500 12px/1 var(--font-mono);padding:12px 0">No payments yet this year.</div>';
+
+      salHtml =
+        '<div class="card" style="margin-top:16px">' +
+          '<div class="card-header"><span class="card-title">My Pay — ' + s.year + '</span>' +
+            '<span style="font:700 11px/1 var(--font-mono);color:var(--muted)">' + (s.employment_type === 'self_employed' ? 'SELF-EMPLOYED' : 'PAYROLL') + '</span>' +
+          '</div>' +
+          // Progress bar
+          '<div style="padding:18px 20px;border-bottom:1px solid var(--border)">' +
+            '<div style="display:flex;justify-content:space-between;font:600 12px/1 var(--font-mono);color:var(--muted);margin-bottom:10px">' +
+              '<span>Payments received</span><span style="color:' + barCol + '">' + pctPaid + '%</span>' +
+            '</div>' +
+            '<div style="height:8px;background:var(--border);border-radius:4px">' +
+              '<div style="height:100%;width:' + barW + '%;background:' + barCol + ';border-radius:4px;transition:width .4s"></div>' +
+            '</div>' +
+            '<div style="display:flex;justify-content:space-between;font:500 11px/1 var(--font-mono);color:var(--muted);margin-top:8px">' +
+              '<span>' + sSym + parseFloat(s.total_paid).toLocaleString('en-GB',{minimumFractionDigits:2}) + ' received</span>' +
+              '<span>' + sSym + parseFloat(s.salary_target).toLocaleString('en-GB',{minimumFractionDigits:2}) + ' target</span>' +
+            '</div>' +
+          '</div>' +
+          // Stat row
+          '<div style="display:flex;border-bottom:1px solid var(--border)">' +
+            '<div style="flex:1;padding:16px 20px;border-right:1px solid var(--border)">' +
+              '<div style="font:600 9px/1 var(--font-mono);text-transform:uppercase;letter-spacing:1px;color:var(--muted);margin-bottom:8px">' + monthlyLbl + '</div>' +
+              '<div style="font:700 22px/1 var(--font-mono);color:var(--text)">' + sSym + monthlyVal.toLocaleString('en-GB',{maximumFractionDigits:0}) + '</div>' +
+              '<div style="font:500 10px/1 var(--font-mono);color:var(--muted);margin-top:6px">' + monthlySub + '</div>' +
+            '</div>' +
+            (showFM
+              ? '<div style="flex:1;padding:16px 20px;border-right:1px solid var(--border);background:rgba(251,191,36,0.05)">' +
+                  '<div style="font:600 9px/1 var(--font-mono);text-transform:uppercase;letter-spacing:1px;color:#f59e0b;margin-bottom:8px">1st Month Due</div>' +
+                  '<div style="font:700 22px/1 var(--font-mono);color:#f59e0b">' + sSym + Math.round(sugFirstMonthNet).toLocaleString('en-GB') + '</div>' +
+                  '<div style="font:500 10px/1 var(--font-mono);color:var(--muted);margin-top:6px">' + fmMeta2.daysWorked + ' of ' + fmMeta2.daysTotal + ' days · ' + fmMeta2.monthName + '</div>' +
+                '</div>'
+              : '') +
+            '<div style="flex:1;padding:16px 20px">' +
+              '<div style="font:600 9px/1 var(--font-mono);text-transform:uppercase;letter-spacing:1px;color:var(--muted);margin-bottom:8px">Year Balance</div>' +
+              '<div style="font:700 22px/1 var(--font-mono);color:' + outColor + '">' + (isOverpaid ? '−' : '') + sSym + Math.abs(netRemaining).toLocaleString('en-GB',{maximumFractionDigits:0}) + '</div>' +
+              '<div style="font:500 10px/1 var(--font-mono);color:var(--muted);margin-top:6px">' + (isOverpaid ? 'overpaid' : s.year + ' balance') + '</div>' +
+            '</div>' +
+          '</div>' +
+          // PAYE breakdown (if applicable)
+          (paye ? '<div style="padding:16px 20px;border-bottom:1px solid var(--border);display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px">' +
+              '<div style="text-align:center">' +
+                '<div style="font:600 9px/1 var(--font-mono);text-transform:uppercase;letter-spacing:1px;color:var(--muted);margin-bottom:6px">Income Tax</div>' +
+                '<div style="font:700 16px/1 var(--font-mono);color:var(--text)">' + sSym + paye.income_tax.toLocaleString('en-GB',{minimumFractionDigits:0}) + '</div>' +
+                '<div style="font:500 10px/1 var(--font-mono);color:var(--muted);margin-top:4px">per year</div>' +
+              '</div>' +
+              '<div style="text-align:center;border-left:1px solid var(--border);border-right:1px solid var(--border)">' +
+                '<div style="font:600 9px/1 var(--font-mono);text-transform:uppercase;letter-spacing:1px;color:var(--muted);margin-bottom:6px">National Ins.</div>' +
+                '<div style="font:700 16px/1 var(--font-mono);color:var(--text)">' + sSym + paye.national_insurance.toLocaleString('en-GB',{minimumFractionDigits:0}) + '</div>' +
+                '<div style="font:500 10px/1 var(--font-mono);color:var(--muted);margin-top:4px">per year</div>' +
+              '</div>' +
+              '<div style="text-align:center">' +
+                '<div style="font:600 9px/1 var(--font-mono);text-transform:uppercase;letter-spacing:1px;color:var(--muted);margin-bottom:6px">Take-home</div>' +
+                '<div style="font:700 16px/1 var(--font-mono);color:var(--positive)">' + sSym + paye.net_annual.toLocaleString('en-GB',{minimumFractionDigits:0}) + '</div>' +
+                '<div style="font:500 10px/1 var(--font-mono);color:var(--muted);margin-top:4px">per year</div>' +
+              '</div>' +
+            '</div>'
+          : '') +
+          // Payments list
+          '<div style="padding:16px 20px">' +
+            '<div style="font:600 10px/1 var(--font-mono);text-transform:uppercase;letter-spacing:1px;color:var(--muted);margin-bottom:12px">Payments (' + payments.length + ')</div>' +
+            paymentsHtml +
+          '</div>' +
+        '</div>';
+    }
+
+    el.innerHTML =
+      '<div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:0">' +
+        // Profile card
+        '<div class="card">' +
+          '<div style="padding:24px">' +
+            '<div style="display:flex;align-items:center;gap:16px;margin-bottom:20px">' +
+              '<div style="width:52px;height:52px;border-radius:50%;background:var(--primary);display:flex;align-items:center;justify-content:center;font:800 18px/1 var(--font-mono);color:#000;flex-shrink:0">' + initials + '</div>' +
+              '<div>' +
+                '<div style="font:700 18px/1 var(--font-sans);color:var(--text)">' + esc(profile.name||'') + '</div>' +
+                '<div style="font:500 12px/1 var(--font-mono);color:var(--muted);margin-top:4px">' + esc([profile.job_title, profile.department].filter(Boolean).join(' · ')) + '</div>' +
+              '</div>' +
+            '</div>' +
+            (profile.start_date ? '<div style="font:500 11px/1 var(--font-mono);color:var(--muted);margin-bottom:16px">Since ' + profile.start_date + '</div>' : '') +
+            '<div style="font:600 10px/1 var(--font-mono);text-transform:uppercase;letter-spacing:1px;color:var(--muted);margin-bottom:8px">Days Off ' + (profile.year||new Date().getFullYear()) + '</div>' +
+            '<div style="display:flex;justify-content:space-between;font:600 12px/1 var(--font-mono);color:var(--muted);margin-bottom:6px">' +
+              '<span>' + daysUsed + ' used</span>' +
+              (excessDays > 0
+                ? '<span style="color:var(--negative)">' + excessDays + ' excess day' + (excessDays !== 1 ? 's' : '') + '</span>'
+                : '<span style="color:' + barColor + '">' + remaining + ' remaining</span>') +
+            '</div>' +
+            '<div style="height:8px;background:var(--border);border-radius:4px;margin-bottom:8px">' +
+              '<div style="height:100%;width:' + pct + '%;background:' + barColor + ';border-radius:4px"></div>' +
+            '</div>' +
+            '<div style="font:500 11px/1 var(--font-mono);color:var(--muted)">' + daysUsed + ' used · ' + allowance + ' allowed</div>' +
+            (excessDays > 0
+              ? '<div style="margin-top:8px;padding:8px 10px;background:rgba(239,68,68,0.08);border:1px solid rgba(239,68,68,0.2);border-radius:6px;font:500 10px/1.4 var(--font-mono);color:var(--negative)">' +
+                  excessDays + ' excess day' + (excessDays !== 1 ? 's' : '') + ' · ' +
+                  (excessDeduct > 0 ? '£' + excessDeduct.toLocaleString('en-GB',{minimumFractionDigits:2}) + ' deducted from salary' : 'deduction calculated at year end') +
+                '</div>'
+              : '') +
+          '</div>' +
+        '</div>' +
+        // My Reminders card
+        '<div class="card" id="empRemindersCard">' +
+          '<div class="card-header"><span class="card-title">My Reminders</span>' +
+            '<span style="font:700 11px/1 var(--font-mono);color:var(--muted)">' + ((window._empReminders||[]).filter(r=>!r.is_done).length||'') + (((window._empReminders||[]).filter(r=>!r.is_done).length) ? ' pending' : 'PERSONAL') + '</span>' +
+          '</div>' +
+          '<div style="padding:4px 18px 14px">' + remindersCardHtml() + '</div>' +
+        '</div>' +
+      '</div>' +
+      salHtml;
+
+    // Hide the other dashboard panels
+    ['contractExpiryPanel','headcountPanel','upcomingPanel','activityPanel'].forEach(id => {
+      const e = document.getElementById(id);
+      if (e) e.innerHTML = '';
+    });
+    const dashTable = document.querySelector('.card .table-wrap');
+    // hide the full employee summary table section
+    const dashTableCard = document.getElementById('dashTable');
+    if (dashTableCard) {
+      const card = dashTableCard.closest('.card');
+      if (card) card.style.display = 'none';
+    }
+
+  } catch(e) {
+    el.innerHTML = '<div class="alert alert-error">Failed to load profile: ' + e.message + '</div>';
+  }
+}
+
+// ─── DEAL TRACKER ─────────────────────────────────────────────────────────────
+let _dealData      = [];
+let _dealFromMonth = '';
+let _dealToMonth   = '';
+let _dealSearch    = '';
+let _dealYear      = '';
+
+async function loadDealTracker() {
+  const page = document.getElementById('page-deals');
+  if (!page) return;
+  page.innerHTML = '<div class="skeleton" style="height:500px;border-radius:16px;margin:24px"></div>';
+  try {
+    const res = await fetch('/api/deal-tracker');
+    _dealData = res.ok ? await res.json() : [];
+    renderDealTracker();
+  } catch(e) {
+    page.innerHTML = '<div style="padding:24px"><div class="alert alert-error">Failed to load deals: ' + e.message + '</div></div>';
+  }
+}
+
+function renderDealTracker() {
+  const page = document.getElementById('page-deals');
+  if (!page) return;
+
+  const ROW_COLORS = {
+    green:  { bg: 'rgba(34,197,94,0.12)',  dot: '#22c55e' },
+    orange: { bg: 'rgba(251,146,60,0.14)', dot: '#fb923c' },
+    red:    { bg: 'rgba(239,68,68,0.14)',  dot: '#ef4444' },
+    yellow: { bg: 'rgba(250,204,21,0.18)', dot: '#facc15' },
+    none:   { bg: 'transparent',           dot: 'var(--border)' },
+  };
+
+  const fmtAmt = v => (v == null || v === '') ? '' : '£' + parseFloat(v).toLocaleString('en-GB', {minimumFractionDigits:2, maximumFractionDigits:2});
+  const fmtDate = d => { if (!d) return ''; const dt = new Date(String(d).slice(0,10)+'T12:00:00'); return isNaN(dt)?'':dt.toLocaleDateString('en-GB',{day:'2-digit',month:'2-digit',year:'2-digit'}); };
+
+  const allActive = _dealData.filter(r => r.status !== 'cancelled');
+  const cancelled = _dealData.filter(r => r.status === 'cancelled');
+
+  // Apply filters
+  const active = allActive.filter(r => {
+    // Text search
+    if (_dealSearch) {
+      const q = _dealSearch.toLowerCase();
+      const hay = ((r.company||'') + ' ' + (r.invoice_number||'') + ' ' + (r.bank||'') + ' ' + (r.notes||'')).toLowerCase();
+      if (!hay.includes(q)) return false;
+    }
+    // Date range filter
+    if (_dealFromMonth || _dealToMonth) {
+      const m = r.date_invoice_issued ? String(r.date_invoice_issued).slice(0,7) : null;
+      if (!m) return false;
+      if (_dealFromMonth && m < _dealFromMonth) return false;
+      if (_dealToMonth   && m > _dealToMonth)   return false;
+    }
+    return true;
+  });
+
+  // Collect years present in data for the year dropdown
+  const yearsInData = [...new Set(allActive.map(r => r.date_invoice_issued ? String(r.date_invoice_issued).slice(0,4) : null).filter(Boolean))].sort();
+
+  // Totals (active filtered only)
+  const totalPaid  = active.reduce((s,r) => s + (parseFloat(r.paid_inc_vat)||0), 0);
+  const totalDeal  = active.reduce((s,r) => s + (parseFloat(r.deal_amount)||0), 0);
+  const totalVat   = active.reduce((s,r) => s + (parseFloat(r.tax_vat)||0), 0);
+  const remaining  = totalDeal - totalPaid;
+
+  // Latest invoice number (scan all deals, not just filtered)
+  let _lastInvNum = '', _nextInvNum = '';
+  (function() {
+    let maxN = -1, maxRaw = '';
+    _dealData.forEach(r => {
+      if (!r.invoice_number) return;
+      const m = String(r.invoice_number).match(/(\d+)\s*$/);
+      if (m) { const n = parseInt(m[1]); if (n > maxN) { maxN = n; maxRaw = r.invoice_number; } }
+    });
+    if (maxN >= 0) {
+      _lastInvNum = maxRaw;
+      _nextInvNum = maxRaw.replace(/\d+$/, String(maxN + 1));
+    }
+  })();
+
+  const colW = ['80px','200px','110px','110px','90px','90px','90px','90px','160px','200px','90px','80px','55px'];
+  const colH = ['Month','Company','Paid inc VAT','Deal','Tax/VAT','Invoice Date','Date Paid','Bank','Invoice Number','Notes','Sent','Signed','Init'];
+  const headerCols =
+    '<div style="width:36px;min-width:36px;border-right:1px solid var(--border);flex-shrink:0"></div>' +
+    colH.map((h,i) => '<div style="width:' + colW[i] + ';min-width:' + colW[i] + ';padding:8px 10px;font:700 10px/1 var(--font-mono);color:var(--muted);letter-spacing:.5px;text-transform:uppercase;border-right:1px solid var(--border);flex-shrink:0">' + h + '</div>').join('');
+
+  const buildRows = list => list.map(r => {
+    const effectiveColor = r.is_flagged ? 'yellow' : (r.row_color || 'none');
+    const c = ROW_COLORS[effectiveColor] || ROW_COLORS.none;
+    const flagged = r.is_flagged;
+    const flagBtn =
+      '<div style="width:36px;min-width:36px;border-right:1px solid var(--border);flex-shrink:0;display:flex;align-items:center;justify-content:center">' +
+        '<button onclick="toggleDealFlag(' + r.id + ',event)" title="' + (flagged?'Remove flag':'Flag row') + '" style="background:none;border:none;cursor:pointer;padding:4px;font-size:15px;line-height:1;color:' + (flagged?'#facc15':'var(--dim)') + ';transition:color .15s">⚑</button>' +
+      '</div>';
+
+    const mkCell = (w, content, onclick, cursor) =>
+      '<div onclick="' + onclick + '" style="width:' + w + ';min-width:' + w + ';padding:10px;border-right:1px solid var(--border);flex-shrink:0;display:flex;align-items:center;cursor:' + (cursor||'text') + '">' + content + '</div>';
+    const ie = field => 'startDealInlineEdit(' + r.id + ',\'' + field + '\',event)';
+
+    return '<div style="display:flex;align-items:stretch;border-bottom:1px solid var(--border);background:' + c.bg + ';border-left:3px solid ' + c.dot + ';transition:filter .15s" onmouseenter="this.style.filter=\'brightness(1.08)\'" onmouseleave="this.style.filter=\'\'">' +
+      flagBtn +
+      mkCell(colW[0],  '<span style="font:600 11px/1.3 var(--font-mono);color:var(--muted)">' + esc(r.month_label||'') + '</span>', ie('month_label')) +
+      mkCell(colW[1],  '<span style="font:600 13px/1.3 var(--font-sans);color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:block">' + esc(r.company) + '</span>', 'openDealModal(' + r.id + ')', 'pointer') +
+      mkCell(colW[2],  '<span style="font:700 12px/1 var(--font-mono);color:var(--text)">' + esc(fmtAmt(r.paid_inc_vat)) + '</span>', ie('paid_inc_vat')) +
+      mkCell(colW[3],  '<span style="font:600 12px/1 var(--font-mono);color:var(--muted)">' + esc(fmtAmt(r.deal_amount)) + '</span>', ie('deal_amount')) +
+      mkCell(colW[4],  '<span style="font:500 11px/1 var(--font-mono);color:var(--muted)">' + esc(fmtAmt(r.tax_vat)) + '</span>', ie('tax_vat')) +
+      mkCell(colW[5],  '<span style="font:500 11px/1 var(--font-mono);color:var(--muted)">' + esc(fmtDate(r.date_invoice_issued)) + '</span>', ie('date_invoice_issued')) +
+      mkCell(colW[6],  '<span style="font:600 11px/1 var(--font-mono);color:' + (r.date_paid?'var(--positive)':'var(--muted)') + '">' + esc(fmtDate(r.date_paid)) + '</span>', ie('date_paid')) +
+      mkCell(colW[7],  '<span style="font:500 11px/1 var(--font-mono);color:var(--muted)">' + esc(r.bank||'') + '</span>', ie('bank')) +
+      mkCell(colW[8],  r.invoice_number
+        ? '<span style="font:500 10px/1.3 var(--font-mono);color:var(--primary);text-decoration:underline;text-underline-offset:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:block">' + esc(r.invoice_number) + ' 📎</span>'
+        : '<span style="font:500 10px/1.3 var(--font-mono);color:var(--dim)">+ upload</span>',
+        'openInvoiceModal(' + r.id + ',event)', 'pointer') +
+      mkCell(colW[9],  '<span style="font:500 11px/1.4 var(--font-sans);color:var(--text);overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical">' + esc(r.notes||'') + '</span>', ie('notes')) +
+      mkCell(colW[10], '<span style="font:600 10px/1 var(--font-mono);color:' + (r.invoice_sent&&r.invoice_sent!=='no'?'var(--positive)':'var(--muted)') + '">' + esc(r.invoice_sent==='no'?'—':r.invoice_sent) + '</span>', ie('invoice_sent'), 'pointer') +
+      mkCell(colW[11], '<span style="font:600 10px/1 var(--font-mono);color:' + (r.signature_received==='yes'?'var(--positive)':'var(--muted)') + '">' + esc(r.signature_received==='yes'?'yes':'—') + '</span>', ie('signature_received'), 'pointer') +
+      mkCell(colW[12], '<span style="font:700 11px/1 var(--font-mono);color:var(--text)">' + esc(r.initials||'') + '</span>', ie('initials')) +
+    '</div>';
+  }).join('');
+
+  const rowsHtml       = buildRows(active);
+  const cancelledHtml  = buildRows(cancelled);
+
+  const fmtTotal = v => '£' + v.toLocaleString('en-GB',{minimumFractionDigits:2,maximumFractionDigits:2});
+
+  page.innerHTML =
+    '<div style="padding:20px 24px 0;display:flex;align-items:center;gap:12px;flex-wrap:wrap">' +
+      '<h2 style="font:700 20px/1 var(--font-sans);color:var(--text);flex:1">Deal Tracker</h2>' +
+      '<button class="btn btn-ghost btn-sm" onclick="dealAutoColour()" title="Set green where paid, no colour where unpaid">Auto-colour rows</button>' +
+      '<button class="btn btn-ghost btn-sm" onclick="openDealImport()" style="gap:6px"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg> Import Excel / CSV</button>' +
+      '<button class="btn btn-primary btn-sm" onclick="openDealModal(null)">+ Add Deal</button>' +
+    '</div>' +
+
+    // Summary cards
+    '<div style="padding:16px 24px;display:flex;gap:12px;flex-wrap:wrap">' +
+      '<div style="flex:1;min-width:140px;background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:14px 16px">' +
+        '<div style="font:600 9px/1 var(--font-mono);color:var(--muted);letter-spacing:.5px;text-transform:uppercase;margin-bottom:6px">Total Paid</div>' +
+        '<div style="font:700 18px/1 var(--font-sans);color:var(--positive)">' + fmtTotal(totalPaid) + '</div>' +
+      '</div>' +
+      '<div style="flex:1;min-width:140px;background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:14px 16px">' +
+        '<div style="font:600 9px/1 var(--font-mono);color:var(--muted);letter-spacing:.5px;text-transform:uppercase;margin-bottom:6px">Total Deal Value</div>' +
+        '<div style="font:700 18px/1 var(--font-sans);color:var(--text)">' + fmtTotal(totalDeal) + '</div>' +
+      '</div>' +
+      '<div style="flex:1;min-width:140px;background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:14px 16px">' +
+        '<div style="font:600 9px/1 var(--font-mono);color:var(--muted);letter-spacing:.5px;text-transform:uppercase;margin-bottom:6px">Tax / VAT</div>' +
+        '<div style="font:700 18px/1 var(--font-sans);color:var(--text)">' + fmtTotal(totalVat) + '</div>' +
+      '</div>' +
+      '<div style="flex:1;min-width:140px;background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:14px 16px">' +
+        '<div style="font:600 9px/1 var(--font-mono);color:var(--muted);letter-spacing:.5px;text-transform:uppercase;margin-bottom:6px">Remaining</div>' +
+        '<div style="font:700 18px/1 var(--font-sans);color:' + (remaining > 0 ? 'var(--negative)' : 'var(--positive)') + '">' + fmtTotal(remaining) + '</div>' +
+      '</div>' +
+      (_lastInvNum ? (
+        '<div style="flex:1;min-width:180px;background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:14px 16px">' +
+          '<div style="font:600 9px/1 var(--font-mono);color:var(--muted);letter-spacing:.5px;text-transform:uppercase;margin-bottom:6px">Last Invoice</div>' +
+          '<div style="font:600 11px/1.3 var(--font-mono);color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="' + esc(_lastInvNum) + '">' + esc(_lastInvNum) + '</div>' +
+          '<div style="font:500 10px/1 var(--font-mono);color:var(--primary);margin-top:8px">Next → ' + esc(_nextInvNum) + '</div>' +
+        '</div>'
+      ) : '') +
+    '</div>' +
+
+    // Filter bar
+    (function(){
+      const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+      const monthOpts = (selected, placeholder) =>
+        '<option value="">' + placeholder + '</option>' +
+        MONTHS.map((m,i) => { const v = String(i+1).padStart(2,'0'); return '<option value="' + v + '"' + (selected===v?' selected':'') + '>' + m + '</option>'; }).join('');
+      const yearOpts = yearsInData.map(y => '<option value="' + y + '"' + (_dealYear===y?' selected':'') + '>' + y + '</option>').join('');
+
+      const fromMo = _dealFromMonth ? _dealFromMonth.slice(5,7) : '';
+      const toMo   = _dealToMonth   ? _dealToMonth.slice(5,7)   : '';
+      const isFiltered = _dealFromMonth || _dealToMonth || _dealSearch;
+
+      return '<div style="padding:0 24px 14px">' +
+        '<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:12px 14px;background:var(--surface);border:1px solid var(--border);border-radius:10px">' +
+          // Text search
+          '<input id="dealSearchInput" class="form-control" style="width:180px;font-size:12px;padding:6px 10px" placeholder="Search company, invoice…" value="' + esc(_dealSearch) + '" oninput="_dealSearch=this.value;renderDealTracker()">' +
+          '<div style="width:1px;height:24px;background:var(--border);margin:0 4px"></div>' +
+          // Year
+          '<select class="form-control" style="width:90px;font-size:12px;padding:6px 8px" onchange="dealSetYear(this.value)"><option value="">All years</option>' + yearOpts + '</select>' +
+          // Quick quarters (fiscal: Q1=Nov-Jan, Q2=Feb-Apr, Q3=May-Jul, Q4=Aug-Oct)
+          (function(){
+            const aq = _activeQuarter();
+            const qLabels = ['Q1 Nov–Jan','Q2 Feb–Apr','Q3 May–Jul','Q4 Aug–Oct'];
+            return '<div style="display:flex;gap:4px">' +
+              qLabels.map((lbl,i) => {
+                const isActive = aq === i+1;
+                return '<button onclick="dealSetQuarter(' + (i+1) + ')" title="' + lbl + '" style="padding:5px 10px;font:700 11px/1 var(--font-mono);border-radius:6px;border:1px solid var(--border);background:' + (isActive?'var(--primary)':'var(--surface)') + ';color:' + (isActive?'#fff':'var(--text)') + ';cursor:pointer;white-space:nowrap">' + lbl + '</button>';
+              }).join('') +
+            '</div>';
+          })()+
+          '<div style="width:1px;height:24px;background:var(--border);margin:0 4px"></div>' +
+          // Custom from/to month
+          '<span style="font:600 10px/1 var(--font-mono);color:var(--muted)">FROM</span>' +
+          '<select class="form-control" style="width:80px;font-size:12px;padding:6px 8px" onchange="dealSetFromMonth(this.value)">' + monthOpts(fromMo,'Month') + '</select>' +
+          '<span style="font:600 10px/1 var(--font-mono);color:var(--muted)">TO</span>' +
+          '<select class="form-control" style="width:80px;font-size:12px;padding:6px 8px" onchange="dealSetToMonth(this.value)">' + monthOpts(toMo,'Month') + '</select>' +
+          (isFiltered
+            ? '<button class="btn btn-ghost btn-sm" onclick="dealClearFilters()" style="color:var(--negative)">✕ Clear</button>' +
+              '<span style="font:600 11px/1 var(--font-mono);color:var(--primary)">' + active.length + ' / ' + allActive.length + ' deals</span>'
+            : '') +
+        '</div>' +
+      '</div>';
+    })()+
+
+    // Table
+    '<div style="padding:0 24px 32px">' +
+      '<div style="border:1px solid var(--border);border-radius:12px;overflow:hidden">' +
+        '<div style="overflow-x:auto">' +
+          '<div style="min-width:1400px">' +
+            // Header
+            '<div style="display:flex;background:var(--surface-2,var(--surface));border-bottom:2px solid var(--border)">' + headerCols + '</div>' +
+            // Rows
+            (rowsHtml || '<div style="padding:40px;text-align:center;color:var(--muted);font:500 13px/1 var(--font-mono)">No deals yet. Click "+ Add Deal" to get started.</div>') +
+            // Totals
+            (rowsHtml ? '<div style="display:flex;align-items:stretch;border-top:2px solid var(--border);background:rgba(250,204,21,0.06)">' +
+              // flag spacer
+              '<div style="width:36px;min-width:36px;border-right:1px solid var(--border);flex-shrink:0"></div>' +
+              // TOTAL label in Month col
+              '<div style="width:80px;min-width:80px;padding:10px 10px;border-right:1px solid var(--border);flex-shrink:0;display:flex;align-items:center"><span style="font:800 11px/1 var(--font-mono);color:var(--warning);letter-spacing:.5px">TOTAL</span></div>' +
+              // Company col empty
+              '<div style="width:200px;min-width:200px;border-right:1px solid var(--border);flex-shrink:0"></div>' +
+              // Paid inc VAT
+              '<div style="width:110px;min-width:110px;padding:8px 10px;border-right:1px solid var(--border);flex-shrink:0">' +
+                '<div style="font:600 8px/1 var(--font-mono);color:var(--muted);letter-spacing:.6px;text-transform:uppercase;margin-bottom:5px">Paid Amount</div>' +
+                '<div style="font:800 12px/1 var(--font-mono);color:var(--text)">' + fmtTotal(totalPaid) + '</div>' +
+              '</div>' +
+              // Deal Amount
+              '<div style="width:110px;min-width:110px;padding:8px 10px;border-right:1px solid var(--border);flex-shrink:0">' +
+                '<div style="font:600 8px/1 var(--font-mono);color:var(--muted);letter-spacing:.6px;text-transform:uppercase;margin-bottom:5px">Deal Amount</div>' +
+                '<div style="font:800 12px/1 var(--font-mono);color:var(--text)">' + fmtTotal(totalDeal) + '</div>' +
+              '</div>' +
+              // VAT
+              '<div style="width:90px;min-width:90px;padding:8px 10px;border-right:1px solid var(--border);flex-shrink:0">' +
+                '<div style="font:600 8px/1 var(--font-mono);color:var(--muted);letter-spacing:.6px;text-transform:uppercase;margin-bottom:5px">VAT Amount</div>' +
+                '<div style="font:800 12px/1 var(--font-mono);color:var(--text)">' + fmtTotal(totalVat) + '</div>' +
+              '</div>' +
+              // Remaining spans the rest
+              '<div style="flex:1;padding:8px 16px;display:flex;align-items:center">' +
+                '<div>' +
+                  '<div style="font:600 8px/1 var(--font-mono);color:var(--muted);letter-spacing:.6px;text-transform:uppercase;margin-bottom:5px">Remaining</div>' +
+                  '<div style="font:800 15px/1 var(--font-mono);color:' + (remaining>0?'var(--negative)':'var(--positive)') + '">' + fmtTotal(remaining) + '</div>' +
+                '</div>' +
+              '</div>' +
+            '</div>' : '') +
+          '</div>' +
+        '</div>' +
+      '</div>' +
+    '</div>' +
+
+    // Cancelled section
+    (cancelled.length ?
+      '<div style="padding:0 24px 32px">' +
+        '<details>' +
+          '<summary style="cursor:pointer;list-style:none;display:flex;align-items:center;gap:10px;padding:12px 16px;border:1px solid var(--border);border-radius:10px;background:var(--surface);font:600 13px/1 var(--font-sans);color:var(--muted);user-select:none">' +
+            '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>' +
+            '<span style="flex:1">Cancelled Deals</span>' +
+            '<span style="font:700 11px/1 var(--font-mono);background:rgba(239,68,68,0.12);color:var(--negative);padding:3px 8px;border-radius:20px">' + cancelled.length + '</span>' +
+          '</summary>' +
+          '<div style="margin-top:8px;border:1px solid var(--border);border-radius:10px;overflow:hidden">' +
+            '<div style="overflow-x:auto"><div style="min-width:1400px;opacity:.7">' +
+              '<div style="display:flex;background:var(--surface-2,var(--surface));border-bottom:2px solid var(--border)">' + headerCols + '</div>' +
+              cancelledHtml +
+            '</div></div>' +
+          '</div>' +
+        '</details>' +
+      '</div>'
+    : '') ;
+}
+
+function dealSetYear(y) {
+  _dealYear = y;
+  if (y) { _dealFromMonth = (parseInt(y)-1) + '-11'; _dealToMonth = y + '-10'; }
+  else    { _dealFromMonth = ''; _dealToMonth = ''; }
+  renderDealTracker();
+}
+// Fiscal quarters: Q1=Nov-Jan, Q2=Feb-Apr, Q3=May-Jul, Q4=Aug-Oct
+function dealSetQuarter(q) {
+  const y = parseInt(_dealYear || String(new Date().getFullYear()));
+  _dealYear = String(y);
+  if      (q === 1) { _dealFromMonth = (y-1) + '-11'; _dealToMonth = y + '-01'; }
+  else if (q === 2) { _dealFromMonth = y + '-02';      _dealToMonth = y + '-04'; }
+  else if (q === 3) { _dealFromMonth = y + '-05';      _dealToMonth = y + '-07'; }
+  else              { _dealFromMonth = y + '-08';      _dealToMonth = y + '-10'; }
+  renderDealTracker();
+}
+function _activeQuarter() {
+  if (!_dealFromMonth || !_dealToMonth) return 0;
+  const y = parseInt(_dealYear || _dealFromMonth.slice(0,4));
+  if (_dealFromMonth === (y-1)+'-11' && _dealToMonth === y+'-01') return 1;
+  if (_dealFromMonth === y+'-02'     && _dealToMonth === y+'-04') return 2;
+  if (_dealFromMonth === y+'-05'     && _dealToMonth === y+'-07') return 3;
+  if (_dealFromMonth === y+'-08'     && _dealToMonth === y+'-10') return 4;
+  return 0;
+}
+function dealSetFromMonth(mo) {
+  const y = _dealYear || String(new Date().getFullYear());
+  _dealYear      = y;
+  _dealFromMonth = mo ? y + '-' + mo : '';
+  renderDealTracker();
+}
+function dealSetToMonth(mo) {
+  const y = _dealYear || String(new Date().getFullYear());
+  _dealYear      = y;
+  _dealToMonth   = mo ? y + '-' + mo : '';
+  renderDealTracker();
+}
+function dealClearFilters() {
+  _dealFromMonth = ''; _dealToMonth = ''; _dealSearch = ''; _dealYear = '';
+  renderDealTracker();
+}
+
+function openDealModal(id) {
+  const deal = id ? _dealData.find(d => d.id === id) : null;
+  const v = k => deal ? (deal[k] != null ? deal[k] : '') : '';
+  const fmtDateInput = d => { if (!d) return ''; return String(d).slice(0,10); };
+
+  const colorOpts = [
+    { val:'green',  label:'Green — Paid' },
+    { val:'orange', label:'Orange — Partial / Incomplete' },
+    { val:'red',    label:'Red — Overdue / Problem' },
+    { val:'none',   label:'No colour' },
+  ];
+  const colorSel = colorOpts.map(o => '<option value="' + o.val + '"' + (v('row_color')===o.val||(!v('row_color')&&o.val==='green')?' selected':'') + '>' + o.label + '</option>').join('');
+  const sentOpts = ['no','yes','yes-pdf'].map(o => '<option value="' + o + '"' + (v('invoice_sent')===o?' selected':'') + '>' + (o==='no'?'No':o==='yes'?'Yes':'Yes (PDF)') + '</option>').join('');
+  const sigOpts  = ['no','yes'].map(o => '<option value="' + o + '"' + (v('signature_received')===o?' selected':'') + '>' + (o==='no'?'No':'Yes') + '</option>').join('');
+  const statusSel = ['active','cancelled'].map(o => '<option value="' + o + '"' + ((v('status')||'active')===o?' selected':'') + '>' + (o==='active'?'Active':'Cancelled') + '</option>').join('');
+
+  const html =
+    '<div class="modal-overlay active" id="dealModal" onclick="if(event.target===this)closeDealModal()">' +
+    '<div class="modal" style="max-width:680px;width:95vw">' +
+    '<div class="modal-header">' +
+      '<h2>' + (deal ? 'Edit Deal' : 'Add Deal') + '</h2>' +
+      '<button class="modal-close" onclick="closeDealModal()">✕</button>' +
+    '</div>' +
+    '<div style="padding:20px;display:grid;grid-template-columns:1fr 1fr;gap:14px">' +
+      '<div class="form-group" style="grid-column:1/-1">' +
+        '<label class="form-label">Company *</label>' +
+        '<input id="dlCompany" class="form-control" value="' + esc(v('company')) + '" placeholder="Company name">' +
+      '</div>' +
+      '<div class="form-group">' +
+        '<label class="form-label">Month Label</label>' +
+        '<input id="dlMonth" class="form-control" value="' + esc(v('month_label')) + '" placeholder="e.g. 26-Jan">' +
+      '</div>' +
+      '<div class="form-group">' +
+        '<label class="form-label">Row Colour</label>' +
+        '<select id="dlColor" class="form-control">' + colorSel + '</select>' +
+      '</div>' +
+      '<div class="form-group">' +
+        '<label class="form-label">Status</label>' +
+        '<select id="dlStatus" class="form-control">' + statusSel + '</select>' +
+      '</div>' +
+      '<div class="form-group">' +
+        '<label class="form-label">Deal Amount (£)</label>' +
+        '<input id="dlDeal" class="form-control" type="number" step="0.01" value="' + esc(v('deal_amount')) + '" placeholder="0.00">' +
+      '</div>' +
+      '<div class="form-group">' +
+        '<label class="form-label">Paid inc VAT (£)</label>' +
+        '<input id="dlPaid" class="form-control" type="number" step="0.01" value="' + esc(v('paid_inc_vat')) + '" placeholder="0.00">' +
+      '</div>' +
+      '<div class="form-group">' +
+        '<label class="form-label">Tax / VAT (£)</label>' +
+        '<input id="dlVat" class="form-control" type="number" step="0.01" value="' + esc(v('tax_vat')) + '" placeholder="0.00">' +
+      '</div>' +
+      '<div class="form-group">' +
+        '<label class="form-label">Invoice Date</label>' +
+        '<input id="dlInvDate" class="form-control" type="date" value="' + esc(fmtDateInput(v('date_invoice_issued'))) + '">' +
+      '</div>' +
+      '<div class="form-group">' +
+        '<label class="form-label">Date Paid</label>' +
+        '<input id="dlPaidDate" class="form-control" type="date" value="' + esc(fmtDateInput(v('date_paid'))) + '">' +
+      '</div>' +
+      '<div class="form-group">' +
+        '<label class="form-label">Bank / Payment via</label>' +
+        '<input id="dlBank" class="form-control" value="' + esc(v('bank')) + '" placeholder="HSBC / Stripe / etc.">' +
+      '</div>' +
+      '<div class="form-group">' +
+        '<label class="form-label">Invoice Number</label>' +
+        '<input id="dlInvNum" class="form-control" value="' + esc(v('invoice_number')) + '" placeholder="LPGPCONNECTCOMLTD…">' +
+      '</div>' +
+      '<div class="form-group">' +
+        '<label class="form-label">Invoice &amp; Agreement Sent</label>' +
+        '<select id="dlSent" class="form-control">' + sentOpts + '</select>' +
+      '</div>' +
+      '<div class="form-group">' +
+        '<label class="form-label">Signature Received</label>' +
+        '<select id="dlSig" class="form-control">' + sigOpts + '</select>' +
+      '</div>' +
+      '<div class="form-group">' +
+        '<label class="form-label">Initials</label>' +
+        '<input id="dlInitials" class="form-control" value="' + esc(v('initials')) + '" placeholder="MR / CS">' +
+      '</div>' +
+      '<div class="form-group" style="grid-column:1/-1">' +
+        '<label class="form-label">Notes</label>' +
+        '<textarea id="dlNotes" class="form-control" rows="3" placeholder="Any notes…">' + esc(v('notes')) + '</textarea>' +
+      '</div>' +
+    '</div>' +
+    '<div style="padding:0 20px 20px;display:flex;gap:10px;justify-content:flex-end">' +
+      (deal ? '<button class="btn btn-ghost btn-sm" style="color:var(--negative)" onclick="deleteDeal(' + id + ')">Delete</button><span style="flex:1"></span>' : '') +
+      '<button class="btn btn-ghost btn-sm" onclick="closeDealModal()">Cancel</button>' +
+      '<button class="btn btn-primary btn-sm" onclick="saveDeal(' + (id||'null') + ')">Save</button>' +
+    '</div>' +
+    '</div></div>';
+
+  let existing = document.getElementById('dealModal');
+  if (existing) existing.remove();
+  document.body.insertAdjacentHTML('beforeend', html);
+  document.getElementById('dlCompany').focus();
+}
+
+function closeDealModal() {
+  const m = document.getElementById('dealModal');
+  if (m) m.remove();
+}
+
+async function saveDeal(id) {
+  const company = document.getElementById('dlCompany').value.trim();
+  if (!company) { showToast('Company name is required', 'error'); return; }
+  const payload = {
+    company,
+    month_label:        document.getElementById('dlMonth').value.trim(),
+    row_color:          document.getElementById('dlColor').value,
+    status:             document.getElementById('dlStatus').value,
+    deal_amount:        document.getElementById('dlDeal').value || null,
+    paid_inc_vat:       document.getElementById('dlPaid').value || null,
+    tax_vat:            document.getElementById('dlVat').value || null,
+    date_invoice_issued:document.getElementById('dlInvDate').value || null,
+    date_paid:          document.getElementById('dlPaidDate').value || null,
+    bank:               document.getElementById('dlBank').value.trim(),
+    invoice_number:     document.getElementById('dlInvNum').value.trim(),
+    invoice_sent:       document.getElementById('dlSent').value,
+    signature_received: document.getElementById('dlSig').value,
+    initials:           document.getElementById('dlInitials').value.trim(),
+    notes:              document.getElementById('dlNotes').value.trim(),
+  };
+  try {
+    const url  = id ? '/api/deal-tracker/' + id : '/api/deal-tracker';
+    const meth = id ? 'PUT' : 'POST';
+    const res  = await fetch(url, { method: meth, headers: { 'Content-Type':'application/json' }, body: JSON.stringify(payload) });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Save failed');
+    if (id) {
+      const idx = _dealData.findIndex(d => d.id === id);
+      if (idx !== -1) _dealData[idx] = data; else _dealData.push(data);
+    } else {
+      _dealData.push(data);
+    }
+    closeDealModal();
+    renderDealTracker();
+    showToast(id ? 'Deal updated' : 'Deal added', 'success');
+  } catch(e) { showToast('Error: ' + e.message, 'error'); }
+}
+
+async function deleteDeal(id) {
+  if (!confirm('Delete this deal?')) return;
+  try {
+    const res = await fetch('/api/deal-tracker/' + id, { method: 'DELETE' });
+    if (!res.ok) throw new Error('Delete failed');
+    _dealData = _dealData.filter(d => d.id !== id);
+    closeDealModal();
+    renderDealTracker();
+    showToast('Deal deleted', 'success');
+  } catch(e) { showToast('Error: ' + e.message, 'error'); }
+}
+
+async function dealAutoColour() {
+  try {
+    const res  = await fetch('/api/deal-tracker/auto-colour', { method: 'POST' });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Failed');
+    await loadDealTracker();
+    showToast('Colours updated: ' + data.updated + ' rows changed', 'success');
+  } catch(e) { showToast('Error: ' + e.message, 'error'); }
+}
+
+async function toggleDealFlag(id, event) {
+  event.stopPropagation();
+  const deal = _dealData.find(d => d.id === id);
+  if (!deal) return;
+  const payload = Object.assign({}, deal, { is_flagged: !deal.is_flagged });
+  try {
+    const res  = await fetch('/api/deal-tracker/' + id, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+    const text = await res.text();
+    let updated;
+    try { updated = JSON.parse(text); } catch(e) { throw new Error('Server returned: ' + text.slice(0,120)); }
+    if (!res.ok) throw new Error(updated.error || 'Save failed');
+    const idx = _dealData.findIndex(d => d.id === id);
+    if (idx !== -1) _dealData[idx] = updated;
+    renderDealTracker();
+  } catch(e) { showToast('Error: ' + e.message, 'error'); }
+}
+
+function startDealInlineEdit(id, field, event) {
+  event.stopPropagation();
+  const deal = _dealData.find(d => d.id === id);
+  if (!deal) return;
+  const cell = event.currentTarget;
+  const origHtml = cell.innerHTML;
+
+  const iBase = 'width:100%;background:transparent;border:none;border-bottom:2px solid var(--primary);outline:none;color:var(--text);padding:2px 0;font:inherit';
+  const numFields  = ['paid_inc_vat','deal_amount','tax_vat'];
+  const dateFields = ['date_invoice_issued','date_paid'];
+
+  let inp;
+  if (numFields.includes(field)) {
+    inp = document.createElement('input');
+    inp.type = 'number'; inp.step = '0.01';
+    inp.value = deal[field] != null ? parseFloat(deal[field]) : '';
+    inp.style.cssText = iBase + ';font:700 12px/1 var(--font-mono)';
+  } else if (dateFields.includes(field)) {
+    inp = document.createElement('input');
+    inp.type = 'date';
+    inp.value = deal[field] ? String(deal[field]).slice(0,10) : '';
+    inp.style.cssText = iBase + ';font:500 11px/1 var(--font-mono)';
+  } else if (field === 'invoice_sent') {
+    inp = document.createElement('select');
+    inp.style.cssText = iBase + ';font:600 10px/1 var(--font-mono)';
+    [['no','No'],['yes','Yes'],['yes-pdf','Yes (PDF)']].forEach(([v,l]) => {
+      const o = document.createElement('option'); o.value = v; o.textContent = l;
+      if (deal[field] === v) o.selected = true;
+      inp.appendChild(o);
+    });
+  } else if (field === 'signature_received') {
+    inp = document.createElement('select');
+    inp.style.cssText = iBase + ';font:600 10px/1 var(--font-mono)';
+    [['no','No'],['yes','Yes']].forEach(([v,l]) => {
+      const o = document.createElement('option'); o.value = v; o.textContent = l;
+      if (deal[field] === v) o.selected = true;
+      inp.appendChild(o);
+    });
+  } else {
+    inp = document.createElement('input');
+    inp.type = 'text';
+    inp.value = deal[field] || '';
+    inp.style.cssText = iBase + ';font:500 12px/1 var(--font-mono)';
+  }
+  inp.style.width = '100%';
+
+  cell.innerHTML = '';
+  cell.appendChild(inp);
+  inp.focus();
+  if (inp.select && inp.type !== 'date') inp.select();
+
+  let done = false;
+  const save = async () => {
+    if (done) return; done = true;
+    let val = inp.value;
+    if (numFields.includes(field))  val = val === '' ? null : parseFloat(val);
+    if (dateFields.includes(field)) val = val === '' ? null : val;
+    const payload = Object.assign({}, deal, { [field]: val });
+    try {
+      const res  = await fetch('/api/deal-tracker/' + id, { method:'PUT', headers:{'Content-Type':'application/json'}, body:JSON.stringify(payload) });
+      const text = await res.text();
+      let updated; try { updated = JSON.parse(text); } catch(e) { throw new Error(text.slice(0,120)); }
+      if (!res.ok) throw new Error(updated.error || 'Save failed');
+      const idx = _dealData.findIndex(d => d.id === id);
+      if (idx !== -1) _dealData[idx] = updated;
+      renderDealTracker();
+    } catch(e) { showToast('Error: ' + e.message, 'error'); cell.innerHTML = origHtml; }
+  };
+  const cancel = () => { done = true; cell.innerHTML = origHtml; };
+
+  if (inp.tagName === 'SELECT') {
+    inp.addEventListener('change', () => { inp.blur(); });
+    inp.addEventListener('blur', save);
+  } else {
+    inp.addEventListener('blur', save);
+    inp.addEventListener('keydown', e => {
+      if (e.key === 'Enter')  { e.preventDefault(); inp.blur(); }
+      if (e.key === 'Escape') { cancel(); }
+    });
+  }
+}
+
+// ─── INVOICE DOCUMENTS ────────────────────────────────────────────────────────
+async function openInvoiceModal(dealId, event) {
+  if (event) event.stopPropagation();
+  const deal = _dealData.find(d => d.id === dealId);
+  let existing = document.getElementById('invoiceDocModal');
+  if (existing) existing.remove();
+
+  const html =
+    '<div class="modal-overlay active" id="invoiceDocModal" onclick="if(event.target===this)closeInvoiceModal()">' +
+    '<div class="modal" style="max-width:520px;width:95vw">' +
+    '<div class="modal-header">' +
+      '<div>' +
+        '<h2 style="margin:0">Invoice Documents</h2>' +
+        (deal && deal.invoice_number ? '<div style="font:500 11px/1 var(--font-mono);color:var(--muted);margin-top:4px">' + esc(deal.invoice_number) + '</div>' : '') +
+      '</div>' +
+      '<button class="modal-close" onclick="closeInvoiceModal()">✕</button>' +
+    '</div>' +
+    '<div style="padding:20px">' +
+      '<div id="invoiceDocList"><div style="text-align:center;padding:20px;color:var(--muted);font:500 12px/1 var(--font-mono)">Loading…</div></div>' +
+      '<div style="margin-top:18px;padding-top:18px;border-top:1px solid var(--border)">' +
+        '<div style="font:600 11px/1 var(--font-mono);color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:10px">Upload</div>' +
+        '<div style="display:flex;gap:10px;flex-wrap:wrap">' +
+          '<label style="flex:1;min-width:140px;display:flex;align-items:center;justify-content:center;gap:8px;padding:12px;border:2px dashed var(--border);border-radius:8px;cursor:pointer;font:600 12px/1 var(--font-sans);color:var(--text);transition:border-color .2s" onmouseenter="this.style.borderColor=\'var(--primary)\'" onmouseleave="this.style.borderColor=\'\'">' +
+            '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>' +
+            'Upload PDF' +
+            '<input type="file" accept=".pdf,application/pdf" style="display:none" onchange="uploadInvoiceFile(' + dealId + ',this,\'pdf\')">' +
+          '</label>' +
+          '<label style="flex:1;min-width:140px;display:flex;align-items:center;justify-content:center;gap:8px;padding:12px;border:2px dashed var(--border);border-radius:8px;cursor:pointer;font:600 12px/1 var(--font-sans);color:var(--text);transition:border-color .2s" onmouseenter="this.style.borderColor=\'var(--primary)\'" onmouseleave="this.style.borderColor=\'\'">' +
+            '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>' +
+            'Upload Word Doc' +
+            '<input type="file" accept=".doc,.docx,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document" style="display:none" onchange="uploadInvoiceFile(' + dealId + ',this,\'word\')">' +
+          '</label>' +
+        '</div>' +
+      '</div>' +
+    '</div>' +
+    '</div></div>';
+
+  document.body.insertAdjacentHTML('beforeend', html);
+  loadInvoiceFiles(dealId);
+}
+
+function closeInvoiceModal() {
+  const m = document.getElementById('invoiceDocModal');
+  if (m) m.remove();
+}
+
+async function loadInvoiceFiles(dealId) {
+  const list = document.getElementById('invoiceDocList');
+  if (!list) return;
+  try {
+    const res  = await fetch('/api/deal-tracker/' + dealId + '/invoices');
+    const docs = res.ok ? await res.json() : [];
+    if (!docs.length) {
+      list.innerHTML = '<div style="text-align:center;padding:20px;color:var(--muted);font:500 12px/1.5 var(--font-mono)">No documents uploaded yet.</div>';
+      return;
+    }
+    const fmtSize = b => b < 1024 ? b + ' B' : b < 1048576 ? (b/1024).toFixed(0) + ' KB' : (b/1048576).toFixed(1) + ' MB';
+    const icon = t => t === 'pdf'
+      ? '<div style="width:32px;height:32px;background:rgba(239,68,68,0.12);border-radius:6px;display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:14px">📄</div>'
+      : '<div style="width:32px;height:32px;background:rgba(59,130,246,0.12);border-radius:6px;display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:14px">📝</div>';
+    list.innerHTML = docs.map(d =>
+      '<div style="display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid var(--border)">' +
+        icon(d.file_type) +
+        '<div style="flex:1;min-width:0">' +
+          '<div style="font:600 12px/1 var(--font-sans);color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + esc(d.file_name) + '</div>' +
+          '<div style="font:500 10px/1 var(--font-mono);color:var(--muted);margin-top:3px">' + fmtSize(d.file_size||0) + ' · ' + d.file_type.toUpperCase() + '</div>' +
+        '</div>' +
+        '<button onclick="downloadInvoiceFile(' + d.id + ',\'' + esc(d.file_name) + '\',\'' + d.file_type + '\')" style="background:none;border:1px solid var(--border);border-radius:6px;padding:5px 10px;cursor:pointer;font:600 11px/1 var(--font-mono);color:var(--text)">↓ Download</button>' +
+        '<button onclick="deleteInvoiceFile(' + d.id + ',' + dealId + ')" style="background:none;border:none;color:var(--dim);cursor:pointer;font-size:16px;padding:4px">×</button>' +
+      '</div>'
+    ).join('');
+  } catch(e) {
+    list.innerHTML = '<div style="color:var(--negative);font:500 12px/1 var(--font-mono);padding:10px">Failed to load: ' + esc(e.message) + '</div>';
+  }
+}
+
+async function uploadInvoiceFile(dealId, input, fileType) {
+  const file = (input.files||[])[0];
+  if (!file) return;
+  const MAX = 10 * 1024 * 1024;
+  if (file.size > MAX) { showToast('File too large (max 10 MB)', 'error'); return; }
+  const list = document.getElementById('invoiceDocList');
+  if (list) list.innerHTML = '<div style="text-align:center;padding:20px;color:var(--muted);font:500 12px/1 var(--font-mono)">Uploading…</div>';
+  try {
+    const base64 = await new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = e => resolve(e.target.result.split(',')[1]);
+      reader.onerror = reject;
+      reader.readAsDataURL(file);
+    });
+    const res = await fetch('/api/deal-tracker/' + dealId + '/invoices', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ file_name: file.name, file_type: fileType, file_data: base64, file_size: file.size })
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Upload failed');
+    showToast('Uploaded: ' + file.name, 'success');
+    loadInvoiceFiles(dealId);
+  } catch(e) { showToast('Upload failed: ' + e.message, 'error'); if (list) loadInvoiceFiles(dealId); }
+  input.value = '';
+}
+
+async function downloadInvoiceFile(id, fileName, fileType) {
+  try {
+    const res  = await fetch('/api/deal-invoices/' + id + '/download');
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Download failed');
+    const mimeMap = { pdf: 'application/pdf', word: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' };
+    const mime = mimeMap[fileType] || 'application/octet-stream';
+    const link = document.createElement('a');
+    link.href = 'data:' + mime + ';base64,' + data.file_data;
+    link.download = data.file_name || fileName;
+    document.body.appendChild(link); link.click(); document.body.removeChild(link);
+  } catch(e) { showToast('Download failed: ' + e.message, 'error'); }
+}
+
+async function deleteInvoiceFile(id, dealId) {
+  if (!confirm('Delete this document?')) return;
+  try {
+    const res = await fetch('/api/deal-invoices/' + id, { method: 'DELETE' });
+    if (!res.ok) throw new Error('Delete failed');
+    showToast('Document deleted', 'success');
+    loadInvoiceFiles(dealId);
+  } catch(e) { showToast('Error: ' + e.message, 'error'); }
+}
+
+// ─── DEAL IMPORT ──────────────────────────────────────────────────────────────
+function openDealImport() {
+  let existing = document.getElementById('dealImportModal');
+  if (existing) existing.remove();
+  const html =
+    '<div class="modal-overlay active" id="dealImportModal" onclick="if(event.target===this)closeDealImport()">' +
+    '<div class="modal" style="max-width:560px;width:95vw">' +
+    '<div class="modal-header"><h2>Import from Excel / CSV</h2><button class="modal-close" onclick="closeDealImport()">✕</button></div>' +
+    '<div style="padding:20px">' +
+      '<p style="font:500 13px/1.6 var(--font-sans);color:var(--muted);margin-bottom:16px">Select your Excel (.xlsx) or CSV file. Columns are matched automatically by header name.</p>' +
+      '<div style="border:2px dashed var(--border);border-radius:10px;padding:36px;text-align:center;cursor:pointer;transition:border-color .2s" id="dealDropZone" onclick="document.getElementById(\'dealImportFile\').click()" ondragover="event.preventDefault();this.style.borderColor=\'var(--primary)\'" ondragleave="this.style.borderColor=\'\'" ondrop="event.preventDefault();this.style.borderColor=\'\';processDealImportFile({files:event.dataTransfer.files})">' +
+        '<div style="font-size:36px;margin-bottom:8px">📂</div>' +
+        '<div style="font:600 13px/1 var(--font-sans);color:var(--text)">Click to choose file or drag &amp; drop</div>' +
+        '<div style="font:500 11px/1 var(--font-mono);color:var(--muted);margin-top:6px">.xlsx · .xls · .csv</div>' +
+      '</div>' +
+      '<input type="file" id="dealImportFile" accept=".xlsx,.xls,.csv" style="display:none" onchange="processDealImportFile(this)">' +
+      '<div id="dealImportPreview" style="margin-top:16px"></div>' +
+    '</div></div></div>';
+  document.body.insertAdjacentHTML('beforeend', html);
+}
+
+function closeDealImport() {
+  const m = document.getElementById('dealImportModal');
+  if (m) m.remove();
+}
+
+async function processDealImportFile(input) {
+  const file = (input.files||[])[0];
+  if (!file) return;
+  const preview = document.getElementById('dealImportPreview');
+  preview.innerHTML = '<div style="text-align:center;padding:16px;color:var(--muted);font:500 12px/1 var(--font-mono)">Parsing file…</div>';
+
+  // Lazy-load SheetJS
+  if (!window.XLSX) {
+    await new Promise((resolve, reject) => {
+      const s = document.createElement('script');
+      s.src = 'https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js';
+      s.onload = resolve; s.onerror = reject;
+      document.head.appendChild(s);
+    });
+  }
+
+  const reader = new FileReader();
+  reader.onload = e => {
+    try {
+      const wb = window.XLSX.read(e.target.result, { type: 'array', cellDates: true });
+      const ws = wb.Sheets[wb.SheetNames[0]];
+      const raw = window.XLSX.utils.sheet_to_json(ws, { raw: false, defval: '' });
+      const mapped = raw.map(mapDealImportRow).filter(r => r.company && !['total','remaining'].includes((r.company+'').toLowerCase().trim()));
+      showDealImportPreview(mapped);
+    } catch(err) {
+      preview.innerHTML = '<div class="alert alert-error">Could not parse file: ' + esc(err.message) + '</div>';
+    }
+  };
+  reader.readAsArrayBuffer(file);
+}
+
+function mapDealImportRow(row) {
+  const find = (...keys) => {
+    for (const k of keys) {
+      const match = Object.keys(row).find(rk => rk.toLowerCase().replace(/[^a-z0-9]/g,'') === k.toLowerCase().replace(/[^a-z0-9]/g,''));
+      if (match !== undefined) return row[match];
+    }
+    return '';
+  };
+  const parseAmt = v => {
+    if (v == null || v === '') return null;
+    const n = parseFloat(String(v).replace(/[£$€,\s]/g,''));
+    return isNaN(n) ? null : n;
+  };
+  const parseDate = v => {
+    if (!v) return null;
+    if (v instanceof Date) return isNaN(v)?null:v.toISOString().slice(0,10);
+    const s = String(v).trim();
+    if (!s) return null;
+    // DD/MM/YY or DD/MM/YYYY
+    const m1 = s.match(/^(\d{1,2})[\/\-\.](\d{1,2})[\/\-\.](\d{2,4})$/);
+    if (m1) {
+      const [, d, mo, y] = m1;
+      const year = y.length === 2 ? '20' + y : y;
+      const dt = new Date(year + '-' + mo.padStart(2,'0') + '-' + d.padStart(2,'0'));
+      if (!isNaN(dt)) return dt.toISOString().slice(0,10);
+    }
+    const dt = new Date(s);
+    return isNaN(dt) ? null : dt.toISOString().slice(0,10);
+  };
+  const normSent = v => {
+    const s = String(v||'').toLowerCase().trim();
+    if (s.includes('pdf')) return 'yes-pdf';
+    if (s === 'yes' || s === 'y') return 'yes';
+    return 'no';
+  };
+  const normSig = v => {
+    const s = String(v||'').toLowerCase().trim();
+    return (s === 'yes' || s === 'y') ? 'yes' : 'no';
+  };
+  return {
+    month_label:         String(find('month','month label') || ''),
+    company:             String(find('company') || ''),
+    paid_inc_vat:        parseAmt(find('paidincvat','paid inc vat','paid','paid inc. vat')),
+    deal_amount:         parseAmt(find('deal','deal amount','dealamount')),
+    tax_vat:             parseAmt(find('taxvat','tax/vat','tax vat','tax','vat')),
+    date_invoice_issued: parseDate(find('dateinvoiceissued','date invoice issued','invoice date','invoicedate')),
+    date_paid:           parseDate(find('datepaid','date paid','paiddate')),
+    bank:                String(find('bari','bank','payment via','paymentvia','payment method') || ''),
+    invoice_number:      String(find('invoicenumber','invoice number','invoice no','invoice#') || ''),
+    notes:               String(find('notes','note') || ''),
+    invoice_sent:        normSent(find('invoice&agreementsent','invoiceagreementsent','invoice sent','invoicesent','sent')),
+    signature_received:  normSig(find('signaturereceived','signature received','signature','signed')),
+    initials:            String(find('initials','initial') || ''),
+    row_color:           (parseAmt(find('paidincvat','paid inc vat','paid','paid inc. vat')) ? 'green' : 'none'),
+  };
+}
+
+function showDealImportPreview(rows) {
+  const preview = document.getElementById('dealImportPreview');
+  if (!rows.length) {
+    preview.innerHTML = '<div class="alert alert-error">No valid rows found. Make sure your file has a "Company" column header.</div>';
+    return;
+  }
+  window._dealImportRows = rows;
+  const fmtA = v => v != null ? '£' + parseFloat(v).toLocaleString('en-GB',{minimumFractionDigits:2}) : '—';
+  const sample = rows.slice(0,6);
+  const tableRows = sample.map(r =>
+    '<tr>' +
+    '<td style="padding:6px 8px;border-bottom:1px solid var(--border)">' + esc(r.month_label) + '</td>' +
+    '<td style="padding:6px 8px;border-bottom:1px solid var(--border);font-weight:600">' + esc(r.company) + '</td>' +
+    '<td style="padding:6px 8px;border-bottom:1px solid var(--border)">' + fmtA(r.paid_inc_vat) + '</td>' +
+    '<td style="padding:6px 8px;border-bottom:1px solid var(--border)">' + fmtA(r.deal_amount) + '</td>' +
+    '<td style="padding:6px 8px;border-bottom:1px solid var(--border);color:var(--muted)">' + esc(r.bank) + '</td>' +
+    '</tr>'
+  ).join('');
+  preview.innerHTML =
+    '<div style="margin-bottom:10px;padding:10px 14px;background:rgba(34,197,94,0.1);border-radius:8px;font:600 12px/1 var(--font-mono);color:var(--positive)">' +
+      rows.length + ' rows ready to import' + (rows.length > 6 ? ' (showing first 6 below)' : '') +
+    '</div>' +
+    '<div style="overflow-x:auto;border-radius:8px;border:1px solid var(--border);margin-bottom:14px">' +
+    '<table style="width:100%;border-collapse:collapse;font:500 11px/1 var(--font-mono)">' +
+    '<thead><tr style="background:var(--surface)">' +
+      '<th style="padding:8px;text-align:left;border-bottom:2px solid var(--border)">Month</th>' +
+      '<th style="padding:8px;text-align:left;border-bottom:2px solid var(--border)">Company</th>' +
+      '<th style="padding:8px;text-align:left;border-bottom:2px solid var(--border)">Paid</th>' +
+      '<th style="padding:8px;text-align:left;border-bottom:2px solid var(--border)">Deal</th>' +
+      '<th style="padding:8px;text-align:left;border-bottom:2px solid var(--border)">Bank</th>' +
+    '</tr></thead>' +
+    '<tbody>' + tableRows + '</tbody>' +
+    '</table></div>' +
+    '<div style="display:flex;gap:10px;justify-content:flex-end">' +
+      '<button class="btn btn-ghost btn-sm" onclick="closeDealImport()">Cancel</button>' +
+      '<button class="btn btn-primary btn-sm" onclick="confirmDealImport()">Import ' + rows.length + ' rows</button>' +
+    '</div>';
+}
+
+async function confirmDealImport() {
+  const rows = window._dealImportRows || [];
+  if (!rows.length) return;
+  const btn = document.querySelector('#dealImportModal .btn-primary');
+  if (btn) { btn.disabled = true; btn.textContent = 'Importing…'; }
+  try {
+    const res = await fetch('/api/deal-tracker/bulk', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ deals: rows })
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Import failed');
+    closeDealImport();
+    await loadDealTracker();
+    showToast('Imported ' + (data.count || rows.length) + ' deals successfully', 'success');
+  } catch(e) {
+    showToast('Import failed: ' + e.message, 'error');
+    if (btn) { btn.disabled = false; btn.textContent = 'Import ' + rows.length + ' rows'; }
+  }
+}
+
+// ─── EMPLOYEE REMINDERS ───────────────────────────────────────────────────────
+async function empToggleReminder(id) {
+  try {
+    await fetch('/api/employee/reminders/' + id + '/done', { method: 'PATCH' });
+    const res = await fetch('/api/employee/reminders');
+    window._empReminders = res.ok ? await res.json() : window._empReminders;
+    const card = document.getElementById('empRemindersCard');
+    if (card) {
+      const inner = card.querySelector('[style*="padding:4px"]');
+      if (inner) inner.innerHTML = empRemindersHtmlStandalone();
+    }
+  } catch(e) { console.warn('Toggle reminder failed', e); }
+}
+
+async function empDeleteReminder(id) {
+  try {
+    await fetch('/api/employee/reminders/' + id, { method: 'DELETE' });
+    const res = await fetch('/api/employee/reminders');
+    window._empReminders = res.ok ? await res.json() : (window._empReminders||[]).filter(r => r.id !== id);
+    const card = document.getElementById('empRemindersCard');
+    if (card) {
+      const inner = card.querySelector('[style*="padding:4px"]');
+      if (inner) inner.innerHTML = empRemindersHtmlStandalone();
+    }
+  } catch(e) { console.warn('Delete reminder failed', e); }
+}
+
+async function empAddReminder() {
+  const inp = document.getElementById('empReminderInput');
+  const dt  = document.getElementById('empReminderDate');
+  if (!inp || !inp.value.trim()) return;
+  try {
+    await fetch('/api/employee/reminders', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ title: inp.value.trim(), reminder_date: dt ? dt.value || null : null })
+    });
+    if (inp) inp.value = '';
+    if (dt)  dt.value  = '';
+    const res = await fetch('/api/employee/reminders');
+    window._empReminders = res.ok ? await res.json() : window._empReminders;
+    const card = document.getElementById('empRemindersCard');
+    if (card) {
+      const inner = card.querySelector('[style*="padding:4px"]');
+      if (inner) inner.innerHTML = empRemindersHtmlStandalone();
+    }
+  } catch(e) { console.warn('Add reminder failed', e); }
+}
+
+function empRemindersHtmlStandalone() {
+  const reminders = window._empReminders || [];
+  const pending = reminders.filter(r => !r.is_done);
+  const done    = reminders.filter(r => r.is_done);
+  const fmtDate = d => { if (!d) return ''; const dt = new Date(d+'T12:00:00'); return dt.toLocaleDateString('en-GB',{day:'numeric',month:'short'}); };
+  const itemHtml = r => {
+    const isPast = r.reminder_date && r.reminder_date.slice(0,10) < new Date().toLocaleDateString('en-CA');
+    return '<div style="display:flex;align-items:center;gap:10px;padding:9px 0;border-bottom:1px solid var(--border)">' +
+      '<div onclick="empToggleReminder(' + r.id + ')" style="width:18px;height:18px;border:2px solid ' + (r.is_done?'var(--primary)':'var(--border)') + ';border-radius:4px;flex-shrink:0;cursor:pointer;display:flex;align-items:center;justify-content:center;background:' + (r.is_done?'var(--primary)':'transparent') + '">' +
+        (r.is_done ? '<svg width="10" height="10" viewBox="0 0 12 12" fill="none" stroke="#fff" stroke-width="2.5" stroke-linecap="round"><polyline points="2,6 5,9 10,3"/></svg>' : '') +
+      '</div>' +
+      '<div style="flex:1;min-width:0">' +
+        '<div style="font:600 13px/1 var(--font-sans);color:' + (r.is_done?'var(--dim)':'var(--text)') + ';' + (r.is_done?'text-decoration:line-through':'') + ';white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + esc(r.title) + '</div>' +
+        (r.reminder_date ? '<div style="font:500 10px/1 var(--font-mono);color:' + (isPast&&!r.is_done?'var(--negative)':'var(--muted)') + ';margin-top:3px">' + fmtDate(r.reminder_date) + (isPast&&!r.is_done?' · overdue':'') + '</div>' : '') +
+      '</div>' +
+      '<button onclick="empDeleteReminder(' + r.id + ')" style="background:none;border:none;color:var(--dim);cursor:pointer;font-size:14px;padding:2px 4px;flex-shrink:0">×</button>' +
+    '</div>';
+  };
+  const listHtml = pending.map(itemHtml).join('') + (done.length ? '<div style="font:600 9px/1 var(--font-mono);color:var(--dim);letter-spacing:.5px;margin:10px 0 4px">COMPLETED</div>' + done.slice(0,3).map(itemHtml).join('') : '');
+  return '<div id="empRemindersList">' + (listHtml || '<div style="color:var(--muted);font:500 12px/1.5 var(--font-mono);padding:12px 0;text-align:center">No reminders yet.<br>Add one below.</div>') + '</div>' +
+    '<div style="display:flex;gap:8px;margin-top:12px;padding-top:12px;border-top:1px solid var(--border)">' +
+      '<input id="empReminderInput" class="form-control" style="flex:1;font-size:12px;padding:7px 10px" placeholder="Add a reminder..." onkeydown="if(event.keyCode===13)empAddReminder()">' +
+      '<input id="empReminderDate" class="form-control" type="date" style="width:130px;font-size:12px;padding:7px 8px">' +
+      '<button class="btn btn-primary btn-sm" onclick="empAddReminder()">+</button>' +
+    '</div>';
+}
+
+// ─── ADMIN STAFF PORTFOLIO ────────────────────────────────────────────────────
+let _adminPortfolioData = null;
+let _adminPortfolioEmpFilter = '';
+
+async function loadAdminPortfolio() {
+  const page = document.getElementById('page-portfolio');
+  if (!page) return;
+  page.innerHTML = '<div class="skeleton" style="height:400px;border-radius:16px;margin:24px"></div>';
+  try {
+    const res = await fetch('/api/admin/staff-portfolio');
+    _adminPortfolioData = res.ok ? await res.json() : { employees: [], events: [] };
+    renderAdminPortfolioPage();
+  } catch(e) {
+    page.innerHTML = '<div style="padding:24px"><div class="alert alert-error">Failed to load staff portfolio: ' + e.message + '</div></div>';
+  }
+}
+
+function renderAdminPortfolioPage() {
+  const page = document.getElementById('page-portfolio');
+  if (!page || !_adminPortfolioData) return;
+  const { employees, events } = _adminPortfolioData;
+
+  // Group events by employee
+  const byEmp = {};
+  employees.forEach(e => { byEmp[e.employee_id] = { emp: e, events: [] }; });
+  events.forEach(ev => {
+    if (byEmp[ev.employee_id]) byEmp[ev.employee_id].events.push(ev);
+  });
+
+  const filtered = _adminPortfolioEmpFilter
+    ? Object.values(byEmp).filter(g => g.emp.employee_id == _adminPortfolioEmpFilter)
+    : Object.values(byEmp);
+
+  const empOptions = employees.map(e =>
+    `<option value="${e.employee_id}" ${e.employee_id==_adminPortfolioEmpFilter?'selected':''}>${esc(e.name)}</option>`
+  ).join('');
+
+  const empCards = filtered.map(({ emp, events: evts }) => {
+    const sorted = [...evts].sort((a,b) => {
+      if (!a.event_date && !b.event_date) return 0;
+      if (!a.event_date) return 1;
+      if (!b.event_date) return -1;
+      return new Date(b.event_date) - new Date(a.event_date);
+    });
+
+    const evtRows = sorted.map(ev => {
+      const dateStr = ev.event_date ? new Date(ev.event_date).toLocaleDateString('en-GB',{day:'numeric',month:'short',year:'numeric'}) : '—';
+      const badgeColor = ev.added_by === 'admin' ? '#f59e0b' : 'var(--positive)';
+      const badgeLabel = ev.added_by === 'admin' ? 'Allocated' : 'Self-added';
+      return `<div style="display:flex;align-items:center;gap:12px;padding:10px 0;border-bottom:1px solid var(--border)">
+        <div style="flex:1;min-width:0">
+          <div style="font:600 13px/1 var(--font-sans);color:var(--text)">${esc(ev.event_name)}</div>
+          <div style="font:500 11px/1 var(--font-mono);color:var(--muted);margin-top:3px">${dateStr}</div>
+          ${ev.notes ? `<div style="font:500 11px/1.4 var(--font-mono);color:var(--text-2);margin-top:4px">${esc(ev.notes)}</div>` : ''}
+        </div>
+        <span style="font:700 9px/1 var(--font-mono);color:${badgeColor};padding:3px 8px;border:1px solid ${badgeColor};border-radius:20px;flex-shrink:0">${badgeLabel}</span>
+        <button class="btn btn-danger btn-sm" onclick="adminDeletePortfolioEvent(${ev.id})" style="flex-shrink:0">×</button>
+      </div>`;
+    }).join('');
+
+    return `<div class="card" style="margin-bottom:16px">
+      <div style="padding:16px 20px 12px;display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid var(--border)">
+        <div>
+          <div style="font:700 15px/1 var(--font-sans);color:var(--text)">${esc(emp.name)}</div>
+          <div style="font:500 11px/1 var(--font-mono);color:var(--muted);margin-top:4px">${esc(emp.role||'')}${emp.department?' · '+esc(emp.department):''} · ${sorted.length} event${sorted.length!==1?'s':''}</div>
+        </div>
+        <button class="btn btn-primary btn-sm" onclick="openAllocateEvent(${emp.employee_id}, '${esc(emp.name)}')">+ Allocate Event</button>
+      </div>
+      <div style="padding:4px 20px 12px">
+        ${evtRows || '<div style="padding:16px 0;color:var(--muted);font:500 12px/1 var(--font-mono)">No events logged yet</div>'}
+      </div>
+    </div>`;
+  }).join('');
+
+  page.innerHTML = `
+    <div style="padding:24px">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px">
+        <div>
+          <h2 style="font:700 20px/1 var(--font-sans);color:var(--text);margin:0">Staff Portfolio</h2>
+          <div style="font:500 11px/1 var(--font-mono);color:var(--muted);margin-top:6px">${events.length} event${events.length!==1?'s':''} across ${employees.length} staff</div>
+        </div>
+        <div style="display:flex;gap:10px;align-items:center">
+          <select onchange="adminPortfolioFilter(this.value)" style="background:var(--surface-2);border:1px solid var(--border);color:var(--text);border-radius:8px;padding:6px 12px;font:500 12px/1 var(--font-mono)">
+            <option value="">All Staff</option>
+            ${empOptions}
+          </select>
+        </div>
+      </div>
+      ${empCards || '<div style="text-align:center;padding:40px;color:var(--muted);font:500 13px/1 var(--font-mono)">No staff found.</div>'}
+    </div>
+    <!-- Allocate Event Modal -->
+    <div id="allocateModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:1000;align-items:center;justify-content:center">
+      <div style="background:var(--surface-2);border:1px solid var(--border);border-radius:16px;padding:28px;width:100%;max-width:440px;margin:16px">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px">
+          <h3 id="allocateModalTitle" style="font:700 16px/1 var(--font-sans);color:var(--text);margin:0">Allocate Event</h3>
+          <button onclick="closeAllocateModal()" style="background:none;border:none;color:var(--muted);font-size:18px;cursor:pointer;padding:0">✕</button>
+        </div>
+        <input type="hidden" id="allocateEmpId">
+        <div class="form-group" style="margin-bottom:14px">
+          <label class="form-label">Event Name *</label>
+          <input id="allocEventName" class="form-control" type="text" placeholder="e.g. CFO NYC 2026">
+        </div>
+        <div class="form-group" style="margin-bottom:14px">
+          <label class="form-label">Event Date</label>
+          <input id="allocEventDate" class="form-control" type="date">
+        </div>
+        <div class="form-group" style="margin-bottom:20px">
+          <label class="form-label">Notes (optional)</label>
+          <textarea id="allocNotes" class="form-control" rows="3" placeholder="Any additional details..."></textarea>
+        </div>
+        <div style="display:flex;gap:10px;justify-content:flex-end">
+          <button class="btn btn-ghost" onclick="closeAllocateModal()">Cancel</button>
+          <button class="btn btn-primary" onclick="saveAllocateEvent()">Allocate</button>
+        </div>
+      </div>
+    </div>`;
+}
+
 function renderDealsByInitials(filtered) {
   // Build summary by initials — shown in totals if any
 }
@@ -4037,4 +6248,515 @@ async function runDealImport() {
   closeModal('dealImportModal');
   showToast(`Imported ${ok} deal${ok !== 1 ? 's' : ''}${fail ? ` (${fail} failed)` : ''}`, ok > 0 ? 'success' : 'error');
   if (ok > 0) loadDeals();
+}
+
+function adminPortfolioFilter(val) {
+  _adminPortfolioEmpFilter = val;
+  renderAdminPortfolioPage();
+}
+
+function openAllocateEvent(empId, empName) {
+  document.getElementById('allocateEmpId').value = empId;
+  document.getElementById('allocateModalTitle').textContent = 'Allocate Event — ' + empName;
+  document.getElementById('allocEventName').value = '';
+  document.getElementById('allocEventDate').value = '';
+  document.getElementById('allocNotes').value = '';
+  document.getElementById('allocateModal').style.display = 'flex';
+}
+
+function closeAllocateModal() {
+  document.getElementById('allocateModal').style.display = 'none';
+}
+
+async function saveAllocateEvent() {
+  const empId = document.getElementById('allocateEmpId').value;
+  const name  = document.getElementById('allocEventName').value.trim();
+  const date  = document.getElementById('allocEventDate').value;
+  const notes = document.getElementById('allocNotes').value.trim();
+  if (!name) { alert('Please enter an event name'); return; }
+  const res = await fetch('/api/admin/staff-portfolio', {
+    method: 'POST',
+    headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({ employee_id: parseInt(empId), event_name: name, event_date: date || null, notes })
+  });
+  if (res.ok) {
+    closeAllocateModal();
+    await loadAdminPortfolio();
+  } else {
+    const err = await res.json();
+    alert('Error: ' + (err.error || 'Failed to allocate'));
+  }
+}
+
+async function adminDeletePortfolioEvent(id) {
+  if (!confirm('Remove this event from the portfolio?')) return;
+  const res = await fetch('/api/admin/staff-portfolio/' + id, { method: 'DELETE' });
+  if (res.ok) await loadAdminPortfolio();
+}
+
+let _portfolioEvents = [];
+let _portfolioYear   = new Date().getFullYear();
+
+async function loadEmployeePortfolio() {
+  const page = document.getElementById('page-portfolio');
+  if (!page) return;
+  page.innerHTML = '<div class="skeleton" style="height:300px;border-radius:16px;margin:24px"></div>';
+  try {
+    const res = await fetch('/api/employee/portfolio');
+    _portfolioEvents = res.ok ? await res.json() : [];
+    renderPortfolioPage();
+  } catch(e) {
+    page.innerHTML = '<div style="padding:24px"><div class="alert alert-error">Failed to load portfolio: ' + e.message + '</div></div>';
+  }
+}
+
+function renderPortfolioPage() {
+  const page = document.getElementById('page-portfolio');
+  if (!page) return;
+
+  const eventYears = new Set(_portfolioEvents.map(e => e.event_date ? new Date(e.event_date).getFullYear() : null).filter(Boolean));
+  const curYear = new Date().getFullYear();
+  [2025, 2026, 2027, 2028].forEach(y => eventYears.add(y));
+  const years = [...eventYears].sort((a,b) => b-a);
+  if (!years.includes(_portfolioYear)) _portfolioYear = curYear;
+
+  const filtered = _portfolioEvents.filter(e => {
+    if (!e.event_date) return false;
+    return new Date(e.event_date).getFullYear() === _portfolioYear;
+  });
+  const undated  = _portfolioYear === curYear ? _portfolioEvents.filter(e => !e.event_date) : [];
+
+  const yearTabs = years.map(y =>
+    `<button onclick="portfolioSetYear(${y})" style="padding:6px 16px;border-radius:20px;border:1px solid ${y===_portfolioYear?'var(--accent)':'var(--border)'};background:${y===_portfolioYear?'var(--accent)':'transparent'};color:${y===_portfolioYear?'#fff':'var(--muted)'};font:600 12px/1 var(--font-mono);cursor:pointer">${y}</button>`
+  ).join('');
+
+  const evtCard = (r) => {
+    const dateStr = r.event_date ? new Date(r.event_date).toLocaleDateString('en-GB',{day:'numeric',month:'short',year:'numeric'}) : 'No date';
+    const byAdmin = r.added_by === 'admin';
+    return `<div class="card" style="margin-bottom:10px;padding:16px 20px;display:flex;align-items:center;gap:16px">
+      <div style="flex:1;min-width:0">
+        <div style="font:700 14px/1 var(--font-sans);color:var(--text)">${esc(r.event_name)}</div>
+        <div style="font:500 11px/1.5 var(--font-mono);color:var(--muted);margin-top:4px">${dateStr}${byAdmin?' · <span style="color:#f59e0b">allocated by admin</span>':''}</div>
+        ${r.notes ? `<div style="font:500 11px/1.4 var(--font-mono);color:var(--text-2);margin-top:6px;border-top:1px solid var(--border);padding-top:6px">${esc(r.notes)}</div>` : ''}
+      </div>
+      ${!byAdmin ? `<button class="btn btn-ghost btn-sm" onclick="deletePortfolioEvent(${r.id})" style="color:var(--danger);flex-shrink:0">×</button>` : ''}
+    </div>`;
+  };
+
+  const allCards = [...filtered, ...undated].map(evtCard).join('');
+
+  page.innerHTML = `
+    <div style="padding:24px">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px">
+        <div>
+          <h2 style="font:700 20px/1 var(--font-sans);color:var(--text);margin:0">My Portfolio</h2>
+          <div style="font:500 11px/1 var(--font-mono);color:var(--muted);margin-top:6px">${_portfolioEvents.length} event${_portfolioEvents.length!==1?'s':''} total</div>
+        </div>
+        <button class="btn btn-primary" onclick="openAddPortfolioEvent()">+ Add Event</button>
+      </div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:20px">${yearTabs}</div>
+      ${allCards || `<div style="text-align:center;padding:40px 20px;color:var(--muted);font:500 12px/1.6 var(--font-mono)">No events in ${_portfolioYear}.<br>Click <strong>+ Add Event</strong> to log one.</div>`}
+    </div>
+    <!-- Add Event Modal -->
+    <div id="portfolioModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:1000;align-items:center;justify-content:center">
+      <div style="background:var(--surface-2);border:1px solid var(--border);border-radius:16px;padding:28px;width:100%;max-width:440px;margin:16px">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px">
+          <h3 style="font:700 16px/1 var(--font-sans);color:var(--text);margin:0">Add Portfolio Event</h3>
+          <button onclick="closePortfolioModal()" style="background:none;border:none;color:var(--muted);font-size:18px;cursor:pointer;padding:0">✕</button>
+        </div>
+        <div class="form-group" style="margin-bottom:14px">
+          <label class="form-label">Event Name *</label>
+          <input id="pfEventName" class="form-control" type="text" placeholder="e.g. CFO NYC 2026">
+        </div>
+        <div class="form-group" style="margin-bottom:14px">
+          <label class="form-label">Event Date</label>
+          <input id="pfEventDate" class="form-control" type="date">
+        </div>
+        <div class="form-group" style="margin-bottom:20px">
+          <label class="form-label">Notes (optional)</label>
+          <textarea id="pfNotes" class="form-control" rows="3" placeholder="Any additional details..."></textarea>
+        </div>
+        <div style="display:flex;gap:10px;justify-content:flex-end">
+          <button class="btn btn-ghost" onclick="closePortfolioModal()">Cancel</button>
+          <button class="btn btn-primary" onclick="savePortfolioEvent()">Save Event</button>
+        </div>
+      </div>
+    </div>`;
+}
+
+function portfolioSetYear(y) {
+  _portfolioYear = y;
+  renderPortfolioPage();
+}
+
+function openAddPortfolioEvent() {
+  document.getElementById('pfEventName').value = '';
+  document.getElementById('pfEventDate').value = '';
+  document.getElementById('pfNotes').value = '';
+  document.getElementById('portfolioModal').style.display = 'flex';
+}
+
+function closePortfolioModal() {
+  document.getElementById('portfolioModal').style.display = 'none';
+}
+
+async function savePortfolioEvent() {
+  const name  = document.getElementById('pfEventName').value.trim();
+  const date  = document.getElementById('pfEventDate').value;
+  const notes = document.getElementById('pfNotes').value.trim();
+  if (!name) { alert('Please enter an event name'); return; }
+  const res = await fetch('/api/employee/portfolio', {
+    method: 'POST',
+    headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({ event_name: name, event_date: date || null, notes })
+  });
+  if (res.ok) {
+    closePortfolioModal();
+    await loadEmployeePortfolio();
+  } else {
+    const err = await res.json();
+    alert('Error: ' + (err.error || 'Failed to save'));
+  }
+}
+
+async function deletePortfolioEvent(id) {
+  if (!confirm('Remove this event from your portfolio?')) return;
+  const res = await fetch('/api/employee/portfolio/' + id, { method: 'DELETE' });
+  if (res.ok) await loadEmployeePortfolio();
+}
+
+let empCalYear  = new Date().getFullYear();
+let empCalMonth = new Date().getMonth() + 1;
+
+async function loadEmployeeCalendar() {
+  const MONTHS_FULL = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+  const DAYS = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
+
+  // Build page scaffold once
+  let container = document.getElementById('empCalContainer');
+  if (!container) {
+    const page = document.getElementById('page-calendar');
+    if (!page) return;
+    page.innerHTML =
+      '<div class="page-head">' +
+        '<div><h1>My Calendar</h1><div class="sub">// Your days off &amp; team bookings</div></div>' +
+        '<button class="btn btn-primary" onclick="openEmpDayOffModal()">+ Request Day Off</button>' +
+      '</div>' +
+      '<div id="empCalContainer"></div>';
+    container = document.getElementById('empCalContainer');
+  }
+
+  // Ensure day-off modal lives at body level (correct overlay behaviour)
+  if (!document.getElementById('empDayOffModal')) {
+    const m = document.createElement('div');
+    m.className = 'modal-overlay';
+    m.id = 'empDayOffModal';
+    m.innerHTML =
+      '<div class="modal" style="max-width:380px">' +
+        '<div class="modal-header"><span class="modal-title">Request Day Off</span>' +
+          '<button class="modal-close" onclick="closeModal(\'empDayOffModal\')">×</button></div>' +
+        '<div style="padding:20px;display:flex;flex-direction:column;gap:14px">' +
+          '<div class="form-group"><label>Date</label><input type="date" id="empDayOffDate"></div>' +
+          '<div class="form-group"><label>Type</label>' +
+            '<select id="empDayOffType"><option value="1">Full Day</option><option value="0.5">Half Day</option></select></div>' +
+          '<div class="form-group"><label>Reason <span style="color:var(--muted);font-weight:400">(required)</span></label><textarea id="empDayOffReason" class="form-control" rows="3" placeholder="e.g. Medical appointment, personal matter..."></textarea></div>' +
+          '<button class="btn btn-primary" style="width:100%" onclick="submitEmpDayOff()">Submit Request</button>' +
+        '</div>' +
+      '</div>';
+    m.addEventListener('click', function(e) { if (e.target === m) closeModal('empDayOffModal'); });
+    document.body.appendChild(m);
+  }
+
+  container.innerHTML = '<div class="skeleton" style="height:400px;border-radius:12px"></div>';
+
+  try {
+    const [requestsRes, teamRes, upcomingRes] = await Promise.all([
+      fetch('/api/employee/day-off-requests'),
+      fetch('/api/calendar?year=' + empCalYear + '&month=' + empCalMonth),
+      fetch('/api/employee/upcoming?days=60')
+    ]);
+    const allRequests = requestsRes.ok ? await requestsRes.json() : [];
+    const teamRecords = teamRes.ok    ? await teamRes.json()     : [];
+    const upcomingData = upcomingRes.ok ? await upcomingRes.json() : { dayOffs: [], reminders: [] };
+    const upcomingDayOffs = upcomingData.dayOffs || [];
+    const upcomingReminders = upcomingData.reminders || [];
+
+    // Own requests this month: date → request
+    const monthPrefix = empCalYear + '-' + String(empCalMonth).padStart(2,'0');
+    const myRequests  = allRequests.filter(r => (r.request_date||'').startsWith(monthPrefix));
+    const myMap = {};
+    myRequests.forEach(r => { myMap[r.request_date.slice(0,10)] = r; });
+
+    // Team days off: date → [names] (exclude self)
+    const teamMap = {};
+    const myEmpId = String((window.currentUser || {}).employee_id || '');
+    (Array.isArray(teamRecords) ? teamRecords : []).forEach(r => {
+      if (String(r.employee_id) === myEmpId) return;
+      if (!(parseFloat(r.is_day_off) > 0)) return;
+      const d = (r.record_date || '').slice(0,10);
+      if (!d.startsWith(monthPrefix)) return;
+      if (!teamMap[d]) teamMap[d] = [];
+      const name = r.employee_name || r.name || ('Emp#' + r.employee_id);
+      const firstName = name.split(' ')[0];
+      if (!teamMap[d].find(n => n.full === name)) teamMap[d].push({ full: name, first: firstName });
+    });
+
+    // Store data for clickable day detail popup
+    window._empCalMyMap   = myMap;
+    window._empCalTeamMap = teamMap;
+    window._empCalTodayStr = new Date().toLocaleDateString('en-CA');
+    const todayStr = window._empCalTodayStr;
+
+    // Calendar grid
+    const firstDay    = new Date(empCalYear, empCalMonth - 1, 1);
+    const daysInMonth = new Date(empCalYear, empCalMonth, 0).getDate();
+    let startDow = firstDay.getDay();
+    startDow = startDow === 0 ? 6 : startDow - 1;
+
+    let gridHtml = '<div style="display:grid;grid-template-columns:repeat(7,1fr);gap:6px;margin-bottom:8px">';
+    DAYS.forEach(day => { gridHtml += '<div style="text-align:center;font:700 11px/1 var(--font-mono);color:var(--text-2);padding:6px 0;letter-spacing:.5px">' + day + '</div>'; });
+    gridHtml += '</div><div style="display:grid;grid-template-columns:repeat(7,1fr);gap:6px">';
+
+    for (let i = 0; i < startDow; i++) gridHtml += '<div></div>';
+
+    for (let d = 1; d <= daysInMonth; d++) {
+      const dateStr = empCalYear + '-' + String(empCalMonth).padStart(2,'0') + '-' + String(d).padStart(2,'0');
+      const rec    = myMap[dateStr];
+      const team   = teamMap[dateStr] || [];
+      const isToday = dateStr === todayStr;
+      const isPast  = dateStr < todayStr;
+      const status  = rec ? rec.status : null;
+
+      let border = isToday ? '2px solid var(--primary)' : '1px solid var(--border)';
+      let bg = isPast ? 'var(--surface)' : 'var(--surface-2)';
+      let statusBar = '';
+      if (status === 'pending')  { bg = '#d9770618'; border = '1px solid #fb923c55'; statusBar = '<div style="font:700 9px/1 var(--font-mono);color:#fb923c;margin-top:4px;letter-spacing:.5px;width:100%;text-align:center">PENDING</div>'; }
+      else if (status === 'approved') { bg = '#6ee7d418'; border = '1px solid #6ee7b455'; statusBar = '<div style="font:700 9px/1 var(--font-mono);color:var(--primary);margin-top:4px;letter-spacing:.5px;width:100%;text-align:center">MY DAY OFF</div>'; }
+      else if (status === 'declined') { bg = '#ef444412'; border = '1px solid #f8717155'; statusBar = '<div style="font:700 9px/1 var(--font-mono);color:#f87171;margin-top:4px;letter-spacing:.5px;width:100%;text-align:center">DECLINED</div>'; }
+
+      let teamHtml = '';
+      if (team.length) {
+        teamHtml = team.slice(0, 3).map(n => {
+          const label = n.first || n;
+          return '<div style="font:600 9px/1.3 var(--font-mono);background:#7c3aed30;color:#c4b5fd;border-radius:4px;padding:2px 5px;margin-top:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%">' + esc(label) + '</div>';
+        }).join('');
+        if (team.length > 3) teamHtml += '<div style="font:600 9px/1 var(--font-mono);color:var(--muted);margin-top:2px">+' + (team.length-3) + ' more</div>';
+      }
+
+      gridHtml +=
+        '<div class="emp-cal-day" style="background:' + bg + ';border:' + border + ';border-radius:8px;padding:8px 6px 6px;min-height:72px;cursor:pointer;display:flex;flex-direction:column;align-items:center"'
+        + ' onclick="empDayClick(\'' + dateStr + '\')">' +
+          '<div style="font:' + (isToday?'800':'700') + ' 15px/1 var(--font-mono);color:' + (isToday?'var(--primary)':isPast?'var(--dim)':'var(--text)') + ';width:100%;text-align:center">' + d + '</div>' +
+          statusBar + teamHtml +
+        '</div>';
+    }
+    gridHtml += '</div>' +
+      '<div style="display:flex;gap:16px;flex-wrap:wrap;margin-top:12px;font:500 11px/1 var(--font-mono);color:var(--muted)">' +
+        '<span><span style="display:inline-block;width:10px;height:10px;background:#d9770618;border:1px solid #fb923c55;border-radius:3px;margin-right:4px;vertical-align:middle"></span>Pending</span>' +
+        '<span><span style="display:inline-block;width:10px;height:10px;background:#6ee7d418;border:1px solid #6ee7b455;border-radius:3px;margin-right:4px;vertical-align:middle"></span>My day off</span>' +
+        '<span><span style="display:inline-block;width:10px;height:10px;background:#7c3aed30;border-radius:3px;margin-right:4px;vertical-align:middle"></span>Team off</span>' +
+      '</div>';
+
+    // Upcoming panel: team day-offs + staff-visible reminders
+    const MONS = ['JAN','FEB','MAR','APR','MAY','JUN','JUL','AUG','SEP','OCT','NOV','DEC'];
+
+    const dayOffItems = upcomingDayOffs.slice(0, 8).map(r => {
+      const rd = new Date(r.date);
+      const label = parseFloat(r.is_day_off) === 0.5 ? 'Half day' : 'Day off';
+      return '<div style="display:flex;gap:12px;padding:10px 0;border-bottom:1px solid var(--border);align-items:center">' +
+        '<div style="width:36px;min-width:36px;text-align:center;background:#7c3aed22;border:1px solid #7c3aed44;border-radius:7px;padding:5px 0">' +
+          '<div style="font:800 13px/1 var(--font-mono);color:#a78bfa">' + rd.getUTCDate() + '</div>' +
+          '<div style="font:600 9px/1 var(--font-mono);color:#a78bfa;margin-top:3px">' + MONS[rd.getUTCMonth()] + '</div>' +
+        '</div>' +
+        '<div style="flex:1"><div style="font:600 12px/1 var(--font-sans);color:var(--text)">' + esc(r.employee_name) + '</div>' +
+          '<div style="font:600 10px/1 var(--font-mono);color:var(--muted);margin-top:3px">' + label.toUpperCase() + '</div></div>' +
+      '</div>';
+    }).join('');
+
+    const remItems = upcomingReminders.slice(0, 5).map(r => {
+      const rd = new Date(r.virtual_date);
+      return '<div style="display:flex;gap:12px;padding:10px 0;border-bottom:1px solid var(--border);align-items:center">' +
+        '<div style="width:36px;min-width:36px;text-align:center;background:#1a1f2e;border:1px solid var(--border);border-radius:7px;padding:5px 0">' +
+          '<div style="font:800 13px/1 var(--font-mono);color:var(--text)">' + rd.getUTCDate() + '</div>' +
+          '<div style="font:600 9px/1 var(--font-mono);color:var(--muted);margin-top:3px">' + MONS[rd.getUTCMonth()] + '</div>' +
+        '</div>' +
+        '<div style="flex:1"><div style="font:600 12px/1 var(--font-sans);color:var(--text)">' + esc(r.title) + '</div>' +
+          '<div style="font:600 10px/1 var(--font-mono);color:var(--muted);margin-top:3px">' + (r.category||'').toUpperCase() + '</div></div>' +
+      '</div>';
+    }).join('');
+
+    const remHtml = dayOffItems + remItems;
+
+    container.innerHTML =
+      '<div style="display:flex;gap:12px;align-items:center;margin-bottom:16px">' +
+        '<button class="btn btn-ghost" onclick="empCalPrev()">‹ Prev</button>' +
+        '<div style="flex:1;text-align:center;font:700 16px/1 var(--font-sans);color:var(--text)">' + MONTHS_FULL[empCalMonth-1] + ' ' + empCalYear + '</div>' +
+        '<button class="btn btn-ghost" onclick="empCalNext()">Next ›</button>' +
+      '</div>' +
+      '<div style="display:grid;grid-template-columns:3fr 2fr;gap:16px">' +
+        '<div class="card">' +
+          '<div class="card-header"><span class="card-title">Team Calendar</span>' +
+            '<span style="font:700 11px/1 var(--font-mono);color:var(--muted)">' + myRequests.length + ' request' + (myRequests.length!==1?'s':'') + ' this month</span></div>' +
+          '<div style="padding:16px">' + gridHtml + '</div>' +
+          '<div style="padding:0 16px 12px;font:500 11px/1 var(--font-mono);color:var(--muted)">Click any date to see details or request a day off</div>' +
+        '</div>' +
+        '<div class="card"><div class="card-header"><span class="card-title">What\'s Coming Up</span><span style="font:700 11px/1 var(--font-mono);color:var(--muted)">NEXT 60D</span></div>' +
+          '<div style="padding:4px 16px 12px">' + (remHtml || '<div style="color:var(--muted);font-size:0.82rem;padding:12px 0">No upcoming team events or days off</div>') + '</div>' +
+        '</div>' +
+      '</div>';
+
+  } catch(e) {
+    container.innerHTML = '<div class="alert alert-error">Failed to load calendar: ' + e.message + '</div>';
+  }
+}
+
+function empDayClick(dateStr) {
+  const myMap   = window._empCalMyMap || {};
+  const teamMap = window._empCalTeamMap || {};
+  const todayStr = window._empCalTodayStr || new Date().toLocaleDateString('en-CA');
+  const rec   = myMap[dateStr];
+  const team  = teamMap[dateStr] || [];
+  const isPast = dateStr < todayStr;
+  const status = rec ? rec.status : null;
+
+  // Format date nicely
+  const dt = new Date(dateStr + 'T12:00:00');
+  const dateLabel = dt.toLocaleDateString('en-GB', { weekday:'long', day:'numeric', month:'long', year:'numeric' });
+
+  // Build modal content
+  let body = '';
+
+  // My status section
+  if (rec) {
+    const statusColor = status === 'approved' ? 'var(--primary)' : status === 'pending' ? '#fb923c' : '#f87171';
+    const statusLabel = status === 'approved' ? 'Day off approved' : status === 'pending' ? 'Request pending' : 'Request declined';
+    const typeLabel = parseFloat(rec.is_day_off) === 0.5 ? 'Half day' : 'Full day';
+    body += '<div style="background:' + (status==='approved'?'#6ee7d410':status==='pending'?'#d9770610':'#ef444410') + ';border:1px solid ' + statusColor + '33;border-radius:8px;padding:12px 14px;margin-bottom:14px">' +
+      '<div style="font:700 11px/1 var(--font-mono);color:' + statusColor + ';letter-spacing:.5px;margin-bottom:6px">YOUR REQUEST</div>' +
+      '<div style="font:600 13px/1 var(--font-sans);color:var(--text)">' + statusLabel + ' · ' + typeLabel + '</div>' +
+      (rec.reason ? '<div style="font:500 11px/1.4 var(--font-sans);color:var(--muted);margin-top:6px">Reason: ' + esc(rec.reason) + '</div>' : '') +
+      (status === 'declined' && rec.decline_reason ? '<div style="font:500 11px/1.4 var(--font-sans);color:#f87171;margin-top:6px">Declined: ' + esc(rec.decline_reason) + '</div>' : '') +
+    '</div>';
+  }
+
+  // Team members off
+  if (team.length) {
+    body += '<div style="font:700 11px/1 var(--font-mono);color:var(--muted);letter-spacing:.5px;margin-bottom:8px">TEAM DAYS OFF</div>';
+    body += team.map(n => {
+      const name = n.full || n;
+      const initials = name.split(' ').map(w=>w[0]).join('').slice(0,2).toUpperCase();
+      return '<div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--border)">' +
+        '<div style="width:32px;height:32px;border-radius:50%;background:#7c3aed33;color:#c4b5fd;font:700 12px/32px var(--font-mono);text-align:center;flex-shrink:0">' + initials + '</div>' +
+        '<div style="font:600 13px/1 var(--font-sans);color:var(--text)">' + esc(name) + '</div>' +
+      '</div>';
+    }).join('');
+    body += '<div style="height:8px"></div>';
+  }
+
+  // Actions
+  let actions = '';
+  if (!isPast && !rec) {
+    actions = `<button class="btn btn-primary" style="width:100%;margin-top:4px" onclick="closeEmpDayModal();openEmpDayOffModalDate('${dateStr}')">+ Request Day Off</button>`;
+  } else if (status === 'pending') {
+    actions = `<button class="btn btn-danger" style="width:100%;margin-top:4px" onclick="closeEmpDayModal();cancelEmpDayOff('${dateStr}')">Cancel My Request</button>`;
+  }
+
+  if (!rec && !team.length) {
+    body = '<div style="text-align:center;padding:20px 0;color:var(--muted);font:500 13px/1.5 var(--font-mono)">Nothing booked on this day yet.</div>';
+  }
+
+  // Show modal
+  let modal = document.getElementById('empDayDetailModal');
+  if (!modal) {
+    modal = document.createElement('div');
+    modal.id = 'empDayDetailModal';
+    modal.className = 'modal-overlay';
+    modal.addEventListener('click', e => { if (e.target === modal) closeEmpDayModal(); });
+    document.body.appendChild(modal);
+  }
+  modal.innerHTML =
+    '<div class="modal" style="max-width:400px">' +
+      '<div class="modal-header">' +
+        '<div>' +
+          '<div style="font:700 15px/1 var(--font-sans);color:var(--text)">' + dateLabel + '</div>' +
+        '</div>' +
+        '<button class="modal-close" onclick="closeEmpDayModal()">×</button>' +
+      '</div>' +
+      '<div style="padding:20px">' + body + actions + '</div>' +
+    '</div>';
+  modal.style.display = 'flex';
+}
+
+function closeEmpDayModal() {
+  const m = document.getElementById('empDayDetailModal');
+  if (m) m.style.display = 'none';
+}
+
+function empCalPrev() { empCalMonth--; if (empCalMonth < 1) { empCalMonth = 12; empCalYear--; } loadEmployeeCalendar(); }
+function empCalNext() { empCalMonth++; if (empCalMonth > 12) { empCalMonth = 1; empCalYear++; } loadEmployeeCalendar(); }
+
+function showEmpDeclineReason(reason) {
+  const existing = document.getElementById('empDeclineReasonModal');
+  if (existing) existing.remove();
+  const modal = document.createElement('div');
+  modal.id = 'empDeclineReasonModal';
+  modal.className = 'modal-overlay';
+  modal.innerHTML =
+    '<div class="modal" style="max-width:360px">' +
+      '<div class="modal-header"><span class="modal-title" style="color:var(--negative)">✕ Request Declined</span>' +
+        '<button class="modal-close" onclick="document.getElementById(\'empDeclineReasonModal\').remove()">×</button></div>' +
+      '<div style="padding:20px">' +
+        '<div style="font:500 11px/1 var(--font-mono);color:var(--muted);margin-bottom:8px;text-transform:uppercase;letter-spacing:1px">Reason</div>' +
+        '<div style="font:500 14px/1.5 var(--font-sans);color:var(--text)">' + esc(reason) + '</div>' +
+      '</div>' +
+      '<div style="padding:0 20px 16px">' +
+        '<button class="btn btn-ghost btn-sm" style="width:100%" onclick="document.getElementById(\'empDeclineReasonModal\').remove()">Close</button>' +
+      '</div>' +
+    '</div>';
+  modal.addEventListener('click', e => { if (e.target === modal) modal.remove(); });
+  document.body.appendChild(modal);
+}
+
+function openEmpDayOffModal() {
+  document.getElementById('empDayOffDate').value = new Date().toISOString().slice(0,10);
+  document.getElementById('empDayOffReason').value = '';
+  openModal('empDayOffModal');
+}
+function openEmpDayOffModalDate(date) {
+  document.getElementById('empDayOffDate').value = date;
+  document.getElementById('empDayOffReason').value = '';
+  openModal('empDayOffModal');
+}
+
+async function submitEmpDayOff() {
+  const date = document.getElementById('empDayOffDate').value;
+  const is_day_off = document.getElementById('empDayOffType').value;
+  const reason = (document.getElementById('empDayOffReason').value || '').trim();
+  if (!date) return showToast('Please select a date', 'error');
+  if (!reason) return showToast('Please add a reason for your request', 'error');
+  const res = await fetch('/api/employee/day-off', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ date, is_day_off, reason }) });
+  const data = await res.json();
+  if (res.ok) { closeModal('empDayOffModal'); showToast('Day off submitted!', 'success'); loadEmployeeCalendar(); }
+  else showToast(data.error || 'Failed', 'error');
+}
+
+async function cancelEmpDayOff(date) {
+  if (!await showConfirm('Cancel your pending day off request for ' + date + '?')) return;
+  const res = await fetch('/api/employee/day-off/' + date, { method:'DELETE' });
+  if (res.ok) { showToast('Request cancelled', 'success'); loadEmployeeCalendar(); }
+  else showToast('Failed to cancel', 'error');
+}
+
+function openSetPinModal(empId, empName) {
+  // simple prompt approach
+  const pin = prompt('Set portal PIN for ' + empName + ' (min 4 characters):');
+  if (!pin || pin.length < 4) { showToast('PIN must be at least 4 characters', 'error'); return; }
+  fetch('/api/employees/' + empId + '/portal-pin', {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ pin })
+  }).then(r => r.json()).then(d => {
+    if (d.success) showToast('Portal PIN set for ' + empName, 'success');
+    else showToast(d.error || 'Failed', 'error');
+  });
 }

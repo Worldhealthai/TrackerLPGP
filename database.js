@@ -348,6 +348,53 @@ async function runMigrations() {
       ['admin', hash]);
     console.log('Default admin created: username=admin password=admin123');
   }
+
+  await sql('ALTER TABLE employees ADD COLUMN IF NOT EXISTS portal_pin TEXT DEFAULT NULL');
+
+  await sql(`ALTER TABLE deals ADD COLUMN IF NOT EXISTS cancelled_reason TEXT DEFAULT ''`);
+  await sql(`ALTER TABLE deals ADD COLUMN IF NOT EXISTS stage_cancelled BOOLEAN NOT NULL DEFAULT false`);
+
+  // Single row-level currency for hotel expenses (replaces separate av_currency / paid_currency)
+  await sql(`ALTER TABLE hotel_expenses ADD COLUMN IF NOT EXISTS currency TEXT DEFAULT 'USD'`);
+  // Migrate: set currency from paid_currency where available
+  await sql(`UPDATE hotel_expenses SET currency = paid_currency WHERE currency IS NULL AND paid_currency IS NOT NULL`);
+
+  // Tag all existing hotel expenses as 2026 if event_year not set
+  await sql(`UPDATE hotel_expenses SET event_year = 2026 WHERE event_year IS NULL`);
+
+  await sql(`CREATE TABLE IF NOT EXISTS day_off_requests (
+  id SERIAL PRIMARY KEY,
+  employee_id INTEGER NOT NULL,
+  request_date DATE NOT NULL,
+  is_day_off NUMERIC(3,1) NOT NULL DEFAULT 1,
+  status TEXT NOT NULL DEFAULT 'pending',
+  decline_reason TEXT,
+  reason TEXT,
+  created_at TIMESTAMP DEFAULT NOW(),
+  reviewed_at TIMESTAMP,
+  reviewed_by TEXT
+)`);
+  await sql(`ALTER TABLE day_off_requests ADD COLUMN IF NOT EXISTS reason TEXT`);
+
+  await sql(`CREATE TABLE IF NOT EXISTS emp_notifications (
+  id SERIAL PRIMARY KEY,
+  employee_id INTEGER NOT NULL,
+  message TEXT NOT NULL,
+  type TEXT NOT NULL DEFAULT 'info',
+  is_read INTEGER NOT NULL DEFAULT 0,
+  created_at TIMESTAMP DEFAULT NOW()
+)`);
+
+  await sql(`CREATE TABLE IF NOT EXISTS employee_portfolio_events (
+  id SERIAL PRIMARY KEY,
+  employee_id INTEGER NOT NULL,
+  event_name TEXT NOT NULL,
+  event_date DATE,
+  notes TEXT NOT NULL DEFAULT '',
+  added_by TEXT NOT NULL DEFAULT 'employee',
+  allocated_by INT,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+)`);
 }
 
 module.exports = { sql, initDb };

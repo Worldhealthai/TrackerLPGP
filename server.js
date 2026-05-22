@@ -35,17 +35,68 @@ const JWT_SECRET = process.env.JWT_SECRET || 'lpgp-tracker-jwt-2024';
 
 // Lazy init: retry on every request until it succeeds once, then skip forever.
 let dbInitialized = false;
+let dbMigrationsRun = false;
 let dbInitPromise = null; // serialise concurrent first-request inits
 
-async function ensureDb() {
-  if (dbInitialized) return;
-  // Only one concurrent init attempt at a time; reset on failure so next request can retry
-  if (!dbInitPromise) {
-    dbInitPromise = initDb()
-      .then(() => { dbInitialized = true; })
-      .catch(err => { dbInitPromise = null; throw err; });
+async function runLateMigrations() {
+  const steps = [
+    `CREATE TABLE IF NOT EXISTS employee_portfolio_events (id SERIAL PRIMARY KEY, employee_id INTEGER NOT NULL, event_name TEXT NOT NULL, event_date DATE, notes TEXT NOT NULL DEFAULT '', added_by TEXT NOT NULL DEFAULT 'employee', allocated_by INT, created_at TIMESTAMPTZ NOT NULL DEFAULT NOW())`,
+    `CREATE TABLE IF NOT EXISTS employee_reminders (id SERIAL PRIMARY KEY, employee_id INTEGER NOT NULL, title TEXT NOT NULL, reminder_date DATE, is_done BOOLEAN DEFAULT FALSE, created_at TIMESTAMPTZ DEFAULT NOW())`,
+    `ALTER TABLE day_off_requests ADD COLUMN IF NOT EXISTS reason TEXT`,
+    `ALTER TABLE calendar_reminders ADD COLUMN IF NOT EXISTS visible_to_staff BOOLEAN DEFAULT FALSE`,
+    `CREATE TABLE IF NOT EXISTS deal_tracker (
+      id SERIAL PRIMARY KEY,
+      month_label TEXT NOT NULL DEFAULT '',
+      company TEXT NOT NULL,
+      paid_inc_vat NUMERIC(12,2),
+      deal_amount NUMERIC(12,2),
+      tax_vat NUMERIC(12,2),
+      date_invoice_issued DATE,
+      date_paid DATE,
+      bank TEXT DEFAULT '',
+      invoice_number TEXT DEFAULT '',
+      notes TEXT DEFAULT '',
+      invoice_sent TEXT DEFAULT 'no',
+      signature_received TEXT DEFAULT 'no',
+      initials TEXT DEFAULT '',
+      row_color TEXT DEFAULT 'green',
+      status TEXT DEFAULT 'active',
+      sort_order INT DEFAULT 0,
+      created_by INT,
+      created_at TIMESTAMPTZ DEFAULT NOW()
+    )`,
+    `ALTER TABLE deal_tracker ADD COLUMN IF NOT EXISTS status TEXT DEFAULT 'active'`,
+    `ALTER TABLE deal_tracker ADD COLUMN IF NOT EXISTS is_flagged BOOLEAN DEFAULT FALSE`,
+    `CREATE TABLE IF NOT EXISTS deal_invoices (
+      id SERIAL PRIMARY KEY,
+      deal_id INT NOT NULL,
+      file_type TEXT NOT NULL,
+      file_name TEXT NOT NULL,
+      file_data TEXT NOT NULL,
+      file_size INT DEFAULT 0,
+      created_by INT,
+      created_at TIMESTAMPTZ DEFAULT NOW()
+    )`,
+  ];
+  for (const step of steps) {
+    try { await sql(step); } catch(e) { console.warn('Migration step skipped:', e.message); }
   }
-  await dbInitPromise;
+}
+
+async function ensureDb() {
+  if (!dbInitialized) {
+    // Only one concurrent init attempt at a time; reset on failure so next request can retry
+    if (!dbInitPromise) {
+      dbInitPromise = initDb()
+        .then(() => { dbInitialized = true; })
+        .catch(err => { dbInitPromise = null; throw err; });
+    }
+    await dbInitPromise;
+  }
+  if (!dbMigrationsRun) {
+    dbMigrationsRun = true; // set before running so a failure never blocks the API
+    runLateMigrations().catch(e => console.warn('Late migrations failed:', e.message));
+  }
 }
 
 app.use(express.json());
@@ -86,7 +137,8 @@ function requireAuth(req, res, next) {
   const token = req.cookies.token;
   if (!token) return res.status(401).json({ error: 'Not authenticated' });
   try {
-    req.admin = jwt.verify(token, JWT_SECRET);
+    const decoded = jwt.verify(token, JWT_SECRET);
+    req.user = decoded; req.admin = req.user;
     next();
   } catch {
     res.status(401).json({ error: 'Session expired, please log in again' });
@@ -304,8 +356,25 @@ app.post('/api/logout', (req, res) => {
   res.json({ success: true });
 });
 
+app.post('/api/employee-login', async (req, res) => {
+  try {
+    const { email, pin } = req.body;
+    if (!email || !pin) return res.status(400).json({ error: 'Email and PIN required' });
+    const { rows } = await q(`SELECT * FROM employees WHERE LOWER(email) = LOWER(?) AND active = 1`, [email.trim()]);
+    const emp = rows[0];
+    if (!emp || !emp.portal_pin) return res.status(401).json({ error: 'Invalid email or PIN' });
+    if (!bcrypt.compareSync(String(pin), emp.portal_pin)) return res.status(401).json({ error: 'Invalid email or PIN' });
+    const token = jwt.sign({ role: 'employee', employee_id: emp.id, name: emp.name, email: emp.email }, JWT_SECRET, { expiresIn: '12h' });
+    res.cookie('token', token, { httpOnly: true, sameSite: 'strict', maxAge: 12 * 60 * 60 * 1000 });
+    res.json({ success: true, role: 'employee', name: emp.name, employee_id: emp.id });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 app.get('/api/me', requireAuth, (req, res) => {
-  res.json({ username: req.admin.username, role: req.admin.role });
+  if (req.user.role === 'employee') {
+    return res.json({ role: 'employee', employee_id: req.user.employee_id, name: req.user.name, email: req.user.email });
+  }
+  res.json({ username: req.user.username, role: req.user.role || 'admin' });
 });
 
 // ─── ADMINS ──────────────────────────────────────────────────────────────────
@@ -446,6 +515,209 @@ app.post('/api/employees/:id/reactivate', requireAuth, async (req, res) => {
 app.delete('/api/employees/:id', requireAuth, async (req, res) => {
   await q('UPDATE employees SET active = 0 WHERE id = ?', [req.params.id]);
   res.json({ success: true });
+});
+
+// Admin: set portal PIN for employee
+app.put('/api/employees/:id/portal-pin', requireAuth, requireAdmin, async (req, res) => {
+  const { pin } = req.body;
+  if (!pin || String(pin).length < 4) return res.status(400).json({ error: 'PIN must be at least 4 characters' });
+  const hash = bcrypt.hashSync(String(pin), 10);
+  await q('UPDATE employees SET portal_pin = ? WHERE id = ?', [hash, req.params.id]);
+  res.json({ success: true });
+});
+
+// Employee: own profile
+app.get('/api/employee/profile', requireAuth, async (req, res) => {
+  if (req.user.role !== 'employee') return res.status(403).json({ error: 'Employees only' });
+  const empId = req.user.employee_id;
+  const { rows } = await q('SELECT id, name, email, job_title, department, employment_type, annual_salary, currency, start_date FROM employees WHERE id = ?', [empId]);
+  if (!rows[0]) return res.status(404).json({ error: 'Not found' });
+  const emp = rows[0];
+  const year = new Date().getFullYear();
+  const allowance = DAY_OFF_ALLOWANCE[emp.employment_type] || 20;
+  const calc = await calcExcessDeductions(empId, year, parseFloat(emp.annual_salary) || 0, allowance);
+  res.json({ ...emp, year, days_used: calc.total_days_off, allowance_days: allowance, excess_days: calc.excess_days, excess_deduction: calc.excess_deduction });
+});
+
+// Employee: own calendar records for a month
+app.get('/api/employee/my-records', requireAuth, async (req, res) => {
+  if (req.user.role !== 'employee') return res.status(403).json({ error: 'Employees only' });
+  const year  = parseInt(req.query.year  || new Date().getFullYear());
+  const month = parseInt(req.query.month || new Date().getMonth() + 1);
+  const { rows } = await q(
+    `SELECT record_date::TEXT AS record_date, is_day_off, notes FROM daily_records
+     WHERE employee_id = ? AND EXTRACT(YEAR FROM record_date) = ? AND EXTRACT(MONTH FROM record_date) = ?
+     ORDER BY record_date`,
+    [req.user.employee_id, year, month]
+  );
+  res.json(rows);
+});
+
+// Employee: submit day-off request
+app.post('/api/employee/day-off', requireAuth, async (req, res) => {
+  if (req.user.role !== 'employee') return res.status(403).json({ error: 'Employees only' });
+  const { date, is_day_off } = req.body;
+  if (!date) return res.status(400).json({ error: 'date required' });
+  const val = parseFloat(is_day_off) || 1;
+  // Check for duplicate
+  const { rows: existing } = await q('SELECT id FROM day_off_requests WHERE employee_id = ? AND request_date = ? AND status != ?', [req.user.employee_id, date, 'declined']);
+  if (existing.length) return res.status(409).json({ error: 'A request already exists for this date' });
+  const reason = (req.body.reason || '').trim();
+  await q('INSERT INTO day_off_requests (employee_id, request_date, is_day_off, reason) VALUES (?, ?, ?, ?)', [req.user.employee_id, date, val, reason]);
+  res.json({ success: true, status: 'pending' });
+});
+
+// Employee: cancel a pending day-off request
+app.delete('/api/employee/day-off/:date', requireAuth, async (req, res) => {
+  if (req.user.role !== 'employee') return res.status(403).json({ error: 'Employees only' });
+  await q('DELETE FROM day_off_requests WHERE employee_id = ? AND request_date = ? AND status = ?', [req.user.employee_id, req.params.date, 'pending']);
+  res.json({ success: true });
+});
+
+// Admin: get all pending day-off requests
+app.get('/api/day-off-requests', requireAuth, requireAdmin, async (req, res) => {
+  const { rows } = await q(`SELECT r.*, e.name as employee_name, e.department, e.job_title
+    FROM day_off_requests r JOIN employees e ON r.employee_id = e.id
+    WHERE r.status = 'pending' ORDER BY r.request_date ASC`);
+  res.json(rows);
+});
+
+// Admin: approve a day-off request
+app.put('/api/day-off-requests/:id/approve', requireAuth, requireAdmin, async (req, res) => {
+  const { rows } = await q('SELECT * FROM day_off_requests WHERE id = ?', [req.params.id]);
+  if (!rows.length) return res.status(404).json({ error: 'Not found' });
+  const r = rows[0];
+  // Write to daily_records
+  await q(`INSERT INTO daily_records (employee_id, record_date, is_day_off, notes) VALUES (?, ?, ?, ?)
+    ON CONFLICT (employee_id, record_date) DO UPDATE SET is_day_off = EXCLUDED.is_day_off`,
+    [r.employee_id, r.request_date, r.is_day_off, 'Approved day off']);
+  // Update request status
+  await q('UPDATE day_off_requests SET status = ?, reviewed_at = NOW(), reviewed_by = ? WHERE id = ?',
+    ['approved', req.user.username || 'admin', req.params.id]);
+  // Notify employee
+  const dateStr = new Date(r.request_date).toLocaleDateString('en-GB', {day:'2-digit',month:'short',year:'numeric'});
+  const typeLabel = parseFloat(r.is_day_off) === 1 ? 'Full day' : 'Half day';
+  await q('INSERT INTO emp_notifications (employee_id, message, type) VALUES (?, ?, ?)',
+    [r.employee_id, `Your ${typeLabel} off request for ${dateStr} has been approved.`, 'approved']);
+  res.json({ success: true });
+});
+
+// Admin: decline a day-off request
+app.put('/api/day-off-requests/:id/decline', requireAuth, requireAdmin, async (req, res) => {
+  const { reason } = req.body;
+  const { rows } = await q('SELECT * FROM day_off_requests WHERE id = ?', [req.params.id]);
+  if (!rows.length) return res.status(404).json({ error: 'Not found' });
+  const r = rows[0];
+  await q('UPDATE day_off_requests SET status = ?, decline_reason = ?, reviewed_at = NOW(), reviewed_by = ? WHERE id = ?',
+    ['declined', reason || '', req.user.username || 'admin', req.params.id]);
+  // Notify employee
+  const dateStr = new Date(r.request_date).toLocaleDateString('en-GB', {day:'2-digit',month:'short',year:'numeric'});
+  const typeLabel = parseFloat(r.is_day_off) === 1 ? 'Full day' : 'Half day';
+  const msg = reason
+    ? `Your ${typeLabel} off request for ${dateStr} was declined. Reason: ${reason}`
+    : `Your ${typeLabel} off request for ${dateStr} was declined.`;
+  await q('INSERT INTO emp_notifications (employee_id, message, type) VALUES (?, ?, ?)',
+    [r.employee_id, msg, 'declined']);
+  res.json({ success: true });
+});
+
+// Employee: get own notifications
+app.get('/api/employee/notifications', requireAuth, async (req, res) => {
+  if (req.user.role !== 'employee') return res.status(403).json({ error: 'Employees only' });
+  const { rows } = await q('SELECT * FROM emp_notifications WHERE employee_id = ? ORDER BY created_at DESC LIMIT 20', [req.user.employee_id]);
+  res.json(rows);
+});
+
+// Employee: mark all notifications as read
+app.put('/api/employee/notifications/read-all', requireAuth, async (req, res) => {
+  if (req.user.role !== 'employee') return res.status(403).json({ error: 'Employees only' });
+  await q('UPDATE emp_notifications SET is_read = 1 WHERE employee_id = ?', [req.user.employee_id]);
+  res.json({ success: true });
+});
+
+// Employee: get own day-off requests with status
+app.get('/api/employee/day-off-requests', requireAuth, async (req, res) => {
+  if (req.user.role !== 'employee') return res.status(403).json({ error: 'Employees only' });
+  const { rows } = await q('SELECT * FROM day_off_requests WHERE employee_id = ? ORDER BY request_date DESC', [req.user.employee_id]);
+  res.json(rows);
+});
+
+// Employee: own salary card data
+app.get('/api/employee/salary', requireAuth, async (req, res) => {
+  if (req.user.role !== 'employee') return res.status(403).json({ error: 'Employees only' });
+  try {
+    const empId = req.user.employee_id;
+    const year  = parseInt(req.query.year) || new Date().getFullYear();
+    const { rows: empRows } = await q('SELECT * FROM employees WHERE id = ?', [empId]);
+    if (!empRows[0]) return res.status(404).json({ error: 'Not found' });
+    const emp = empRows[0];
+
+    const { rows: payments } = await q(
+      'SELECT * FROM monthly_payments WHERE employee_id = ? AND payment_year = ? ORDER BY payment_month',
+      [empId, year]
+    );
+    const allowance   = DAY_OFF_ALLOWANCE[emp.employment_type] || 20;
+    const annualSal   = parseFloat(emp.annual_salary) || 0;
+    const dayCalc     = await calcExcessDeductions(empId, year, annualSal, allowance);
+    const startDateStr = emp.start_date ? emp.start_date.toISOString().slice(0,10) : null;
+    const startedThisYear = startDateStr && startDateStr.startsWith(String(year));
+    const isTerminated = !emp.active && !!emp.termination_date;
+
+    const earnedPay = isTerminated
+      ? calcEarnedPay(annualSal, startDateStr, emp.termination_date.toISOString().slice(0,10))
+      : (startedThisYear ? calcProRatedPay(annualSal, startDateStr) : null);
+
+    let firstMonthFull = null;
+    if (!isTerminated && startedThisYear && startDateStr) {
+      const [fY, fM] = startDateStr.split('-').map(Number);
+      const lastDay = new Date(fY, fM, 0).getDate();
+      firstMonthFull = calcEarnedPay(annualSal, startDateStr, `${fY}-${String(fM).padStart(2,'0')}-${String(lastDay).padStart(2,'0')}`);
+    }
+
+    let salaryTarget = annualSal;
+    if (isTerminated) {
+      salaryTarget = earnedPay?.total_expected ?? annualSal;
+    } else if (startedThisYear) {
+      const yearEnd = calcEarnedPay(annualSal, startDateStr, `${year}-12-31`);
+      salaryTarget = yearEnd?.total_expected ?? annualSal;
+    }
+
+    const ukPay = emp.employment_type === 'payroll' && annualSal > 0
+      ? calcUKNetPay(annualSal, parseFloat(emp.pension_rate) || 0)
+      : null;
+    const netFactor       = ukPay ? ukPay.net_annual / annualSal : 1;
+    const netSalaryTarget = parseFloat((salaryTarget * netFactor).toFixed(2));
+    const totalPaid       = payments.reduce((a, b) => a + parseFloat(b.amount), 0);
+    const netRemaining    = parseFloat((netSalaryTarget - totalPaid - dayCalc.excess_deduction).toFixed(2));
+    const pctPaid         = netSalaryTarget > 0 ? Math.min(100, Math.round((totalPaid / netSalaryTarget) * 100)) : 0;
+
+    res.json({
+      name:             emp.name,
+      employment_type:  emp.employment_type,
+      currency:         emp.currency || 'GBP',
+      annual_salary:    annualSal,
+      pension_rate:     parseFloat(emp.pension_rate) || 0,
+      paye_breakdown:   ukPay,
+      net_monthly:      ukPay ? ukPay.net_monthly : null,
+      salary_target:    netSalaryTarget,
+      start_date:       startDateStr,
+      is_terminated:    isTerminated,
+      pro_rated:        !isTerminated ? earnedPay : null,
+      first_month_full: firstMonthFull,
+      payments,
+      total_paid:       parseFloat(totalPaid.toFixed(2)),
+      total_days_off:   dayCalc.total_days_off,
+      allowance_days:   allowance,
+      excess_days:      dayCalc.excess_days,
+      excess_deduction: dayCalc.excess_deduction,
+      net_remaining:    netRemaining,
+      pct_paid:         pctPaid,
+      year
+    });
+  } catch (e) {
+    console.error('/api/employee/salary error:', e);
+    res.status(500).json({ error: e.message });
+  }
 });
 
 // ─── YEAR STATS (days-off allowance) ─────────────────────────────────────────
@@ -987,14 +1259,14 @@ app.get('/api/calendar-reminders', requireAuth, async (req, res) => {
 
 app.post('/api/calendar-reminders', requireAuth, async (req, res) => {
   try {
-    const { title, reminder_date, recurrence, category, amount, currency, notes } = req.body;
+    const { title, reminder_date, recurrence, category, amount, currency, notes, visible_to_staff } = req.body;
     if (!title || !reminder_date) return res.status(400).json({ error: 'title and reminder_date required' });
     const rec = ['none','monthly','yearly'].includes(recurrence) ? recurrence : 'none';
     const cat = ['rent','subscription','deposit','utility','other'].includes(category) ? category : 'other';
     const cur = ['GBP','AED'].includes(currency) ? currency : 'GBP';
     const { rows } = await q(
-      'INSERT INTO calendar_reminders (title, reminder_date, recurrence, category, amount, currency, notes, created_by) VALUES (?,?,?,?,?,?,?,?) RETURNING id',
-      [title, reminder_date, rec, cat, amount || null, cur, notes || '', req.admin.id]
+      'INSERT INTO calendar_reminders (title, reminder_date, recurrence, category, amount, currency, notes, created_by, visible_to_staff) VALUES (?,?,?,?,?,?,?,?,?) RETURNING id',
+      [title, reminder_date, rec, cat, amount || null, cur, notes || '', req.admin.id, visible_to_staff ? true : false]
     );
     res.json({ id: rows[0].id });
   } catch (e) { res.status(500).json({ error: e.message }); }
@@ -1214,7 +1486,7 @@ app.delete('/api/hotel-expenses/:id', requireAuth, async (req, res) => {
 // PATCH: update individual fields of a hotel expense row
 app.patch('/api/hotel-expenses/:id', requireAuth, async (req, res) => {
   try {
-    const allowed = ['event_name','hotel','cost','av_amount','av_currency','av_billing','paid_amount','paid_currency','staff_hotel','flights','printing','status','notes','invoice_name','event_year','total_cost_num'];
+    const allowed = ['event_name','hotel','cost','currency','av_amount','av_currency','av_billing','paid_amount','paid_currency','staff_hotel','flights','printing','status','notes','invoice_name','event_year','total_cost_num'];
     const fields = Object.keys(req.body).filter(k => allowed.includes(k));
     if (!fields.length) return res.status(400).json({ error: 'No valid fields' });
     const sets = fields.map(f => `${f}=?`).join(', ');
@@ -1353,6 +1625,21 @@ app.get('/api/deals/revenue-by-event', requireAuth, requireAdminOrManager, async
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+// ─── EMPLOYEE PORTFOLIO EVENTS ───────────────────────────────────────────────
+
+// Employee: get own portfolio events
+app.get('/api/employee/portfolio', requireAuth, async (req, res) => {
+  try {
+    const empId = req.user.employee_id;
+    if (!empId) return res.status(403).json({ error: 'Employee only' });
+    const { rows } = await q(
+      'SELECT * FROM employee_portfolio_events WHERE employee_id = ? ORDER BY event_date DESC NULLS LAST, created_at DESC',
+      [empId]
+    );
+    res.json(rows);
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 // GET /api/deals/last-invoice — return last invoice number used (must be before /:id routes)
 app.get('/api/deals/last-invoice', requireAuth, requireAdminOrManager, async (req, res) => {
   try {
@@ -1473,7 +1760,7 @@ app.patch('/api/deals/:id/row-status', requireAuth, requireAdminOrManager, async
 app.patch('/api/deals/:id/field', requireAuth, requireAdminOrManager, async (req, res) => {
   const ALLOWED = ['title','company','initials','stage','amount','currency','paid_inc_vat',
     'tax_vat','invoice_number','invoice_date','paid_date','bank',
-    'invoice_agreement_sent','signature_received','notes'];
+    'invoice_agreement_sent','signature_received','notes','cancelled_reason'];
   try {
     const { field, value } = req.body;
     if (!ALLOWED.includes(field)) return res.status(400).json({ error: 'Field not allowed' });
@@ -1481,6 +1768,315 @@ app.patch('/api/deals/:id/field', requireAuth, requireAdminOrManager, async (req
     if (!rows.length) return res.status(404).json({ error: 'Not found' });
     res.json({ ok: true });
   } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// PATCH /api/deals/:id/cancel — mark deal as cancelled with optional reason
+app.patch('/api/deals/:id/cancel', requireAuth, requireAdminOrManager, async (req, res) => {
+  try {
+    const { reason = '' } = req.body;
+    const { rows } = await q(
+      `UPDATE deals SET stage_cancelled=true, cancelled_reason=?, stage='Cancelled' WHERE id=? RETURNING id`,
+      [reason, req.params.id]
+    );
+    if (!rows.length) return res.status(404).json({ error: 'Not found' });
+    res.json({ ok: true });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// PATCH /api/deals/:id/uncancel — restore a cancelled deal
+app.patch('/api/deals/:id/uncancel', requireAuth, requireAdminOrManager, async (req, res) => {
+  try {
+    const { rows } = await q(
+      `UPDATE deals SET stage_cancelled=false, cancelled_reason='', stage='Prospect' WHERE id=? RETURNING id`,
+      [req.params.id]
+    );
+    if (!rows.length) return res.status(404).json({ error: 'Not found' });
+    res.json({ ok: true });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// Employee: add own portfolio event
+app.post('/api/employee/portfolio', requireAuth, async (req, res) => {
+  try {
+    const empId = req.user.employee_id;
+    if (!empId) return res.status(403).json({ error: 'Employee only' });
+    const { event_name, event_date, notes } = req.body;
+    if (!event_name) return res.status(400).json({ error: 'event_name required' });
+    await q(
+      'INSERT INTO employee_portfolio_events (employee_id, event_name, event_date, notes, added_by) VALUES (?,?,?,?,?)',
+      [empId, event_name.trim(), event_date || null, (notes || '').trim(), 'employee']
+    );
+    res.json({ ok: true });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// Employee: delete own portfolio event
+app.delete('/api/employee/portfolio/:id', requireAuth, async (req, res) => {
+  try {
+    const empId = req.user.employee_id;
+    if (!empId) return res.status(403).json({ error: 'Employee only' });
+    await q('DELETE FROM employee_portfolio_events WHERE id = ? AND employee_id = ?', [req.params.id, empId]);
+    res.json({ ok: true });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// Admin: get all employees with their portfolio events
+app.get('/api/admin/staff-portfolio', requireAuth, async (req, res) => {
+  try {
+    const { rows: emps } = await q('SELECT id AS employee_id, name, role, department FROM employees WHERE active = 1 ORDER BY name');
+    let events = [];
+    try {
+      const { rows } = await q('SELECT e.*, emp.name AS employee_name FROM employee_portfolio_events e JOIN employees emp ON emp.id = e.employee_id ORDER BY e.event_date DESC NULLS LAST, e.created_at DESC');
+      events = rows;
+    } catch(tableErr) { /* table may not exist yet */ }
+    res.json({ employees: emps, events });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// Admin: allocate/add event to an employee
+app.post('/api/admin/staff-portfolio', requireAuth, async (req, res) => {
+  try {
+    const { employee_id, event_name, event_date, notes } = req.body;
+    if (!employee_id || !event_name) return res.status(400).json({ error: 'employee_id and event_name required' });
+    await q(
+      'INSERT INTO employee_portfolio_events (employee_id, event_name, event_date, notes, added_by, allocated_by) VALUES (?,?,?,?,?,?)',
+      [employee_id, event_name.trim(), event_date || null, (notes || '').trim(), 'admin', req.user.id || null]
+    );
+    res.json({ ok: true });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// Admin: delete any portfolio event
+app.delete('/api/admin/staff-portfolio/:id', requireAuth, async (req, res) => {
+  try {
+    await q('DELETE FROM employee_portfolio_events WHERE id = ?', [req.params.id]);
+    res.json({ ok: true });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// Employee: upcoming — team day-offs + staff-visible reminders
+app.get('/api/employee/upcoming', requireAuth, async (req, res) => {
+  try {
+    const days = parseInt(req.query.days) || 60;
+    const today = new Date();
+    const todayStr = today.toISOString().slice(0, 10);
+    const future = new Date(today); future.setDate(future.getDate() + days);
+    const futureStr = future.toISOString().slice(0, 10);
+
+    // Upcoming team days off from daily_records (source of truth for approved days off)
+    const { rows: dayOffs } = await q(
+      `SELECT r.record_date::TEXT AS date, e.name AS employee_name, r.is_day_off
+       FROM daily_records r JOIN employees e ON e.id = r.employee_id
+       WHERE r.is_day_off > 0 AND r.record_date >= ? AND r.record_date <= ?
+       AND r.employee_id != ? ORDER BY r.record_date ASC`,
+      [todayStr, futureStr, req.user.employee_id || 0]
+    );
+
+    // Staff-visible calendar reminders
+    const { rows: reminders } = await q(
+      `SELECT id, title, reminder_date::TEXT AS reminder_date, recurrence, category, amount, currency, notes
+       FROM calendar_reminders WHERE visible_to_staff = true ORDER BY reminder_date`
+    );
+    const upcoming = [];
+    reminders.forEach(r => {
+      const [, bM, bD] = r.reminder_date.split('-').map(Number);
+      for (let offset = 0; offset <= 1; offset++) {
+        const d = new Date(today); d.setMonth(d.getMonth() + offset);
+        const cY = d.getFullYear(), cM = d.getMonth() + 1;
+        if (r.recurrence === 'none') {
+          if (r.reminder_date >= todayStr && r.reminder_date <= futureStr)
+            upcoming.push({ ...r, virtual_date: r.reminder_date, type: 'reminder' });
+        } else if (r.recurrence === 'monthly') {
+          const dim = new Date(cY, cM, 0).getDate();
+          const vd = `${cY}-${String(cM).padStart(2,'0')}-${String(Math.min(bD,dim)).padStart(2,'0')}`;
+          if (vd >= todayStr && vd <= futureStr) upcoming.push({ ...r, virtual_date: vd, type: 'reminder' });
+        } else if (r.recurrence === 'yearly' && bM === cM) {
+          const dim = new Date(cY, cM, 0).getDate();
+          const vd = `${cY}-${String(cM).padStart(2,'0')}-${String(Math.min(bD,dim)).padStart(2,'0')}`;
+          if (vd >= todayStr && vd <= futureStr) upcoming.push({ ...r, virtual_date: vd, type: 'reminder' });
+        }
+      }
+    });
+
+    const seen = new Set();
+    const dedupedReminders = upcoming.filter(r => { const k=`${r.id}:${r.virtual_date}`; if(seen.has(k))return false; seen.add(k); return true; });
+
+    res.json({ dayOffs, reminders: dedupedReminders.sort((a,b)=>a.virtual_date.localeCompare(b.virtual_date)) });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+
+// ─── EMPLOYEE PERSONAL REMINDERS ─────────────────────────────────────────────
+app.get('/api/employee/reminders', requireAuth, async (req, res) => {
+  try {
+    const empId = req.user.employee_id;
+    if (!empId) return res.status(403).json({ error: 'Employee only' });
+    const { rows } = await q(
+      'SELECT * FROM employee_reminders WHERE employee_id = ? ORDER BY reminder_date NULLS LAST, created_at DESC',
+      [empId]
+    );
+    res.json(rows);
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+app.post('/api/employee/reminders', requireAuth, async (req, res) => {
+  try {
+    const empId = req.user.employee_id;
+    if (!empId) return res.status(403).json({ error: 'Employee only' });
+    const { title, reminder_date } = req.body;
+    if (!title) return res.status(400).json({ error: 'title required' });
+    await q(
+      'INSERT INTO employee_reminders (employee_id, title, reminder_date) VALUES (?,?,?)',
+      [empId, title.trim(), reminder_date || null]
+    );
+    res.json({ ok: true });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+app.patch('/api/employee/reminders/:id/done', requireAuth, async (req, res) => {
+  try {
+    const empId = req.user.employee_id;
+    await q('UPDATE employee_reminders SET is_done = NOT is_done WHERE id = ? AND employee_id = ?', [req.params.id, empId]);
+    res.json({ ok: true });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+app.delete('/api/employee/reminders/:id', requireAuth, async (req, res) => {
+  try {
+    const empId = req.user.employee_id;
+    await q('DELETE FROM employee_reminders WHERE id = ? AND employee_id = ?', [req.params.id, empId]);
+    res.json({ ok: true });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+// ─── DEAL TRACKER ─────────────────────────────────────────────────────────────
+app.get('/api/deal-tracker', requireAuth, async (req, res) => {
+  try {
+    await ensureDb();
+    const { rows } = await q('SELECT * FROM deal_tracker ORDER BY sort_order ASC, created_at ASC');
+    res.json(rows);
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+app.post('/api/deal-tracker', requireAuth, async (req, res) => {
+  try {
+    await ensureDb();
+    const { month_label='', company, paid_inc_vat=null, deal_amount=null, tax_vat=null,
+            date_invoice_issued=null, date_paid=null, bank='', invoice_number='', notes='',
+            invoice_sent='no', signature_received='no', initials='', row_color='green', status='active', sort_order=0 } = req.body;
+    if (!company) return res.status(400).json({ error: 'company required' });
+    const { rows } = await q(
+      `INSERT INTO deal_tracker (month_label,company,paid_inc_vat,deal_amount,tax_vat,date_invoice_issued,date_paid,bank,invoice_number,notes,invoice_sent,signature_received,initials,row_color,status,sort_order,created_by)
+       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) RETURNING *`,
+      [month_label,company,paid_inc_vat||null,deal_amount||null,tax_vat||null,
+       date_invoice_issued||null,date_paid||null,bank,invoice_number,notes,
+       invoice_sent,signature_received,initials,row_color,status,sort_order,req.user.id||null]
+    );
+    res.json(rows[0]);
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+app.put('/api/deal-tracker/:id', requireAuth, async (req, res) => {
+  try {
+    await ensureDb();
+    const { month_label, company, paid_inc_vat, deal_amount, tax_vat,
+            date_invoice_issued, date_paid, bank, invoice_number, notes,
+            invoice_sent, signature_received, initials, row_color, status, is_flagged, sort_order } = req.body;
+    const { rows } = await q(
+      `UPDATE deal_tracker SET month_label=?,company=?,paid_inc_vat=?,deal_amount=?,tax_vat=?,
+       date_invoice_issued=?,date_paid=?,bank=?,invoice_number=?,notes=?,
+       invoice_sent=?,signature_received=?,initials=?,row_color=?,status=?,is_flagged=?,sort_order=?
+       WHERE id=? RETURNING *`,
+      [month_label,company,paid_inc_vat||null,deal_amount||null,tax_vat||null,
+       date_invoice_issued||null,date_paid||null,bank,invoice_number,notes,
+       invoice_sent,signature_received,initials,row_color,status||'active',is_flagged?true:false,sort_order||0,req.params.id]
+    );
+    if (!rows.length) return res.status(404).json({ error: 'not found' });
+    res.json(rows[0]);
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+app.delete('/api/deal-tracker/:id', requireAuth, async (req, res) => {
+  try {
+    await ensureDb();
+    await q('DELETE FROM deal_tracker WHERE id=?', [req.params.id]);
+    res.json({ ok: true });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+app.post('/api/deal-tracker/auto-colour', requireAuth, async (req, res) => {
+  try {
+    await ensureDb();
+    const { rows: paid } = await q(`UPDATE deal_tracker SET row_color='green' WHERE (paid_inc_vat IS NOT NULL AND paid_inc_vat > 0) AND row_color='none' RETURNING id`);
+    const { rows: unpaid } = await q(`UPDATE deal_tracker SET row_color='none' WHERE (paid_inc_vat IS NULL OR paid_inc_vat = 0) AND row_color='green' RETURNING id`);
+    res.json({ ok: true, updated: paid.length + unpaid.length });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+app.post('/api/deal-tracker/bulk', requireAuth, async (req, res) => {
+  try {
+    await ensureDb();
+    const { deals } = req.body;
+    if (!Array.isArray(deals) || !deals.length) return res.status(400).json({ error: 'No deals provided' });
+    let count = 0;
+    for (let i = 0; i < deals.length; i++) {
+      const d = deals[i];
+      if (!d.company) continue;
+      await q(
+        `INSERT INTO deal_tracker (month_label,company,paid_inc_vat,deal_amount,tax_vat,date_invoice_issued,date_paid,bank,invoice_number,notes,invoice_sent,signature_received,initials,row_color,sort_order,created_by)
+         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+        [d.month_label||'', d.company, d.paid_inc_vat||null, d.deal_amount||null, d.tax_vat||null,
+         d.date_invoice_issued||null, d.date_paid||null, d.bank||'', d.invoice_number||'', d.notes||'',
+         d.invoice_sent||'no', d.signature_received||'no', d.initials||'', d.row_color||'green',
+         i, req.user.id||null]
+      );
+      count++;
+    }
+    res.json({ ok: true, count });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+// ─── DEAL INVOICES ────────────────────────────────────────────────────────────
+app.get('/api/deal-tracker/:id/invoices', requireAuth, async (req, res) => {
+  try {
+    await ensureDb();
+    const { rows } = await q(
+      'SELECT id, deal_id, file_type, file_name, file_size, created_at FROM deal_invoices WHERE deal_id=? ORDER BY created_at DESC',
+      [req.params.id]
+    );
+    res.json(rows);
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+app.post('/api/deal-tracker/:id/invoices', requireAuth, async (req, res) => {
+  try {
+    await ensureDb();
+    const { file_name, file_type, file_data, file_size } = req.body;
+    if (!file_data) return res.status(400).json({ error: 'No file data' });
+    if ((file_size || 0) > 10 * 1024 * 1024) return res.status(400).json({ error: 'File too large (max 10 MB)' });
+    const { rows } = await q(
+      'INSERT INTO deal_invoices (deal_id,file_type,file_name,file_data,file_size,created_by) VALUES (?,?,?,?,?,?) RETURNING id,deal_id,file_type,file_name,file_size,created_at',
+      [req.params.id, file_type, file_name, file_data, file_size || 0, req.user.id || null]
+    );
+    res.json(rows[0]);
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+app.get('/api/deal-invoices/:id/download', requireAuth, async (req, res) => {
+  try {
+    await ensureDb();
+    const { rows } = await q('SELECT file_name, file_type, file_data FROM deal_invoices WHERE id=?', [req.params.id]);
+    if (!rows.length) return res.status(404).json({ error: 'Not found' });
+    res.json(rows[0]);
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+app.delete('/api/deal-invoices/:id', requireAuth, async (req, res) => {
+  try {
+    await ensureDb();
+    await q('DELETE FROM deal_invoices WHERE id=?', [req.params.id]);
+    res.json({ ok: true });
+  } catch(e) { res.status(500).json({ error: e.message }); }
 });
 
 // ─── GLOBAL ERROR HANDLER ────────────────────────────────────────────────────

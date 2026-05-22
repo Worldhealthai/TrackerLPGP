@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>LPGP Tracker – Sign In</title>
+  <link rel="stylesheet" href="style.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap">
+</head>
+<body class="login-body">
+  <div class="login-wrap">
+    <div class="login-card">
+      <div class="login-logo">
+        <div class="login-logo-icon">L</div>
+        <div class="login-logo-text">
+          <div class="login-logo-name">LPGP<span> Tracker</span></div>
+          <div class="login-logo-sub">Employee Management</div>
+        </div>
+      </div>
+
+      <p>Sign in to access the management panel</p>
+
+      <div id="loginError" class="alert alert-error hidden"></div>
+
+      <form id="loginForm">
+        <div class="form-group" style="margin-bottom:14px">
+          <label>Username</label>
+          <input type="text" id="username" autocomplete="username" placeholder="Enter username" required>
+        </div>
+        <div class="form-group" style="margin-bottom:20px">
+          <label>Password</label>
+          <input type="password" id="password" autocomplete="current-password" placeholder="Enter password" required>
+        </div>
+        <button type="submit" class="login-submit">Sign In →</button>
+      </form>
+
+      <p class="login-security-note" style="margin-top:20px">
+        Secured with JWT · Session expires after 8 hours
+      </p>
+    </div>
+  </div>
+
+  <script>
+    document.getElementById('loginForm').addEventListener('submit', async e => {
+      e.preventDefault();
+      const btn = e.target.querySelector('button');
+      const err = document.getElementById('loginError');
+      err.classList.add('hidden');
+      btn.textContent = 'Signing in…';
+      btn.disabled = true;
+
+      const res = await fetch('/api/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          username: document.getElementById('username').value,
+          password: document.getElementById('password').value
+        })
+      });
+      const data = await res.json();
+      if (res.ok) {
+        window.location.href = '/';
+      } else {
+        err.textContent = data.error;
+        err.classList.remove('hidden');
+        btn.textContent = 'Sign In →';
+        btn.disabled = false;
+      }
+    });
+  </script>
+</body>
+</html>

@@ -8,17 +8,6 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap">
-  <style>
-    /* Page head improvements */
-    .page-head { display:flex; align-items:flex-start; justify-content:space-between; margin-bottom:20px; gap:12px; flex-wrap:wrap; }
-    .page-head h1 { font:600 22px/1.1 var(--font-sans); color:var(--text); letter-spacing:-0.5px; display:flex; align-items:center; gap:10px; margin-bottom:4px; }
-    .page-head .tag { display:inline-flex; align-items:center; padding:2px 8px; background:var(--accent-soft); border:1px solid var(--accent-line); border-radius:4px; font:600 10px/1 var(--font-mono); text-transform:uppercase; letter-spacing:0.6px; color:var(--accent); }
-    .page-head .sub { font:500 11.5px/1 var(--font-mono); color:var(--muted); }
-    .page-head .actions { display:flex; gap:8px; align-items:center; flex-shrink:0; }
-    /* Dash 3-col */
-    .dash-3col { display:grid; grid-template-columns:1fr 1fr 1fr; gap:16px; margin-bottom:16px; }
-    @media (max-width:900px) { .dash-3col { grid-template-columns:1fr; } }
-  </style>
 </head>
 <body>
 <div class="app" id="app">
@@ -28,79 +17,56 @@
     <div class="sidebar-logo">
       <div class="sidebar-logo-row">
         <div class="sidebar-logo-icon">L</div>
-        <h2 class="sidebar-logo-text">LPGP<span> Tracker</span></h2>
-        <button id="sidebarCollapseBtn" class="sidebar-collapse-btn" title="Collapse sidebar">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
-        </button>
+        <h2>LPGP<span> Tracker</span></h2>
       </div>
       <div class="sidebar-logo-sub">Tracker · ops</div>
       <div id="userLabel"></div>
     </div>
     <div class="sidebar-nav">
-      <div class="nav-section-label">Main</div>
+      <div class="nav-section-label">Workspace</div>
       <div class="nav-item active" data-page="dashboard">
         <span class="icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="9"/><rect x="14" y="3" width="7" height="5"/><rect x="14" y="12" width="7" height="9"/><rect x="3" y="16" width="7" height="5"/></svg></span>
-        <span class="nav-label">Dashboard</span>
+        Dashboard
       </div>
       <div class="nav-item" data-page="tracking">
         <span class="icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg></span>
-        <span class="nav-label">Daily Tracking</span>
+        Daily Tracking
       </div>
-      <div class="nav-item" data-page="calendar" style="position:relative">
+      <div class="nav-item" data-page="calendar">
         <span class="icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg></span>
-        <span class="nav-label">Calendar</span><span id="calNavBadge" class="nav-badge hidden"></span>
+        Calendar
       </div>
-      <div class="nav-section-label">Management</div>
-      <div class="nav-item admin-only hidden" data-page="salary">
+      <div class="nav-section-label">Finance</div>
+      <div class="nav-item" data-page="salary">
         <span class="icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="6" width="20" height="12" rx="2"/><circle cx="12" cy="12" r="2"/><path d="M6 12h.01M18 12h.01"/></svg></span>
-        <span class="nav-label">Salary</span><span id="salaryNavBadge" class="nav-badge hidden"></span>
+        Salary<span id="salaryNavBadge" class="nav-badge hidden"></span>
       </div>
       <div class="nav-item" data-page="employees">
         <span class="icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg></span>
-        <span class="nav-label">Employees</span>
+        Employees
       </div>
       <div class="nav-item" data-page="hotels">
         <span class="icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3 22V12a9 9 0 0 1 18 0v10"/><path d="M3 22h18"/><path d="M9 22v-4h6v4"/></svg></span>
-        <span class="nav-label">Hotel Expenses</span>
+        Hotel Expenses
       </div>
       <div class="nav-item" data-page="reports">
-        <span class="icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg></span>
-        <span class="nav-label">Reports</span>
+        <span class="icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg></span>
+        Reports
       </div>
-      <div class="nav-section-label admin-manager-only hidden">Business</div>
-      <div class="nav-item admin-manager-only hidden" data-page="deals">
-        <span class="icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg></span>
-        <span class="nav-label">Deal Tracker</span>
-      </div>
-      <div class="nav-item admin-manager-only hidden" data-page="portfolio">
-        <span class="icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="7" width="20" height="14" rx="2" ry="2"/><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/></svg></span>
-        <span class="nav-label">Portfolio</span>
-      </div>
-      <div class="nav-item admin-manager-only hidden" data-page="subscriptions">
-        <span class="icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="5" width="20" height="14" rx="2"/><line x1="2" y1="10" x2="22" y2="10"/></svg></span>
-        <span class="nav-label">Subscriptions</span>
-      </div>
+      <div class="nav-section-label">Admin</div>
       <div class="nav-item admin-only hidden" data-page="admins">
         <span class="icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg></span>
-        <span class="nav-label">Admin Users</span>
+        Admin Users
       </div>
     </div>
     <div class="sidebar-footer">
-      <button class="sidebar-collapse-btn" id="sidebarCollapseBtn" onclick="toggleSidebar()" title="Collapse sidebar">
-        <span class="sidebar-collapse-icon">◀</span>
-        <span class="sidebar-collapse-label">Collapse</span>
-      </button>
       <div class="sidebar-footer-info">
         Shift: 8 hrs · Break: 40 min<br>
         Payroll: 20 days/yr · Self-Emp: 5 days/yr
       </div>
-      <button class="theme-toggle-btn" id="themeToggleBtn" onclick="toggleTheme()">
-        <span id="themeToggleIcon">🌙</span>
-        <span id="themeToggleLabel">Dark Mode</span>
-      </button>
       <button class="btn btn-ghost btn-sm" id="logoutBtn" style="width:100%;justify-content:center">
         <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
-        <span class="nav-label">Sign Out</span>
+        Sign Out
       </button>
     </div>
   </nav>
@@ -116,41 +82,27 @@
         <div id="pageTitle">Dashboard</div>
       </div>
       <div class="topbar-right">
+        <input type="search" class="topbar-search" placeholder="Search…" autocomplete="off">
         <div class="topbar-date">
           <span class="topbar-pulse"></span>
           <span id="todayDate"></span>
         </div>
-        <div class="notif-bell-wrap" id="notifBellWrap" style="display:none">
-          <button class="notif-bell-btn" id="notifBellBtn" onclick="toggleNotifPanel()" aria-label="Notifications">
-            🔔<span class="notif-badge hidden" id="notifBadge">0</span>
-          </button>
-          <div class="notif-panel hidden" id="notifPanel">
-            <div class="notif-panel-header">
-              <span>Holiday Requests</span>
-              <button class="notif-panel-close" onclick="toggleNotifPanel()">✕</button>
-            </div>
-            <div id="notifList"><div class="notif-empty">No pending requests</div></div>
-          </div>
-        </div>
+        <button class="topbar-icon-btn" aria-label="Notifications">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
+        </button>
       </div>
     </div>
     <div class="content">
 
       <!-- ══ DASHBOARD ══ -->
       <div class="page active" id="page-dashboard">
-        <div class="page-head">
-          <div>
-            <h1>Dashboard <span class="tag" id="dashTag">May 2026</span></h1>
-            <div class="sub" id="dashSub">// Operations overview · live</div>
-          </div>
-          <div class="actions">
-            <button class="btn" onclick="exportPayrollCSV()"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg> Export</button>
-            <button class="btn btn-primary" onclick="openRecordModal()"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg> New record</button>
-          </div>
-        </div>
         <div id="dashStats"></div>
-        <div id="headcountPanel" style="margin-bottom:20px"></div>
-        <div id="contractExpiryPanel" style="margin-bottom:20px"></div>
+
+        <!-- Contract expiry + headcount row -->
+        <div class="dash-two-col">
+          <div id="contractExpiryPanel"></div>
+          <div id="headcountPanel"></div>
+        </div>
 
         <div class="card">
           <div class="card-header"><span class="card-title">Employee Summary</span></div>
@@ -177,15 +129,6 @@
 
       <!-- ══ DAILY TRACKING ══ -->
       <div class="page" id="page-tracking">
-        <div class="page-head">
-          <div>
-            <h1>Daily Tracking</h1>
-            <div class="sub" id="trackSub">// Select an employee to load records</div>
-          </div>
-          <div class="actions">
-            <button class="btn btn-primary" onclick="openRecordModal()"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg> Add record</button>
-          </div>
-        </div>
         <div class="filter-bar">
           <div class="form-group">
             <label>Employee</label>
@@ -224,26 +167,31 @@
           </div>
         </div>
 
-        <!-- Monthly Payments hidden from tracking view — managed in Salary section -->
+        <!-- Monthly Payments -->
         <div id="paymentsSection" class="hidden">
-          <div id="salaryInfo"></div>
-          <tbody id="paymentsTable"></tbody>
-          <div id="paymentsEmpty"></div>
+          <div class="card">
+            <div class="card-header">
+              <span class="card-title">Salary &amp; Monthly Payments</span>
+              <button class="btn btn-primary btn-sm" onclick="openPaymentModal()">+ Log Payment</button>
+            </div>
+            <div id="salaryInfo" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:16px;margin-bottom:20px"></div>
+            <div class="table-wrap">
+              <table>
+                <thead>
+                  <tr><th>Month</th><th>Amount</th><th>Notes</th><th></th></tr>
+                </thead>
+                <tbody id="paymentsTable"></tbody>
+              </table>
+            </div>
+            <div id="paymentsEmpty" class="empty-state hidden">
+              <div class="icon">💰</div><div>No payments logged yet.</div>
+            </div>
+          </div>
         </div>
       </div>
 
       <!-- ══ SALARY ══ -->
       <div class="page" id="page-salary">
-        <div class="page-head">
-          <div>
-            <h1>Salary <span class="tag" id="salaryPageTag">2026</span></h1>
-            <div class="sub" id="salarySub">// Payroll YTD</div>
-          </div>
-          <div class="actions">
-            <button class="btn btn-ghost btn-sm" onclick="exportPayrollCSV()"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg> Export CSV</button>
-            <button class="btn btn-primary" onclick="openSalaryPaymentModal()"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg> Log payment</button>
-          </div>
-        </div>
         <!-- Salary payment reminder panel -->
         <div id="salaryReminderPanel" class="hidden" style="margin-bottom:18px">
           <div class="salary-reminder-panel">
@@ -290,47 +238,22 @@
         </div>
 
         <!-- Per-employee cards -->
-        <div id="salaryBoard"></div>
         <div id="salaryCards"></div>
       </div>
 
       <!-- ══ EMPLOYEES ══ -->
       <div class="page" id="page-employees">
-        <div class="page-head">
-          <div>
-            <h1>Employees <span class="tag" id="empCountTag">0</span></h1>
-            <div class="sub" id="empSub">// Active workforce</div>
-          </div>
-          <div class="actions">
-            <button class="btn"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg> Import</button>
-            <button class="btn btn-primary" onclick="openEmpModal()"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="8.5" cy="7" r="4"/><line x1="20" y1="8" x2="20" y2="14"/><line x1="23" y1="11" x2="17" y2="11"/></svg> Add employee</button>
-          </div>
-        </div>
-        <div class="filter-bar" style="margin-bottom:18px">
-          <div class="form-group" style="flex:1;min-width:180px;max-width:320px;margin:0">
-            <label>Search</label>
-            <input type="search" id="empSearch" placeholder="Name or department…" oninput="filterEmpTable()" autocomplete="off" />
-          </div>
-          <div class="form-group" style="margin:0;min-width:140px">
-            <label>Department</label>
-            <select id="empDeptFilter" onchange="filterEmpTable()">
-              <option value="">All</option>
-            </select>
-          </div>
-          <div class="form-group" style="margin:0;min-width:120px">
-            <label>Type</label>
-            <select id="empTypeFilter" onchange="filterEmpTable()">
-              <option value="">All</option>
-              <option value="payroll">Payroll</option>
-              <option value="self_employed">Self-Employed</option>
-            </select>
-          </div>
+        <div style="display:flex;align-items:center;gap:12px;margin-bottom:16px;flex-wrap:wrap">
+          <input type="search" id="empSearch" placeholder="Search employees…"
+            oninput="filterEmpTable()" autocomplete="off"
+            style="flex:1;min-width:180px;max-width:300px" />
+          <button class="btn btn-primary" style="margin-left:auto" onclick="openEmpModal()">+ Add Employee</button>
         </div>
         <div class="card">
           <div class="table-wrap">
             <table>
               <thead>
-                <tr><th>Name</th><th>Department / Title</th><th>Type</th><th>Annual Salary</th><th>Start Date</th><th>Status</th><th></th></tr>
+                <tr><th>Name</th><th>Department / Title</th><th>Type</th><th>Annual Salary</th><th>Start Date</th><th>Contract End</th><th>Status</th><th></th></tr>
               </thead>
               <tbody id="empTable"></tbody>
             </table>
@@ -340,29 +263,14 @@
 
       <!-- ══ REPORTS ══ -->
       <div class="page" id="page-reports">
-        <div class="page-head">
-          <div>
-            <h1>Reports</h1>
-            <div class="sub">// Filter, build, export · payroll analytics</div>
-          </div>
-        </div>
-        <div class="filter-bar" style="flex-wrap:wrap;gap:10px;align-items:flex-end">
-          <div class="form-group" style="min-width:160px">
-            <label>Report Type</label>
-            <select id="repType">
-              <option value="payroll">Payroll Summary</option>
-              <option value="deductions">Deductions Detail</option>
-            </select>
-          </div>
+        <div class="filter-bar">
           <div class="form-group"><label>From</label><input type="date" id="repFrom"></div>
           <div class="form-group"><label>To</label><input type="date" id="repTo"></div>
-          <div class="form-group" style="min-width:160px">
+          <div class="form-group">
             <label>Employee</label>
             <select id="repEmp"><option value="">All Employees</option></select>
           </div>
-          <div style="display:flex;gap:8px;margin-top:auto">
-            <button class="btn btn-primary" onclick="loadReport()">Generate</button>
-          </div>
+          <button class="btn btn-primary" onclick="loadReport()">Generate</button>
         </div>
         <div id="reportContent">
           <div class="empty-state"><div class="icon">📋</div><div>Select a date range and generate a report.</div></div>
@@ -371,15 +279,6 @@
 
       <!-- ══ CALENDAR ══ -->
       <div class="page" id="page-calendar">
-        <div class="page-head">
-          <div>
-            <h1>Calendar</h1>
-            <div class="sub" id="calSub">// Days off &amp; expense reminders</div>
-          </div>
-          <div class="actions">
-            <button class="btn btn-primary" onclick="openCalReminderModal()"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg> Add reminder</button>
-          </div>
-        </div>
         <div class="filter-bar" style="align-items:center">
           <button class="btn btn-ghost" onclick="calPrevMonth()">‹ Prev</button>
           <h2 id="calMonthLabel" style="flex:1;text-align:center;font-size:1.1rem;margin:0"></h2>
@@ -415,14 +314,8 @@
 
       <!-- ══ ADMINS ══ -->
       <div class="page" id="page-admins">
-        <div class="page-head">
-          <div>
-            <h1>Admin Users</h1>
-            <div class="sub" id="adminSub">// Accounts &amp; access control</div>
-          </div>
-          <div class="actions">
-            <button class="btn btn-primary" onclick="openAdminModal()"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="8.5" cy="7" r="4"/><line x1="20" y1="8" x2="20" y2="14"/><line x1="23" y1="11" x2="17" y2="11"/></svg> Add manager</button>
-          </div>
+        <div style="display:flex;justify-content:flex-end;margin-bottom:16px">
+          <button class="btn btn-primary" onclick="openAdminModal()">+ Add Manager</button>
         </div>
         <div class="card">
           <div class="table-wrap">
@@ -436,27 +329,22 @@
 
       <!-- ══ HOTEL EXPENSES ══ -->
       <div class="page" id="page-hotels">
-        <div class="filter-bar" style="align-items:center;gap:10px;flex-wrap:wrap">
-          <!-- Year filter -->
-          <div class="deal-q-filters" id="hotelYearFilters">
-            <button class="deal-q-btn active" data-hyr="all" onclick="setHotelYear(this,'all')">All Years</button>
-            <button class="deal-q-btn" data-hyr="2025" onclick="setHotelYear(this,'2025')">2025</button>
-            <button class="deal-q-btn" data-hyr="2026" onclick="setHotelYear(this,'2026')">2026</button>
-            <button class="deal-q-btn" data-hyr="2027" onclick="setHotelYear(this,'2027')">2027</button>
+        <div class="filter-bar" style="align-items:center">
+          <div class="form-group" style="margin:0">
+            <label>Status Filter</label>
+            <select id="hotelStatusFilter" onchange="renderHotelTable()">
+              <option value="">All</option>
+              <option value="pending">Pending</option>
+              <option value="partial">Partial</option>
+              <option value="paid">Paid</option>
+            </select>
           </div>
-          <!-- Status filter -->
-          <select id="hotelStatusFilter" onchange="renderHotelTable()" style="border:1.5px solid var(--border);border-radius:9px;padding:8px 12px;font-size:0.85rem;font-family:inherit;background:var(--bg-2);color:var(--text)">
-            <option value="">All Status</option>
-            <option value="pending">Pending</option>
-            <option value="partial">Partial</option>
-            <option value="paid">Paid</option>
-          </select>
-          <input type="search" id="hotelSearch" placeholder="Search events or hotels…" oninput="renderHotelTable()" style="border:1.5px solid var(--border);border-radius:9px;padding:8px 13px;font-size:0.85rem;font-family:inherit;outline:none;background:var(--bg-2);color:var(--text);min-width:180px" />
+          <input type="search" id="hotelSearch" placeholder="Search events or hotels…" oninput="renderHotelTable()" style="border:1.5px solid var(--border);border-radius:9px;padding:9px 13px;font-size:0.875rem;font-family:inherit;outline:none;background:var(--bg-2);color:var(--text);min-width:220px" />
           <button class="btn btn-primary" style="margin-left:auto" onclick="openHotelModal()">+ Add Event</button>
         </div>
 
         <!-- Summary cards -->
-        <div id="hotelSummary" style="margin-bottom:20px"></div>
+        <div id="hotelSummary" class="stats-grid" style="margin-bottom:20px"></div>
 
         <div class="card" style="padding:0;overflow:hidden">
           <div class="card-header" style="padding:16px 20px;margin:0;border-radius:var(--radius) var(--radius) 0 0">
@@ -467,16 +355,16 @@
             <table id="hotelTable">
               <thead>
                 <tr>
-                  <th style="width:140px">Event</th>
-                  <th style="width:140px">Hotel</th>
-                  <th style="width:110px">Cost</th>
-                  <th style="width:62px">Cur</th>
-                  <th style="width:90px">AV Amt</th>
-                  <th style="width:55px">AV Billing</th>
-                  <th style="width:100px">Paid So Far</th>
-                  <th style="width:78px">Status</th>
-                  <th style="width:80px">Invoice</th>
-                  <th style="width:36px"></th>
+                  <th style="width:160px">Event</th>
+                  <th style="min-width:200px">Hotel</th>
+                  <th style="min-width:180px">Cost</th>
+                  <th style="width:130px">AV</th>
+                  <th style="width:140px">Paid So Far</th>
+                  <th style="width:90px">Staff Hotel</th>
+                  <th style="width:80px">Flights</th>
+                  <th style="width:80px">Printing</th>
+                  <th style="width:90px">Status</th>
+                  <th style="width:80px"></th>
                 </tr>
               </thead>
               <tbody id="hotelTableBody"></tbody>
@@ -488,126 +376,6 @@
           </div>
         </div>
       </div>
-
-      <!-- ══ SUBSCRIPTIONS ══ -->
-      <div class="page" id="page-subscriptions">
-        <div class="filter-bar" style="align-items:center">
-          <button class="btn btn-primary" style="margin-left:auto" onclick="openSubModal()">+ Add Subscription</button>
-        </div>
-        <div id="subTotals" style="margin-bottom:20px"></div>
-        <div class="card" style="padding:0;overflow:hidden">
-          <div class="card-header" style="padding:14px 20px;margin:0;border-radius:var(--radius) var(--radius) 0 0">
-            <span class="card-title">Subscriptions</span>
-            <span id="subCount" style="font-size:0.78rem;color:var(--muted)"></span>
-          </div>
-          <div class="table-wrap">
-            <table id="subTable">
-              <thead><tr>
-                <th>Name</th><th>Amount</th><th>Cycle</th><th>Per Month (GBP)</th><th>Per Year (GBP)</th><th>Renewal</th><th>Notes</th><th></th>
-              </tr></thead>
-              <tbody id="subTableBody"></tbody>
-            </table>
-          </div>
-          <div id="subEmpty" class="empty-state hidden"><div class="icon">💳</div><div>No subscriptions yet.</div></div>
-        </div>
-      </div>
-
-      <!-- ══ PORTFOLIO ══ -->
-      <div class="page" id="page-portfolio">
-        <div class="filter-bar" style="align-items:center">
-          <button class="btn btn-primary" style="margin-left:auto" onclick="openPortfolioModal()">+ Add Event</button>
-        </div>
-        <div id="portfolioGrid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:16px;margin-top:4px"></div>
-        <div id="portfolioEmpty" class="empty-state hidden"><div class="icon">🎯</div><div>No events yet. Add your first event.</div></div>
-      </div>
-
-      <!-- ══ DEAL TRACKER ══ -->
-<div class="page" id="page-deals">
-  <!-- Last invoice banner -->
-  <div id="dealLastInvoice" style="display:none;background:var(--bg-2);border:1.5px solid var(--border);border-radius:10px;padding:10px 16px;margin-bottom:12px;font-size:0.85rem;display:flex;align-items:center;gap:10px">
-    <span style="color:var(--muted)">Last invoice:</span>
-    <a id="dealLastInvLink" href="#" style="font-weight:700;color:var(--primary);text-decoration:none" onclick="scrollToLastInvoice(event)"></a>
-    <span style="color:var(--muted)">→ Next suggested:</span>
-    <span id="dealNextInvNum" style="font-weight:700;font-family:monospace"></span>
-    <button class="btn btn-ghost" style="margin-left:4px;padding:3px 10px;font-size:0.78rem" onclick="copyNextInvoice()">Copy</button>
-  </div>
-  <!-- Year + Quarter filters -->
-  <div class="filter-bar" style="align-items:center;gap:8px;flex-wrap:wrap">
-    <div class="deal-q-filters" id="dealYearFilters">
-      <button class="deal-q-btn active" data-yr="all" onclick="setDealYear(this,'all')">All Years</button>
-      <button class="deal-q-btn" data-yr="2025" onclick="setDealYear(this,'2025')">2025</button>
-      <button class="deal-q-btn" data-yr="2026" onclick="setDealYear(this,'2026')">2026</button>
-      <button class="deal-q-btn" data-yr="2027" onclick="setDealYear(this,'2027')">2027</button>
-      <button class="deal-q-btn deal-q-add" onclick="addDealYear()" title="Add year">+</button>
-    </div>
-    <div class="deal-q-filters">
-      <button class="deal-q-btn active" data-q="all" onclick="setDealQ(this,'all')">All Qtrs</button>
-      <button class="deal-q-btn" data-q="Q1" onclick="setDealQ(this,'Q1')" title="Nov · Dec · Jan">Q1</button>
-      <button class="deal-q-btn" data-q="Q2" onclick="setDealQ(this,'Q2')" title="Feb · Mar · Apr">Q2</button>
-      <button class="deal-q-btn" data-q="Q3" onclick="setDealQ(this,'Q3')" title="May · Jun · Jul">Q3</button>
-      <button class="deal-q-btn" data-q="Q4" onclick="setDealQ(this,'Q4')" title="Aug · Sep · Oct">Q4</button>
-    </div>
-  </div>
-  <div class="filter-bar" style="align-items:center;gap:8px;flex-wrap:wrap;margin-top:-8px">
-    <input type="search" id="dealSearch" placeholder="Search company, title, invoice…" oninput="renderDealsTable()" style="border:1.5px solid var(--border);border-radius:9px;padding:8px 12px;font-size:0.85rem;font-family:inherit;outline:none;background:var(--bg-2);color:var(--text);min-width:200px" />
-    <select id="dealStageFilter" onchange="renderDealsTable()" style="border:1.5px solid var(--border);border-radius:9px;padding:8px 12px;font-size:0.85rem;font-family:inherit;background:var(--bg-2);color:var(--text)">
-      <option value="">All Stages</option>
-      <option>Prospect</option><option>Qualified</option><option>Proposal</option>
-      <option>Negotiation</option><option>Won</option><option>Lost</option>
-    </select>
-    <select id="dealEventFilter" onchange="setDealEvent(this.value)" style="border:1.5px solid var(--border);border-radius:9px;padding:8px 12px;font-size:0.85rem;font-family:inherit;background:var(--bg-2);color:var(--text)">
-      <option value="">All Events</option>
-    </select>
-    <button class="btn btn-ghost" onclick="openDealImport()">⬆ Import CSV</button>
-    <button class="btn btn-primary" style="margin-left:auto" onclick="openDealModal()">+ Add Deal</button>
-  </div>
-  <!-- Totals summary -->
-  <div id="dealTotals" style="margin-bottom:12px"></div>
-  <!-- Table -->
-  <div class="card" style="padding:0;overflow:hidden">
-    <div class="table-wrap" style="overflow-x:auto">
-      <table id="dealsTable" style="min-width:1000px">
-        <thead><tr>
-          <th style="width:72px">Month</th>
-          <th>Company</th>
-          <th style="width:108px">Paid inc VAT</th>
-          <th style="width:96px">Deal Value</th>
-          <th style="width:78px">Tax/VAT</th>
-          <th style="width:92px">Invoice Date</th>
-          <th style="width:68px">Bank</th>
-          <th style="width:148px">Invoice #</th>
-          <th style="width:52px">Signed</th>
-          <th style="width:48px">By</th>
-          <th>Notes</th>
-          <th style="width:36px"></th>
-        </tr></thead>
-        <tbody id="dealsTableBody"></tbody>
-        <tfoot id="dealsTfoot"></tfoot>
-      </table>
-    </div>
-    <div id="dealsEmpty" class="empty-state hidden"><div class="icon">🤝</div><div>No deals yet.</div></div>
-  </div>
-
-  <!-- Cancelled deals section -->
-  <div id="cancelledSection" style="margin-top:24px">
-    <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;cursor:pointer" onclick="toggleCancelledSection()">
-      <span style="font-size:0.7rem;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:var(--muted)">Cancelled Deals</span>
-      <span id="cancelledCount" style="background:rgba(239,68,68,0.15);color:#ef4444;border:1px solid rgba(239,68,68,0.3);border-radius:4px;padding:1px 7px;font-size:0.7rem;font-weight:700">0</span>
-      <span style="flex:1;height:1px;background:var(--border)"></span>
-      <span id="cancelledChevron" style="color:var(--muted);font-size:0.8rem;transition:transform 0.2s">▼</span>
-    </div>
-    <div id="cancelledTableWrap" class="hidden">
-      <div class="table-wrap" style="border:1px solid rgba(239,68,68,0.2);border-radius:10px;overflow:hidden">
-        <table id="cancelledTable" style="min-width:800px">
-          <thead><tr>
-            <th>Month</th><th>Company</th><th>Amount</th><th>Invoice #</th><th>Cancelled Reason</th><th style="width:80px"></th>
-          </tr></thead>
-          <tbody id="cancelledTableBody"></tbody>
-        </table>
-      </div>
-    </div>
-  </div>
-</div>
 
     </div>
   </div>
@@ -792,17 +560,6 @@
         </div>
       </div>
     </div>
-    <!-- Employee PIN -->
-    <div class="modal-section-label" style="margin-top:12px">Employee Portal PIN</div>
-    <div class="form-row" style="grid-template-columns:160px 1fr;align-items:start">
-      <div class="form-group">
-        <label>PIN (4–6 digits)</label>
-        <input type="text" id="empPin" maxlength="6" placeholder="e.g. 1234" inputmode="numeric" pattern="[0-9]*">
-      </div>
-      <div style="padding-top:26px;font-size:0.75rem;color:var(--muted);line-height:1.5">
-        Employees use this PIN on the self-service portal to view their pay info &amp; submit holiday requests.
-      </div>
-    </div>
     <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:20px">
       <button class="btn btn-ghost" onclick="closeModal('empModal')">Cancel</button>
       <button class="btn btn-primary" onclick="saveEmployee()">Save Employee</button>
@@ -925,7 +682,7 @@
 <div class="modal-overlay" id="adminModal">
   <div class="modal">
     <div class="modal-header">
-      <h2>Add User Account</h2>
+      <h2>Add Manager / Admin</h2>
       <button class="modal-close" onclick="closeModal('adminModal')">✕</button>
     </div>
     <div class="form-row">
@@ -937,7 +694,6 @@
       <select id="newAdminRole">
         <option value="manager">Manager</option>
         <option value="admin">Admin (full access)</option>
-        <option value="accounts">Accounts (deals + calendar)</option>
       </select>
     </div>
     <div style="display:flex;gap:10px;justify-content:flex-end">
@@ -1135,10 +891,6 @@
       <label>Notes (optional)</label>
       <textarea id="crNotes" placeholder="Any additional notes…" style="min-height:60px"></textarea>
     </div>
-    <div class="form-group" style="margin-bottom:20px;display:flex;align-items:center;gap:10px">
-      <input type="checkbox" id="crVisibleToStaff" style="width:16px;height:16px;accent-color:var(--primary);cursor:pointer">
-      <label for="crVisibleToStaff" style="cursor:pointer;margin:0">Visible to staff portal <span style="color:var(--muted);font-size:0.85em">(employees will see this as an upcoming event)</span></label>
-    </div>
     <div style="display:flex;gap:10px;justify-content:flex-end">
       <button class="btn btn-ghost" onclick="closeModal('calReminderModal')">Cancel</button>
       <button class="btn btn-primary" onclick="saveCalReminder()">Save Reminder</button>
@@ -1169,30 +921,12 @@
             <input type="text" id="hotelHotelName" placeholder="Hotel name" />
           </div>
         </div>
-        <div class="form-row hm-3col" style="margin-bottom:0">
-          <div class="form-group">
-            <label>Cost</label>
-            <input type="text" id="hotelCost" placeholder="e.g. 18000 or 23,076" />
-          </div>
-          <div class="form-group">
-            <label>Currency (applies to all)</label>
-            <select id="hotelRowCurrency">
-              <option>USD</option><option>GBP</option><option>EUR</option><option>CHF</option><option>AED</option><option>CAD</option><option>AUD</option>
-            </select>
-          </div>
-          <div class="form-group">
-            <label>Event Year</label>
-            <select id="hotelEventYear">
-              <option value="">— Unset —</option>
-              <option value="2025">2025</option>
-              <option value="2026" selected>2026</option>
-              <option value="2027">2027</option>
-              <option value="2028">2028</option>
-            </select>
-          </div>
-        </div>
         <div class="form-row hm-2col" style="margin-bottom:0">
-          <div class="form-group" style="margin-bottom:0">
+          <div class="form-group">
+            <label>Cost (display)</label>
+            <input type="text" id="hotelCost" placeholder="e.g. $18k ++ or £23,076" />
+          </div>
+          <div class="form-group">
             <label>Status</label>
             <select id="hotelStatus">
               <option value="pending">Pending</option>
@@ -1212,6 +946,12 @@
       <div class="hm-body" style="margin-bottom:10px">
         <div class="hm-col-title">AV Cost</div>
         <div class="hm-pay-fields">
+          <div class="form-group hm-currency-sel">
+            <label>Currency</label>
+            <select id="hotelAvCurrency">
+              <option>USD</option><option>GBP</option><option>EUR</option><option>CHF</option><option>AED</option>
+            </select>
+          </div>
           <div class="form-group hm-currency-amt">
             <label>Amount</label>
             <input type="number" id="hotelAvAmount" placeholder="0.00" step="0.01" min="0" />
@@ -1230,6 +970,12 @@
       <div class="hm-body">
         <div class="hm-col-title">Paid So Far</div>
         <div class="hm-pay-fields">
+          <div class="form-group hm-currency-sel">
+            <label>Currency</label>
+            <select id="hotelPaidCurrency">
+              <option>USD</option><option>GBP</option><option>EUR</option><option>CHF</option><option>AED</option>
+            </select>
+          </div>
           <div class="form-group hm-currency-amt">
             <label>Amount</label>
             <input type="number" id="hotelPaidAmount" placeholder="0.00" step="0.01" min="0" />
@@ -1282,190 +1028,12 @@
   <div class="bottom-nav-item active" data-page="dashboard"><span class="bottom-nav-icon">📊</span><span class="bottom-nav-label">Dashboard</span></div>
   <div class="bottom-nav-item" data-page="tracking"><span class="bottom-nav-icon">⏱️</span><span class="bottom-nav-label">Tracking</span></div>
   <div class="bottom-nav-item" data-page="calendar"><span class="bottom-nav-icon">📅</span><span class="bottom-nav-label">Calendar</span></div>
-  <div class="bottom-nav-item admin-only hidden" data-page="salary" style="position:relative"><span class="bottom-nav-icon">💰</span><span class="bottom-nav-label">Salary</span><span id="salaryBottomBadge" class="nav-badge nav-badge-bottom hidden"></span></div>
+  <div class="bottom-nav-item" data-page="salary" style="position:relative"><span class="bottom-nav-icon">💰</span><span class="bottom-nav-label">Salary</span><span id="salaryBottomBadge" class="nav-badge nav-badge-bottom hidden"></span></div>
   <div class="bottom-nav-item" data-page="employees"><span class="bottom-nav-icon">👥</span><span class="bottom-nav-label">Staff</span></div>
 </nav>
 
 <!-- Toast container -->
 <div id="toastContainer" aria-live="polite" aria-atomic="false"></div>
-
-<!-- ══ MODAL: Subscription ══ -->
-<div class="modal-overlay" id="subModal">
-  <div class="modal">
-    <div class="modal-header">
-      <h2 id="subModalTitle">Add Subscription</h2>
-      <button class="modal-close" onclick="closeModal('subModal')">✕</button>
-    </div>
-    <input type="hidden" id="subEditId">
-    <div class="form-row">
-      <div class="form-group"><label>Name *</label><input type="text" id="subName" placeholder="e.g. Slack, Adobe CC"></div>
-    </div>
-    <div class="form-row">
-      <div class="form-group">
-        <label>Currency</label>
-        <select id="subCurrency">
-          <option value="GBP">GBP £</option>
-          <option value="USD">USD $</option>
-          <option value="AED">AED</option>
-          <option value="PHP">PHP ₱</option>
-        </select>
-      </div>
-      <div class="form-group"><label>Amount *</label><input type="number" id="subAmount" min="0" step="0.01" placeholder="0.00"></div>
-      <div class="form-group">
-        <label>Billing Cycle</label>
-        <select id="subCycle">
-          <option value="monthly">Monthly</option>
-          <option value="quarterly">Quarterly</option>
-          <option value="annually">Annually</option>
-          <option value="one_off">One-Off</option>
-        </select>
-      </div>
-    </div>
-    <div class="form-row">
-      <div class="form-group"><label>Renewal Date</label><input type="date" id="subRenewal"></div>
-      <div class="form-group"><label>Notes</label><input type="text" id="subNotes" placeholder="Optional notes"></div>
-    </div>
-    <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:20px">
-      <button class="btn btn-ghost" onclick="closeModal('subModal')">Cancel</button>
-      <button class="btn btn-primary" onclick="saveSub()">Save</button>
-    </div>
-  </div>
-</div>
-
-<!-- ══ MODAL: Portfolio Event ══ -->
-<div class="modal-overlay" id="portfolioModal">
-  <div class="modal">
-    <div class="modal-header">
-      <h2 id="portfolioModalTitle">Add Event</h2>
-      <button class="modal-close" onclick="closeModal('portfolioModal')">✕</button>
-    </div>
-    <input type="hidden" id="portEditId">
-    <div class="form-row">
-      <div class="form-group"><label>Event Name *</label><input type="text" id="portName" placeholder="e.g. CFO Summit NYC"></div>
-      <div class="form-group"><label>Date</label><input type="date" id="portDate"></div>
-    </div>
-    <div class="form-row">
-      <div class="form-group"><label>Location</label><input type="text" id="portLocation" placeholder="City / Venue"></div>
-    </div>
-    <div class="form-group"><label>Notes</label><textarea id="portNotes" rows="2" placeholder="Any notes…"></textarea></div>
-    <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:20px">
-      <button class="btn btn-ghost" onclick="closeModal('portfolioModal')">Cancel</button>
-      <button class="btn btn-primary" onclick="savePortfolioEvent()">Save</button>
-    </div>
-  </div>
-</div>
-
-<!-- ══ MODAL: Deal ══ -->
-<!-- ══ MODAL: Deal ══ -->
-<div class="modal-overlay" id="dealModal">
-  <div class="modal" style="max-width:660px">
-    <div class="modal-header">
-      <h2 id="dealModalTitle">Add Deal</h2>
-      <button class="modal-close" onclick="closeModal('dealModal')">✕</button>
-    </div>
-    <input type="hidden" id="dealEditId">
-    <div class="form-row">
-      <div class="form-group" style="flex:2"><label>Company *</label><input type="text" id="dealCompany" placeholder="Company name"></div>
-      <div class="form-group"><label>Initials</label><input type="text" id="dealInitials" placeholder="MR" maxlength="5" style="text-transform:uppercase"></div>
-    </div>
-    <div class="form-row">
-      <div class="form-group" style="flex:2"><label>Deal Title *</label><input type="text" id="dealTitle" placeholder="Sponsorship – Company X"></div>
-      <div class="form-group">
-        <label>Stage</label>
-        <select id="dealStage">
-          <option>Prospect</option><option>Qualified</option><option>Proposal</option>
-          <option>Negotiation</option><option>Won</option><option>Lost</option>
-        </select>
-      </div>
-    </div>
-    <div class="form-row">
-      <div class="form-group">
-        <label>Currency</label>
-        <select id="dealCurrency">
-          <option value="GBP">GBP £</option><option value="USD">USD $</option>
-          <option value="AED">AED</option><option value="PHP">PHP ₱</option><option value="EUR">EUR €</option>
-        </select>
-      </div>
-      <div class="form-group"><label>Deal Value *</label><input type="number" id="dealAmount" min="0" step="0.01" placeholder="0.00" oninput="updateDealSplitPreview()"></div>
-      <div class="form-group"><label>Paid inc VAT</label><input type="number" id="dealPaidIncVat" min="0" step="0.01" placeholder="0.00"></div>
-      <div class="form-group"><label>Tax/VAT</label><input type="number" id="dealTaxVat" min="0" step="0.01" placeholder="0.00"></div>
-    </div>
-    <div class="form-row">
-      <div class="form-group" style="flex:2">
-        <label>Invoice Number</label>
-        <div style="display:flex;gap:6px;align-items:center">
-          <input type="text" id="dealInvoiceNumber" placeholder="LPGPCONNECTCOMLTD001" style="flex:1;min-width:0">
-          <button type="button" class="btn btn-ghost" style="padding:6px 10px;font-size:0.78rem;white-space:nowrap;flex-shrink:0" onclick="fillNextInvoiceNumber()">Use Next</button>
-        </div>
-      </div>
-      <div class="form-group"><label>Invoice Date</label><input type="date" id="dealInvoiceDate"></div>
-      <div class="form-group"><label>Date Paid</label><input type="date" id="dealPaidDate"></div>
-    </div>
-    <div class="form-row">
-      <div class="form-group">
-        <label>Bank / Payment</label>
-        <select id="dealBank">
-          <option value="">—</option>
-          <option value="HSBC">HSBC</option>
-          <option value="Stripe">Stripe</option>
-          <option value="Barclays">Barclays</option>
-          <option value="Other">Other</option>
-        </select>
-      </div>
-    </div>
-    <input type="hidden" id="dealInvSent" value="false">
-    <input type="hidden" id="dealSigReceived" value="false">
-    <div class="form-group">
-      <label>Events (hold Ctrl/Cmd for multiple — amount splits equally)</label>
-      <select id="dealEvents" multiple style="min-height:72px;border:1px solid var(--border);border-radius:9px;padding:8px;background:var(--bg);color:var(--text);font-family:inherit;width:100%" onchange="updateDealSplitPreview()">
-        <option value="">Loading events…</option>
-      </select>
-      <div id="dealSplitPreview" style="font-size:0.75rem;color:var(--muted);margin-top:4px"></div>
-    </div>
-    <div class="form-group"><label>Notes</label><textarea id="dealNotes" rows="2" placeholder="Deal notes…"></textarea></div>
-    <div class="modal-section-label" style="margin-top:14px">Invoices (PDF or Word, max 8 MB each)</div>
-    <div class="form-row">
-      <div class="form-group">
-        <label>Invoice 1</label>
-        <div id="dealInv1Preview" style="font-size:0.78rem;color:var(--muted);margin-bottom:4px"></div>
-        <label class="ht-upload-btn">📎 Upload<input type="file" id="dealInv1File" accept=".pdf,.doc,.docx" style="display:none" onchange="dealFilePreview(1,this)"></label>
-      </div>
-      <div class="form-group">
-        <label>Invoice 2</label>
-        <div id="dealInv2Preview" style="font-size:0.78rem;color:var(--muted);margin-bottom:4px"></div>
-        <label class="ht-upload-btn">📎 Upload<input type="file" id="dealInv2File" accept=".pdf,.doc,.docx" style="display:none" onchange="dealFilePreview(2,this)"></label>
-      </div>
-    </div>
-    <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:20px">
-      <button class="btn btn-ghost" onclick="closeModal('dealModal')">Cancel</button>
-      <button class="btn btn-primary" onclick="saveDeal()">Save Deal</button>
-    </div>
-  </div>
-</div>
-
-<!-- ══ MODAL: Deal CSV Import ══ -->
-<div class="modal-overlay" id="dealImportModal">
-  <div class="modal" style="max-width:560px">
-    <div class="modal-header">
-      <h2>Import Deals from CSV</h2>
-      <button class="modal-close" onclick="closeModal('dealImportModal')">✕</button>
-    </div>
-    <p style="font-size:0.85rem;color:var(--muted);margin:0 0 12px">
-      Upload a CSV file. Required column: <strong>Company</strong> or <strong>Title</strong>. Optional columns:
-      <em>Title, Stage, Amount, Currency, Paid inc VAT, Tax VAT, Invoice Number, Invoice Date, Paid Date, Bank, Sent, Signed, Initials, Notes</em>.
-      First row must be headers.
-    </p>
-    <div class="form-group">
-      <label>CSV File</label>
-      <input type="file" id="dealImportFile" accept=".csv" onchange="previewDealImport(this)">
-    </div>
-    <div id="dealImportPreview" style="font-size:0.82rem;margin-top:8px"></div>
-    <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:20px">
-      <button class="btn btn-ghost" onclick="closeModal('dealImportModal')">Cancel</button>
-      <button class="btn btn-primary" id="dealImportBtn" onclick="runDealImport()" disabled>Import</button>
-    </div>
-  </div>
-</div>
 
 <script src="app.js"></script>
 </body>
