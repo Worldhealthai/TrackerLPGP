@@ -1,31 +1,11 @@
-// ─── THEME ───────────────────────────────────────────────────────────────────
-function toggleTheme() {
-  const isLight = document.body.classList.toggle('light-mode');
-  localStorage.setItem('theme', isLight ? 'light' : 'dark');
-  updateThemeButton(isLight);
-}
-function updateThemeButton(isLight) {
-  const btn   = document.getElementById('themeToggleBtn');
-  const label = document.getElementById('themeLabel');
-  const icon  = document.getElementById('themeIcon');
-  if (!btn) return;
-  if (isLight) {
-    if (label) label.textContent = 'Dark';
-    if (icon)  icon.innerHTML = '<path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>';
-  } else {
-    if (label) label.textContent = 'Light';
-    if (icon)  icon.innerHTML = '<circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/>';
-  }
-}
+// ─── THEME (data-theme system) ───────────────────────────────────────────────
 (function applyStoredTheme() {
-  const stored = localStorage.getItem('theme');
-  if (stored === 'light') {
-    document.body.classList.add('light-mode');
-    document.addEventListener('DOMContentLoaded', () => updateThemeButton(true));
+  const saved = localStorage.getItem('emptracker-theme');
+  if (saved === 'dark') {
+    document.documentElement.setAttribute('data-theme', 'dark');
+    document.addEventListener('DOMContentLoaded', () => _updateThemeBtn('dark'));
   }
 })();
-
-// ─── STATE ───────────────────────────────────────────────────────────────────
 let currentUser = null;
 let employees = [];
 let allEmployeesData = [];
@@ -3365,7 +3345,6 @@ function fmtHotelAmount(v) {
 function renderHotelSummary() {
   const yearData = hotelYearFiltered();
 
-  // Parse cost field as number (strips currency symbols, commas, spaces)
   function parseCost(str) {
     if (!str) return 0;
     return parseFloat(String(str).replace(/[^0-9.]/g, '')) || 0;
@@ -3376,10 +3355,7 @@ function renderHotelSummary() {
     const c = r.currency || r.paid_currency || 'USD';
     byCur[c] = byCur[c] || { paid: 0, av: 0, cost: 0 };
     if (r.paid_amount != null) byCur[c].paid += parseFloat(r.paid_amount) || 0;
-    if (r.av_amount != null && r.av_billing !== 'included') {
-      byCur[c].av += parseFloat(r.av_amount) || 0;
-    }
-    // Accumulate cost (from text cost field) per row currency
+    if (r.av_amount != null && r.av_billing !== 'included') byCur[c].av += parseFloat(r.av_amount) || 0;
     const costNum = parseCost(r.cost);
     if (costNum > 0) byCur[c].cost += costNum;
   });
@@ -3387,43 +3363,37 @@ function renderHotelSummary() {
   const total  = yearData.length;
   const unpaid = yearData.filter(r => r.status !== 'paid').length;
 
-  const currencyCards = Object.entries(byCur).map(([cur, sums]) => {
+  const cards = Object.entries(byCur).flatMap(([cur, sums]) => {
     const sym = hotelCurrencySymbol(cur);
-    const total_spent = sums.paid + sums.av;
+    const totalSpent = sums.paid + sums.av;
     const outstanding = sums.cost > 0 ? Math.max(0, sums.cost - sums.paid) : null;
-    return `
-      <div class="hotel-fin-card">
-        <div class="hotel-fin-currency">${cur}</div>
-        <div class="hotel-fin-row">
-          <span class="hotel-fin-lbl">Venue / Hotel Paid</span>
-          <span class="hotel-fin-val hotel-fin-green">${sym}${sums.paid.toLocaleString('en-GB',{minimumFractionDigits:2,maximumFractionDigits:2})}</span>
-        </div>
-        <div class="hotel-fin-row">
-          <span class="hotel-fin-lbl">AV (separate charges)</span>
-          <span class="hotel-fin-val hotel-fin-blue">${sym}${sums.av.toLocaleString('en-GB',{minimumFractionDigits:2,maximumFractionDigits:2})}</span>
-        </div>
-        <div class="hotel-fin-row hotel-fin-total-row">
-          <span class="hotel-fin-lbl">Total Spent</span>
-          <span class="hotel-fin-val">${sym}${total_spent.toLocaleString('en-GB',{minimumFractionDigits:2,maximumFractionDigits:2})}</span>
-        </div>
-        ${outstanding !== null ? `<div class="hotel-fin-row" style="margin-top:6px;border-top:1px solid rgba(255,255,255,0.08);padding-top:6px">
-          <span class="hotel-fin-lbl">Outstanding</span>
-          <span class="hotel-fin-val ${outstanding > 0 ? 'hotel-fin-red' : 'hotel-fin-green'}">${outstanding > 0 ? sym+outstanding.toLocaleString('en-GB',{minimumFractionDigits:2,maximumFractionDigits:2}) : '✓ Settled'}</span>
-        </div>` : ''}
-      </div>`;
-  }).join('');
+    const fmtN = n => n.toLocaleString('en-GB', {minimumFractionDigits:2, maximumFractionDigits:2});
+    return [
+      `<div class="dash-mini-card dash-mini--green" style="flex:1;min-width:140px">
+        <div style="flex:1"><div class="dash-mini-label">Paid (${cur})</div><div class="dash-mini-value" style="color:var(--positive)">${sym}${fmtN(sums.paid)}</div></div>
+       </div>`,
+      sums.av > 0 ? `<div class="dash-mini-card dash-mini--indigo" style="flex:1;min-width:140px">
+        <div style="flex:1"><div class="dash-mini-label">AV – ${cur}</div><div class="dash-mini-value">${sym}${fmtN(sums.av)}</div></div>
+       </div>` : '',
+      `<div class="dash-mini-card" style="flex:1;min-width:140px">
+        <div style="flex:1"><div class="dash-mini-label">Total Spent (${cur})</div><div class="dash-mini-value">${sym}${fmtN(totalSpent)}</div></div>
+       </div>`,
+      outstanding !== null ? `<div class="dash-mini-card dash-mini--alert" style="flex:1;min-width:140px">
+        <div style="flex:1"><div class="dash-mini-label">Outstanding (${cur})</div><div class="dash-mini-value" style="color:${outstanding > 0 ? 'var(--danger)' : 'var(--positive)'}">${outstanding > 0 ? sym+fmtN(outstanding) : '✓ Settled'}</div></div>
+       </div>` : ''
+    ];
+  });
 
-  document.getElementById('hotelSummary').innerHTML = `
-    <div class="hotel-fin-strip">
-      ${currencyCards}
-      <div class="hotel-fin-card hotel-fin-card--status">
-        <div class="hotel-fin-currency">STATUS${_hotelYearFilter !== 'all' ? ` · ${_hotelYearFilter}` : ''}</div>
-        <div class="hotel-fin-row"><span class="hotel-fin-lbl">Total Events</span><span class="hotel-fin-val">${total}</span></div>
-        <div class="hotel-fin-row"><span class="hotel-fin-lbl">Fully Paid</span><span class="hotel-fin-val hotel-fin-green">${total - unpaid}</span></div>
-        <div class="hotel-fin-row hotel-fin-total-row"><span class="hotel-fin-lbl">Still Outstanding</span><span class="hotel-fin-val ${unpaid > 0 ? 'hotel-fin-red' : 'hotel-fin-green'}">${unpaid > 0 ? unpaid : '✓ All clear'}</span></div>
-      </div>
+  const statusCard = `<div class="dash-mini-card" style="flex:1;min-width:140px">
+    <div style="flex:1">
+      <div class="dash-mini-label">Events${_hotelYearFilter !== 'all' ? ' · '+_hotelYearFilter : ''}</div>
+      <div class="dash-mini-value">${total - unpaid}<span style="font-size:0.8rem;font-weight:500;color:var(--muted)">/${total} paid</span></div>
+      ${unpaid > 0 ? `<div style="font-size:0.75rem;color:var(--danger);margin-top:4px">${unpaid} outstanding</div>` : `<div style="font-size:0.75rem;color:var(--positive);margin-top:4px">✓ All clear</div>`}
     </div>
-  `;
+  </div>`;
+
+  document.getElementById('hotelSummary').innerHTML =
+    `<div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:20px">${cards.filter(Boolean).join('')}${statusCard}</div>`;
 }
 
 function renderHotelTable() {
