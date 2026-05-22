@@ -69,6 +69,8 @@ async function runMigrations() {
       ADD COLUMN IF NOT EXISTS contract_end_date DATE
   `);
 
+  await sql(`ALTER TABLE employees ADD COLUMN IF NOT EXISTS portal_pin TEXT DEFAULT NULL`);
+
   await sql(`
     CREATE TABLE IF NOT EXISTS daily_records (
       id SERIAL PRIMARY KEY,

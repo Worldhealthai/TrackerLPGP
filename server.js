@@ -357,7 +357,8 @@ app.post('/api/employees', requireAuth, async (req, res) => {
 
 app.put('/api/employees/:id', requireAuth, async (req, res) => {
   const { name, active, employment_type, annual_salary, currency, salary_reason, salary_effective,
-          start_date, pension_rate, job_title, department, phone, email, contract_end_date } = req.body;
+          start_date, pension_rate, job_title, department, phone, email, contract_end_date,
+          portal_pin } = req.body;
   const annualSal = parseFloat(annual_salary) || 0;
   const daily_rate = parseFloat((annualSal / 260).toFixed(4));
   const cur = ['GBP','AED'].includes(currency) ? currency : 'GBP';
@@ -375,15 +376,17 @@ app.put('/api/employees/:id', requireAuth, async (req, res) => {
     );
   }
 
+  const pinVal = portal_pin ? String(portal_pin).replace(/\D/g,'').slice(0,6) || null : null;
+
   await q(
     `UPDATE employees SET name=?, daily_rate=?, active=?, employment_type=?, annual_salary=?,
      currency=?, start_date=?, pension_rate=?,
-     job_title=?, department=?, phone=?, email=?, contract_end_date=?
+     job_title=?, department=?, phone=?, email=?, contract_end_date=?, portal_pin=?
      WHERE id=?`,
     [name, daily_rate, active !== undefined ? active : 1, employment_type || 'payroll',
      annualSal, cur, start_date || null, pensionRate,
      job_title || '', department || '', phone || '', email || '',
-     contract_end_date || null, req.params.id]
+     contract_end_date || null, pinVal, req.params.id]
   );
   res.json({ success: true });
 });
@@ -1136,6 +1139,39 @@ app.use((err, req, res, next) => {
   if (!res.headersSent) {
     res.status(500).json({ error: err.message || 'Internal server error' });
   }
+});
+
+// ─── EMPLOYEE PORTAL (PIN auth, no session) ───────────────────────────────────
+
+app.get('/portal', (req, res) => res.sendFile(path.join(__dirname, 'public', 'portal.html')));
+
+app.post('/api/portal/auth', async (req, res) => {
+  try {
+    const { employee_id, pin } = req.body;
+    if (!employee_id || !pin) return res.status(400).json({ error: 'ID and PIN required' });
+    const { rows } = await q('SELECT id, name, job_title, department, employment_type, annual_salary, currency, start_date, portal_pin FROM employees WHERE id = ? AND active = true', [employee_id]);
+    const emp = rows[0];
+    if (!emp || !emp.portal_pin) return res.status(401).json({ error: 'Invalid credentials' });
+    if (String(emp.portal_pin) !== String(pin).trim()) return res.status(401).json({ error: 'Invalid PIN' });
+    res.json({ id: emp.id, name: emp.name, job_title: emp.job_title, department: emp.department, employment_type: emp.employment_type, annual_salary: emp.annual_salary, currency: emp.currency, start_date: emp.start_date });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.post('/api/portal/holiday-request', async (req, res) => {
+  try {
+    const { employee_id, pin, date, type, note } = req.body;
+    const { rows } = await q('SELECT id, portal_pin FROM employees WHERE id = ? AND active = true', [employee_id]);
+    const emp = rows[0];
+    if (!emp || String(emp.portal_pin) !== String(pin).trim()) return res.status(401).json({ error: 'Invalid credentials' });
+    const dayOff = type === 'half' ? 0.5 : 1;
+    await q(
+      `INSERT INTO daily_records (employee_id, record_date, is_day_off, notes)
+       VALUES (?, ?, ?, ?)
+       ON CONFLICT (employee_id, record_date) DO UPDATE SET is_day_off = EXCLUDED.is_day_off, notes = EXCLUDED.notes`,
+      [employee_id, date, dayOff, note || 'Portal request']
+    );
+    res.json({ success: true });
+  } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
 // ─── START ────────────────────────────────────────────────────────────────────

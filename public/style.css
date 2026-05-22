@@ -687,6 +687,69 @@ tbody tr:hover td strong { color: var(--primary); }
 }
 
 /* ══════════════════════════════════════════
+   HOTEL FINANCIAL SUMMARY
+══════════════════════════════════════════ */
+.hotel-fin-strip {
+  display: flex; gap: 14px; flex-wrap: wrap; margin-bottom: 20px;
+}
+.hotel-fin-card {
+  background: var(--card); border: 1px solid var(--border);
+  border-radius: 14px; padding: 16px 20px; min-width: 200px; flex: 1;
+  box-shadow: var(--shadow-card);
+}
+.hotel-fin-currency {
+  font-size: 0.62rem; font-weight: 800; text-transform: uppercase; letter-spacing: 1px;
+  color: var(--primary); margin-bottom: 12px;
+}
+.hotel-fin-card--status .hotel-fin-currency { color: var(--muted); }
+.hotel-fin-row {
+  display: flex; justify-content: space-between; align-items: baseline;
+  padding: 6px 0; border-bottom: 1px solid var(--border-light);
+}
+.hotel-fin-row:last-child { border-bottom: none; }
+.hotel-fin-total-row { border-top: 1px solid var(--border) !important; border-bottom: none !important; margin-top: 4px; padding-top: 8px !important; }
+.hotel-fin-lbl { font-size: 0.73rem; color: var(--muted); font-weight: 500; }
+.hotel-fin-val {
+  font-family: 'Space Grotesk','Inter',sans-serif;
+  font-size: 0.95rem; font-weight: 700; color: var(--text); letter-spacing: -0.3px;
+}
+.hotel-fin-green { color: var(--success); }
+.hotel-fin-blue  { color: var(--primary); }
+.hotel-fin-red   { color: var(--danger); }
+.hotel-fin-total-row .hotel-fin-val { font-size: 1.05rem; }
+
+[data-theme="dark"] .hotel-fin-card { background: var(--card); border-color: var(--border); }
+
+/* ══════════════════════════════════════════
+   CALENDAR SUMMARY SIDEBAR
+══════════════════════════════════════════ */
+#calSummary { margin-top: 18px; }
+.cal-sum-section { margin-bottom: 20px; }
+.cal-sum-section-title {
+  font-size: 0.72rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.6px;
+  color: var(--primary); margin-bottom: 10px; padding-bottom: 7px;
+  border-bottom: 1.5px solid var(--primary-light);
+}
+.cal-sum-item {
+  background: var(--card); border: 1px solid var(--border);
+  border-radius: 10px; padding: 10px 14px; margin-bottom: 8px;
+  box-shadow: var(--shadow-sm);
+}
+.cal-sum-date {
+  font-size: 0.74rem; font-weight: 700; color: var(--text-2); margin-bottom: 6px;
+}
+.cal-sum-row {
+  display: flex; align-items: center; gap: 7px; font-size: 0.82rem;
+  color: var(--text); padding: 2px 0;
+}
+.cal-sum-name { font-weight: 500; }
+.cal-sum-amt {
+  margin-left: auto; font-family: 'Space Grotesk','Inter',sans-serif;
+  font-size: 0.82rem; font-weight: 700; color: var(--primary);
+}
+[data-theme="dark"] .cal-sum-item { background: var(--card); border-color: var(--border); }
+
+/* ══════════════════════════════════════════
    PAYMENT BOARD
 ══════════════════════════════════════════ */
 .payment-board {

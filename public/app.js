@@ -215,6 +215,7 @@ function openEmpModal(emp = null) {
   document.getElementById('empContractEnd').value = emp ? (emp.contract_end_date || '') : '';
   document.getElementById('empSalaryEffective').value = today();
   document.getElementById('empSalaryReason').value = '';
+  document.getElementById('empPin').value = emp ? (emp.portal_pin || '') : '';
   document.getElementById('salaryChangeFields').classList.add('hidden');
   document.getElementById('empModalTitle').textContent = emp ? 'Edit Employee' : 'Add Employee';
 
@@ -251,10 +252,11 @@ async function saveEmployee() {
   const phone = document.getElementById('empPhone').value.trim();
   const email = document.getElementById('empEmail').value.trim();
   const contract_end_date = document.getElementById('empContractEnd').value || null;
+  const portal_pin = document.getElementById('empPin').value.replace(/\D/g,'').slice(0,6) || null;
   if (!name) return showToast('Name is required', 'error');
 
   const payload = { name, employment_type, annual_salary, currency, start_date, pension_rate,
-                    job_title, department, phone, email, contract_end_date };
+                    job_title, department, phone, email, contract_end_date, portal_pin };
   if (id) {
     await fetch(`/api/employees/${id}`, {
       method: 'PUT',
@@ -2001,34 +2003,48 @@ async function loadCalendar() {
   renderCalSummary(byDate, empFilter);
 }
 
-function renderCalSummary(byDate, empFilter) {
+async function renderCalSummary(byDate, empFilter) {
   const summary = document.getElementById('calSummary');
-  const dates = Object.keys(byDate).sort();
-  if (!dates.length) { summary.classList.add('hidden'); return; }
+  const CAT_ICONS = { rent:'🏠', subscription:'📦', deposit:'💳', utility:'⚡', other:'📌' };
 
-  let html = '';
+  // Fetch upcoming reminders (next 60 days)
+  let reminders = [];
+  try {
+    const r = await fetch('/api/calendar-reminders/upcoming?days=60');
+    if (r.ok) reminders = await r.json();
+  } catch {}
+
+  const dates = Object.keys(byDate).sort();
+  let daysHtml = '';
   dates.forEach(date => {
-    const entries = byDate[date].filter(r =>
-      !empFilter || String(r.employee_id) === empFilter
-    );
+    const entries = byDate[date].filter(r => !empFilter || String(r.employee_id) === empFilter);
     if (!entries.length) return;
     const chips = entries.map(r => {
       const cls = parseFloat(r.is_day_off) === 1 ? 'chip-full' : 'chip-half';
       const label = parseFloat(r.is_day_off) === 1 ? 'Full' : 'Half';
-      return `<span class="cal-off-item"><span class="cal-chip ${cls}">${label}</span> ${esc(r.employee_name)}</span>`;
+      return `<div class="cal-sum-row"><span class="cal-chip ${cls}">${label}</span><span class="cal-sum-name">${esc(r.employee_name)}</span></div>`;
     }).join('');
-    html += `<div class="cal-summary-card">
-      <h4>${formatDate(date)}</h4>
-      <div class="cal-off-list">${chips}</div>
+    daysHtml += `<div class="cal-sum-item"><div class="cal-sum-date">${formatDate(date)}</div>${chips}</div>`;
+  });
+
+  let remHtml = '';
+  reminders.forEach(r => {
+    const sym = r.currency === 'AED' ? 'AED ' : r.currency === 'EUR' ? '€' : '£';
+    const amt = r.amount ? `<span class="cal-sum-amt">${sym}${parseFloat(r.amount).toLocaleString('en-GB',{minimumFractionDigits:2})}</span>` : '';
+    remHtml += `<div class="cal-sum-item">
+      <div class="cal-sum-date">${r.virtual_date}</div>
+      <div class="cal-sum-row">${CAT_ICONS[r.category] || '📌'} <span class="cal-sum-name">${esc(r.title)}</span>${amt}</div>
     </div>`;
   });
 
-  if (html) {
-    summary.innerHTML = `<h3 style="margin-bottom:12px;font-size:0.95rem;color:var(--muted)">Days Off This Month</h3>` + html;
-    summary.classList.remove('hidden');
-  } else {
-    summary.classList.add('hidden');
-  }
+  if (!daysHtml && !remHtml) { summary.classList.add('hidden'); return; }
+
+  let html = '';
+  if (daysHtml) html += `<div class="cal-sum-section"><div class="cal-sum-section-title">🏖 Days Off This Month</div>${daysHtml}</div>`;
+  if (remHtml)  html += `<div class="cal-sum-section"><div class="cal-sum-section-title">🔔 Upcoming Reminders</div>${remHtml}</div>`;
+
+  summary.innerHTML = html;
+  summary.classList.remove('hidden');
 }
 
 function openDayModal(dateStr, entries, remindersToday = []) {
@@ -2395,15 +2411,57 @@ function fmtHotelNum(v) {
 }
 
 function renderHotelSummary() {
+  // Group by currency and sum paid + AV amounts (exclude staff hotel, flights, printing)
+  const byCur = {};
+  hotelData.forEach(r => {
+    // Paid so far (venue)
+    if (r.paid_amount != null) {
+      const c = r.paid_currency || 'USD';
+      byCur[c] = byCur[c] || { paid: 0, av: 0 };
+      byCur[c].paid += parseFloat(r.paid_amount) || 0;
+    }
+    // AV cost (separate charges only)
+    if (r.av_amount != null && r.av_billing !== 'included') {
+      const c = r.av_currency || 'USD';
+      byCur[c] = byCur[c] || { paid: 0, av: 0 };
+      byCur[c].av += parseFloat(r.av_amount) || 0;
+    }
+  });
+
   const total   = hotelData.length;
-  const paid    = hotelData.filter(r => r.status === 'paid').length;
-  const partial = hotelData.filter(r => r.status === 'partial').length;
-  const pending = hotelData.filter(r => r.status === 'pending').length;
+  const unpaid  = hotelData.filter(r => r.status !== 'paid').length;
+
+  const currencyCards = Object.entries(byCur).map(([cur, sums]) => {
+    const sym = hotelCurrencySymbol(cur);
+    const total_spent = sums.paid + sums.av;
+    return `
+      <div class="hotel-fin-card">
+        <div class="hotel-fin-currency">${cur}</div>
+        <div class="hotel-fin-row">
+          <span class="hotel-fin-lbl">Venue / Hotel Paid</span>
+          <span class="hotel-fin-val hotel-fin-green">${sym}${sums.paid.toLocaleString('en-GB',{minimumFractionDigits:2,maximumFractionDigits:2})}</span>
+        </div>
+        <div class="hotel-fin-row">
+          <span class="hotel-fin-lbl">AV (separate charges)</span>
+          <span class="hotel-fin-val hotel-fin-blue">${sym}${sums.av.toLocaleString('en-GB',{minimumFractionDigits:2,maximumFractionDigits:2})}</span>
+        </div>
+        <div class="hotel-fin-row hotel-fin-total-row">
+          <span class="hotel-fin-lbl">Total Spent</span>
+          <span class="hotel-fin-val">${sym}${total_spent.toLocaleString('en-GB',{minimumFractionDigits:2,maximumFractionDigits:2})}</span>
+        </div>
+      </div>`;
+  }).join('');
+
   document.getElementById('hotelSummary').innerHTML = `
-    <div class="stat-card blue"><div class="stat-label">Total Events</div><div class="stat-value">${total}</div></div>
-    <div class="stat-card green"><div class="stat-label">Paid</div><div class="stat-value">${paid}</div></div>
-    <div class="stat-card yellow"><div class="stat-label">Partial</div><div class="stat-value">${partial}</div></div>
-    <div class="stat-card red"><div class="stat-label">Pending</div><div class="stat-value">${pending}</div></div>
+    <div class="hotel-fin-strip">
+      ${currencyCards}
+      <div class="hotel-fin-card hotel-fin-card--status">
+        <div class="hotel-fin-currency">STATUS</div>
+        <div class="hotel-fin-row"><span class="hotel-fin-lbl">Total Events</span><span class="hotel-fin-val">${total}</span></div>
+        <div class="hotel-fin-row"><span class="hotel-fin-lbl">Fully Paid</span><span class="hotel-fin-val hotel-fin-green">${total - unpaid}</span></div>
+        <div class="hotel-fin-row hotel-fin-total-row"><span class="hotel-fin-lbl">Outstanding</span><span class="hotel-fin-val hotel-fin-red">${unpaid}</span></div>
+      </div>
+    </div>
   `;
 }
 

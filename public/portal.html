@@ -1,0 +1,189 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Employee Portal</title>
+  <link rel="stylesheet" href="style.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <script>if (localStorage.getItem('emptracker-theme') === 'dark') document.documentElement.setAttribute('data-theme','dark');</script>
+  <style>
+    .portal-wrap {
+      min-height: 100vh; display: flex; align-items: center; justify-content: center;
+      padding: 20px;
+    }
+    .portal-card {
+      background: var(--card); border: 1px solid var(--border);
+      border-radius: 20px; padding: 40px; width: 420px; max-width: 95vw;
+      box-shadow: var(--shadow-lg); border-top: 3px solid var(--primary);
+    }
+    .portal-logo { display: flex; align-items: center; gap: 12px; margin-bottom: 28px; }
+    .portal-logo-icon {
+      width: 40px; height: 40px; border-radius: 10px;
+      background: linear-gradient(135deg, var(--primary), #818cf8);
+      display: flex; align-items: center; justify-content: center; font-size: 18px;
+      box-shadow: var(--glow-p);
+    }
+    .portal-logo-text { font-family: 'Plus Jakarta Sans','Inter',sans-serif; font-size: 1.1rem; font-weight: 700; color: var(--text); }
+    .portal-logo-text span { color: var(--primary); }
+    .portal-logo-sub { font-size: 0.72rem; color: var(--muted); margin-top: 2px; }
+    .portal-submit {
+      width: 100%; padding: 13px; border-radius: 10px; border: none;
+      background: linear-gradient(135deg, var(--primary), #818cf8);
+      color: #fff; font-size: 0.9rem; font-weight: 700; cursor: pointer;
+      font-family: inherit; transition: all 0.2s; box-shadow: 0 4px 16px rgba(79,70,229,0.3);
+    }
+    .portal-submit:hover { box-shadow: 0 6px 24px rgba(79,70,229,0.45); transform: translateY(-1px); }
+
+    /* Logged-in dashboard */
+    #portalDash { display: none; }
+    .pd-header { margin-bottom: 24px; }
+    .pd-name { font-family: 'Plus Jakarta Sans','Inter',sans-serif; font-size: 1.4rem; font-weight: 700; color: var(--text); }
+    .pd-role { font-size: 0.8rem; color: var(--muted); margin-top: 4px; }
+    .pd-stats { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 24px; }
+    .pd-stat { background: var(--bg); border: 1px solid var(--border); border-radius: 12px; padding: 16px; }
+    .pd-stat-lbl { font-size: 0.65rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.6px; color: var(--muted); margin-bottom: 6px; }
+    .pd-stat-val { font-family: 'Space Grotesk','Inter',sans-serif; font-size: 1.3rem; font-weight: 700; color: var(--text); letter-spacing: -0.4px; }
+    .pd-section-title { font-size: 0.75rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.6px; color: var(--primary); margin-bottom: 12px; padding-bottom: 8px; border-bottom: 1.5px solid var(--primary-light); }
+    .pd-holiday-form { background: var(--bg); border: 1px solid var(--border); border-radius: 12px; padding: 16px; }
+    .pd-holiday-form .form-group { margin-bottom: 12px; }
+    .pd-holiday-form .form-group label { font-size: 0.7rem; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: 0.5px; display: block; margin-bottom: 5px; }
+    .pd-holiday-form input, .pd-holiday-form select, .pd-holiday-form textarea {
+      width: 100%; padding: 9px 12px; border-radius: 9px; border: 1px solid var(--border);
+      background: var(--card); color: var(--text); font-size: 0.88rem; font-family: inherit;
+    }
+    .pd-logout { font-size: 0.78rem; color: var(--muted); cursor: pointer; text-decoration: underline; margin-top: 16px; display: inline-block; }
+    .pd-logout:hover { color: var(--danger); }
+  </style>
+</head>
+<body>
+  <div class="portal-wrap">
+    <div class="portal-card">
+      <div class="portal-logo">
+        <div class="portal-logo-icon">👤</div>
+        <div>
+          <div class="portal-logo-text">Emp<span>Tracker</span></div>
+          <div class="portal-logo-sub">Employee Self-Service Portal</div>
+        </div>
+      </div>
+
+      <!-- Login form -->
+      <div id="portalLogin">
+        <div id="portalError" class="alert alert-error hidden" style="margin-bottom:16px"></div>
+        <div class="form-group" style="margin-bottom:14px">
+          <label style="font-size:0.7rem;font-weight:700;text-transform:uppercase;letter-spacing:0.5px;color:var(--muted);display:block;margin-bottom:5px">Employee ID</label>
+          <input type="number" id="portalEmpId" placeholder="Your employee number" style="width:100%;padding:10px 12px;border-radius:9px;border:1px solid var(--border);background:var(--card);color:var(--text);font-size:0.9rem;font-family:inherit">
+        </div>
+        <div class="form-group" style="margin-bottom:24px">
+          <label style="font-size:0.7rem;font-weight:700;text-transform:uppercase;letter-spacing:0.5px;color:var(--muted);display:block;margin-bottom:5px">PIN</label>
+          <input type="password" id="portalPin" placeholder="Your PIN" maxlength="6" inputmode="numeric" style="width:100%;padding:10px 12px;border-radius:9px;border:1px solid var(--border);background:var(--card);color:var(--text);font-size:0.9rem;font-family:inherit">
+        </div>
+        <button class="portal-submit" onclick="portalLogin()">Access My Portal →</button>
+        <p style="text-align:center;margin-top:16px;font-size:0.72rem;color:var(--muted)">Contact your manager for your Employee ID and PIN</p>
+      </div>
+
+      <!-- Dashboard (shown after login) -->
+      <div id="portalDash">
+        <div class="pd-header">
+          <div class="pd-name" id="pdName"></div>
+          <div class="pd-role" id="pdRole"></div>
+        </div>
+        <div class="pd-stats" id="pdStats"></div>
+
+        <div class="pd-section-title">Request Time Off</div>
+        <div class="pd-holiday-form">
+          <div id="holidayMsg" class="alert hidden" style="margin-bottom:12px"></div>
+          <div class="form-group">
+            <label>Date</label>
+            <input type="date" id="holidayDate">
+          </div>
+          <div class="form-group">
+            <label>Type</label>
+            <select id="holidayType">
+              <option value="full">Full Day</option>
+              <option value="half">Half Day</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>Note (optional)</label>
+            <textarea id="holidayNote" rows="2" placeholder="Reason or note…"></textarea>
+          </div>
+          <button class="portal-submit" onclick="submitHoliday()">Submit Request</button>
+        </div>
+
+        <a class="pd-logout" onclick="portalLogout()">Sign out</a>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    let portalSession = null;
+
+    async function portalLogin() {
+      const id  = document.getElementById('portalEmpId').value.trim();
+      const pin = document.getElementById('portalPin').value.trim();
+      const err = document.getElementById('portalError');
+      err.classList.add('hidden');
+      if (!id || !pin) { err.textContent = 'Please enter your ID and PIN.'; err.classList.remove('hidden'); return; }
+      const res = await fetch('/api/portal/auth', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ employee_id: id, pin })
+      });
+      const data = await res.json();
+      if (!res.ok) { err.textContent = data.error || 'Login failed'; err.classList.remove('hidden'); return; }
+      portalSession = { id, pin, ...data };
+      renderDash();
+    }
+
+    function renderDash() {
+      const e = portalSession;
+      document.getElementById('portalLogin').style.display = 'none';
+      document.getElementById('portalDash').style.display  = 'block';
+      document.getElementById('pdName').textContent = e.name;
+      document.getElementById('pdRole').textContent = [e.job_title, e.department].filter(Boolean).join(' · ') || e.employment_type;
+      const sym = e.currency === 'AED' ? 'AED ' : '£';
+      const gross = parseFloat(e.annual_salary) || 0;
+      const monthly = gross / 12;
+      document.getElementById('pdStats').innerHTML = `
+        <div class="pd-stat"><div class="pd-stat-lbl">Annual Salary</div><div class="pd-stat-val">${sym}${gross.toLocaleString('en-GB',{maximumFractionDigits:0})}</div></div>
+        <div class="pd-stat"><div class="pd-stat-lbl">Monthly Gross</div><div class="pd-stat-val">${sym}${monthly.toLocaleString('en-GB',{maximumFractionDigits:0})}</div></div>
+        <div class="pd-stat"><div class="pd-stat-lbl">Employee Type</div><div class="pd-stat-val" style="font-size:0.95rem">${e.employment_type === 'self_employed' ? 'Self-Employed' : 'Payroll'}</div></div>
+        <div class="pd-stat"><div class="pd-stat-lbl">Start Date</div><div class="pd-stat-val" style="font-size:0.95rem">${e.start_date || '—'}</div></div>
+      `;
+      // Pre-fill tomorrow as default date
+      const tomorrow = new Date(); tomorrow.setDate(tomorrow.getDate() + 1);
+      document.getElementById('holidayDate').value = tomorrow.toISOString().slice(0,10);
+    }
+
+    async function submitHoliday() {
+      const msg = document.getElementById('holidayMsg');
+      msg.classList.add('hidden');
+      const date = document.getElementById('holidayDate').value;
+      const type = document.getElementById('holidayType').value;
+      const note = document.getElementById('holidayNote').value.trim();
+      if (!date) { msg.className = 'alert alert-error'; msg.textContent = 'Please select a date.'; msg.classList.remove('hidden'); return; }
+      const res = await fetch('/api/portal/holiday-request', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ employee_id: portalSession.id, pin: portalSession.pin, date, type, note })
+      });
+      const data = await res.json();
+      if (res.ok) {
+        msg.className = 'alert alert-success'; msg.textContent = `✓ Request submitted for ${date}.`;
+        document.getElementById('holidayNote').value = '';
+      } else {
+        msg.className = 'alert alert-error'; msg.textContent = data.error || 'Failed to submit.';
+      }
+      msg.classList.remove('hidden');
+    }
+
+    function portalLogout() {
+      portalSession = null;
+      document.getElementById('portalLogin').style.display = 'block';
+      document.getElementById('portalDash').style.display  = 'none';
+      document.getElementById('portalEmpId').value = '';
+      document.getElementById('portalPin').value   = '';
+    }
+  </script>
+</body>
+</html>
