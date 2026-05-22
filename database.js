@@ -231,10 +231,69 @@ async function runMigrations() {
     )
   `);
 
-  // Safe migration: add av_billing if it doesn't exist yet
   await sql(`ALTER TABLE hotel_expenses ADD COLUMN IF NOT EXISTS av_billing TEXT NOT NULL DEFAULT 'separate'`);
   await sql(`ALTER TABLE hotel_expenses ADD COLUMN IF NOT EXISTS invoice_name TEXT DEFAULT NULL`);
   await sql(`ALTER TABLE hotel_expenses ADD COLUMN IF NOT EXISTS invoice_data TEXT DEFAULT NULL`);
+
+  // ── Subscriptions ──────────────────────────────────────────────────────────
+  await sql(`
+    CREATE TABLE IF NOT EXISTS subscriptions (
+      id SERIAL PRIMARY KEY,
+      name TEXT NOT NULL,
+      vendor TEXT DEFAULT '',
+      amount NUMERIC(12,2) NOT NULL,
+      currency TEXT NOT NULL DEFAULT 'GBP' CHECK (currency IN ('GBP','USD','AED','PHP')),
+      billing_cycle TEXT NOT NULL DEFAULT 'monthly' CHECK (billing_cycle IN ('monthly','quarterly','annually','one_off')),
+      renewal_date DATE,
+      notes TEXT DEFAULT '',
+      active BOOLEAN NOT NULL DEFAULT true,
+      created_by INT REFERENCES admins(id) ON DELETE SET NULL,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `);
+
+  // ── Portfolio Events ───────────────────────────────────────────────────────
+  await sql(`
+    CREATE TABLE IF NOT EXISTS portfolio_events (
+      id SERIAL PRIMARY KEY,
+      name TEXT NOT NULL,
+      event_date DATE,
+      location TEXT DEFAULT '',
+      notes TEXT DEFAULT '',
+      created_by INT REFERENCES admins(id) ON DELETE SET NULL,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `);
+
+  // ── Deals ──────────────────────────────────────────────────────────────────
+  await sql(`
+    CREATE TABLE IF NOT EXISTS deals (
+      id SERIAL PRIMARY KEY,
+      title TEXT NOT NULL,
+      company TEXT DEFAULT '',
+      contact_name TEXT DEFAULT '',
+      amount NUMERIC(12,2) NOT NULL DEFAULT 0,
+      currency TEXT NOT NULL DEFAULT 'GBP',
+      stage TEXT NOT NULL DEFAULT 'Prospect'
+        CHECK (stage IN ('Prospect','Qualified','Proposal','Negotiation','Won','Lost')),
+      notes TEXT DEFAULT '',
+      invoice1_name TEXT,
+      invoice1_data TEXT,
+      invoice2_name TEXT,
+      invoice2_data TEXT,
+      created_by INT REFERENCES admins(id) ON DELETE SET NULL,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `);
+
+  await sql(`
+    CREATE TABLE IF NOT EXISTS deal_events (
+      deal_id INT NOT NULL REFERENCES deals(id) ON DELETE CASCADE,
+      event_id INT NOT NULL REFERENCES portfolio_events(id) ON DELETE CASCADE,
+      allocated_amount NUMERIC(12,2) NOT NULL DEFAULT 0,
+      PRIMARY KEY (deal_id, event_id)
+    )
+  `);
 
   // Seed initial hotel expense rows if table is empty
   const heCount = await sql('SELECT COUNT(*) AS c FROM hotel_expenses');

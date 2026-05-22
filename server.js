@@ -1208,6 +1208,176 @@ app.patch('/api/hotel-expenses/:id', requireAuth, async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+// ─── Middleware: admin OR manager ─────────────────────────────────────────────
+function requireAdminOrManager(req, res, next) {
+  const r = req.admin?.role;
+  if (r !== 'admin' && r !== 'manager') return res.status(403).json({ error: 'Access restricted' });
+  next();
+}
+
+// ─── SUBSCRIPTIONS ────────────────────────────────────────────────────────────
+app.get('/api/subscriptions', requireAuth, requireAdminOrManager, async (req, res) => {
+  try {
+    const { rows } = await q('SELECT * FROM subscriptions ORDER BY created_at DESC');
+    res.json(rows);
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+app.post('/api/subscriptions', requireAuth, requireAdminOrManager, async (req, res) => {
+  try {
+    const { name, vendor, amount, currency, billing_cycle, renewal_date, notes } = req.body;
+    const { rows } = await q(
+      `INSERT INTO subscriptions (name, vendor, amount, currency, billing_cycle, renewal_date, notes, created_by)
+       VALUES (?,?,?,?,?,?,?,?) RETURNING *`,
+      [name, vendor||'', parseFloat(amount)||0, currency||'GBP', billing_cycle||'monthly', renewal_date||null, notes||'', req.admin.id]
+    );
+    res.json(rows[0]);
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+app.put('/api/subscriptions/:id', requireAuth, requireAdminOrManager, async (req, res) => {
+  try {
+    const { name, vendor, amount, currency, billing_cycle, renewal_date, notes, active } = req.body;
+    const { rows } = await q(
+      `UPDATE subscriptions SET name=?, vendor=?, amount=?, currency=?, billing_cycle=?, renewal_date=?, notes=?, active=? WHERE id=? RETURNING *`,
+      [name, vendor||'', parseFloat(amount)||0, currency||'GBP', billing_cycle||'monthly', renewal_date||null, notes||'', active !== false, req.params.id]
+    );
+    if (!rows.length) return res.status(404).json({ error: 'Not found' });
+    res.json(rows[0]);
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+app.delete('/api/subscriptions/:id', requireAuth, requireAdminOrManager, async (req, res) => {
+  try { await q('DELETE FROM subscriptions WHERE id=?', [req.params.id]); res.json({ ok: true }); }
+  catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// ─── PORTFOLIO EVENTS ─────────────────────────────────────────────────────────
+app.get('/api/portfolio-events', requireAuth, requireAdminOrManager, async (req, res) => {
+  try {
+    const { rows } = await q(`
+      SELECT pe.*,
+        COALESCE(SUM(CASE WHEN d.stage='Won' THEN de.allocated_amount ELSE 0 END), 0) AS total_won,
+        COALESCE(SUM(de.allocated_amount), 0) AS total_pipeline
+      FROM portfolio_events pe
+      LEFT JOIN deal_events de ON de.event_id = pe.id
+      LEFT JOIN deals d ON d.id = de.deal_id
+      GROUP BY pe.id ORDER BY pe.event_date DESC NULLS LAST, pe.created_at DESC`);
+    res.json(rows);
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+app.post('/api/portfolio-events', requireAuth, requireAdminOrManager, async (req, res) => {
+  try {
+    const { name, event_date, location, notes } = req.body;
+    const { rows } = await q(
+      `INSERT INTO portfolio_events (name, event_date, location, notes, created_by) VALUES (?,?,?,?,?) RETURNING *`,
+      [name, event_date||null, location||'', notes||'', req.admin.id]
+    );
+    res.json(rows[0]);
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+app.put('/api/portfolio-events/:id', requireAuth, requireAdminOrManager, async (req, res) => {
+  try {
+    const { name, event_date, location, notes } = req.body;
+    const { rows } = await q(
+      `UPDATE portfolio_events SET name=?, event_date=?, location=?, notes=? WHERE id=? RETURNING *`,
+      [name, event_date||null, location||'', notes||'', req.params.id]
+    );
+    if (!rows.length) return res.status(404).json({ error: 'Not found' });
+    res.json(rows[0]);
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+app.delete('/api/portfolio-events/:id', requireAuth, requireAdminOrManager, async (req, res) => {
+  try { await q('DELETE FROM portfolio_events WHERE id=?', [req.params.id]); res.json({ ok: true }); }
+  catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// ─── DEALS ────────────────────────────────────────────────────────────────────
+app.get('/api/deals', requireAuth, requireAdminOrManager, async (req, res) => {
+  try {
+    const { rows: deals } = await q(`
+      SELECT d.*,
+        COALESCE(json_agg(json_build_object('event_id',de.event_id,'event_name',pe.name,'allocated_amount',de.allocated_amount))
+          FILTER (WHERE de.event_id IS NOT NULL), '[]') AS events
+      FROM deals d
+      LEFT JOIN deal_events de ON de.deal_id = d.id
+      LEFT JOIN portfolio_events pe ON pe.id = de.event_id
+      GROUP BY d.id ORDER BY d.created_at DESC`);
+    res.json(deals);
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+app.post('/api/deals', requireAuth, requireAdminOrManager, async (req, res) => {
+  try {
+    const { title, company, contact_name, amount, currency, stage, event_ids, notes,
+            invoice1_name, invoice1_data, invoice2_name, invoice2_data } = req.body;
+    const { rows } = await q(
+      `INSERT INTO deals (title, company, contact_name, amount, currency, stage, notes,
+        invoice1_name, invoice1_data, invoice2_name, invoice2_data, created_by)
+       VALUES (?,?,?,?,?,?,?,?,?,?,?,?) RETURNING *`,
+      [title, company||'', contact_name||'', parseFloat(amount)||0, currency||'GBP',
+       stage||'Prospect', notes||'', invoice1_name||null, invoice1_data||null,
+       invoice2_name||null, invoice2_data||null, req.admin.id]
+    );
+    const deal = rows[0];
+    if (Array.isArray(event_ids) && event_ids.length > 0) {
+      const perEvent = parseFloat((parseFloat(amount) / event_ids.length).toFixed(2));
+      for (const eid of event_ids) {
+        await q('INSERT INTO deal_events (deal_id, event_id, allocated_amount) VALUES (?,?,?)',
+          [deal.id, eid, perEvent]);
+      }
+    }
+    res.json(deal);
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+app.put('/api/deals/:id', requireAuth, requireAdminOrManager, async (req, res) => {
+  try {
+    const { title, company, contact_name, amount, currency, stage, event_ids, notes,
+            invoice1_name, invoice1_data, invoice2_name, invoice2_data } = req.body;
+    const { rows } = await q(
+      `UPDATE deals SET title=?, company=?, contact_name=?, amount=?, currency=?, stage=?, notes=?,
+        invoice1_name=COALESCE(?,invoice1_name), invoice1_data=COALESCE(?,invoice1_data),
+        invoice2_name=COALESCE(?,invoice2_name), invoice2_data=COALESCE(?,invoice2_data)
+       WHERE id=? RETURNING *`,
+      [title, company||'', contact_name||'', parseFloat(amount)||0, currency||'GBP',
+       stage||'Prospect', notes||'',
+       invoice1_name||null, invoice1_data||null, invoice2_name||null, invoice2_data||null,
+       req.params.id]
+    );
+    if (!rows.length) return res.status(404).json({ error: 'Not found' });
+    if (Array.isArray(event_ids)) {
+      await q('DELETE FROM deal_events WHERE deal_id=?', [req.params.id]);
+      const perEvent = event_ids.length > 0 ? parseFloat((parseFloat(amount) / event_ids.length).toFixed(2)) : 0;
+      for (const eid of event_ids) {
+        await q('INSERT INTO deal_events (deal_id, event_id, allocated_amount) VALUES (?,?,?)',
+          [req.params.id, eid, perEvent]);
+      }
+    }
+    res.json(rows[0]);
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+app.patch('/api/deals/:id/stage', requireAuth, requireAdminOrManager, async (req, res) => {
+  try {
+    const { stage } = req.body;
+    const { rows } = await q('UPDATE deals SET stage=? WHERE id=? RETURNING *', [stage, req.params.id]);
+    if (!rows.length) return res.status(404).json({ error: 'Not found' });
+    res.json(rows[0]);
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+app.delete('/api/deals/:id', requireAuth, requireAdminOrManager, async (req, res) => {
+  try { await q('DELETE FROM deals WHERE id=?', [req.params.id]); res.json({ ok: true }); }
+  catch (e) { res.status(500).json({ error: e.message }); }
+});
+app.get('/api/deals/:id/invoice/:n', requireAuth, requireAdminOrManager, async (req, res) => {
+  try {
+    const n = req.params.n === '2' ? 2 : 1;
+    const { rows } = await q(`SELECT invoice${n}_name AS name, invoice${n}_data AS data FROM deals WHERE id=?`, [req.params.id]);
+    const r = rows[0];
+    if (!r || !r.data) return res.status(404).json({ error: 'No invoice' });
+    const ext = (r.name||'').split('.').pop().toLowerCase();
+    const mimes = { pdf:'application/pdf', docx:'application/vnd.openxmlformats-officedocument.wordprocessingml.document', doc:'application/msword', png:'image/png', jpg:'image/jpeg', jpeg:'image/jpeg' };
+    res.setHeader('Content-Type', mimes[ext] || 'application/octet-stream');
+    res.setHeader('Content-Disposition', `inline; filename="${r.name}"`);
+    res.send(Buffer.from(r.data, 'base64'));
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 // ─── GLOBAL ERROR HANDLER ────────────────────────────────────────────────────
 // Catches any unhandled async errors thrown in routes (e.g. DB failures)
 // eslint-disable-next-line no-unused-vars

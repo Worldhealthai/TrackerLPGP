@@ -30,6 +30,10 @@
       <div class="nav-item" data-page="employees"><span class="icon">👥</span> Employees</div>
       <div class="nav-item" data-page="hotels"><span class="icon">🏨</span> Hotel Expenses</div>
       <div class="nav-item" data-page="reports"><span class="icon">📋</span> Reports</div>
+      <div class="nav-section-label admin-manager-only hidden">Business</div>
+      <div class="nav-item admin-manager-only hidden" data-page="deals"><span class="icon">🤝</span> Deal Tracker</div>
+      <div class="nav-item admin-manager-only hidden" data-page="portfolio"><span class="icon">🎯</span> Portfolio</div>
+      <div class="nav-item admin-manager-only hidden" data-page="subscriptions"><span class="icon">💳</span> Subscriptions</div>
       <div class="nav-item admin-only hidden" data-page="admins"><span class="icon">🔐</span> Admin Users</div>
     </div>
     <div class="sidebar-footer">
@@ -342,6 +346,47 @@
             <div>No hotel expenses yet. Click "+ Add Event" to get started.</div>
           </div>
         </div>
+      </div>
+
+      <!-- ══ SUBSCRIPTIONS ══ -->
+      <div class="page" id="page-subscriptions">
+        <div class="filter-bar" style="align-items:center">
+          <button class="btn btn-primary" style="margin-left:auto" onclick="openSubModal()">+ Add Subscription</button>
+        </div>
+        <div id="subTotals" style="margin-bottom:20px"></div>
+        <div class="card" style="padding:0;overflow:hidden">
+          <div class="card-header" style="padding:14px 20px;margin:0;border-radius:var(--radius) var(--radius) 0 0">
+            <span class="card-title">Subscriptions</span>
+            <span id="subCount" style="font-size:0.78rem;color:var(--muted)"></span>
+          </div>
+          <div class="table-wrap">
+            <table id="subTable">
+              <thead><tr>
+                <th>Name</th><th>Vendor</th><th>Amount</th><th>Cycle</th><th>Per Month (GBP)</th><th>Per Year (GBP)</th><th>Renewal</th><th>Notes</th><th></th>
+              </tr></thead>
+              <tbody id="subTableBody"></tbody>
+            </table>
+          </div>
+          <div id="subEmpty" class="empty-state hidden"><div class="icon">💳</div><div>No subscriptions yet.</div></div>
+        </div>
+      </div>
+
+      <!-- ══ PORTFOLIO ══ -->
+      <div class="page" id="page-portfolio">
+        <div class="filter-bar" style="align-items:center">
+          <button class="btn btn-primary" style="margin-left:auto" onclick="openPortfolioModal()">+ Add Event</button>
+        </div>
+        <div id="portfolioGrid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:16px;margin-top:4px"></div>
+        <div id="portfolioEmpty" class="empty-state hidden"><div class="icon">🎯</div><div>No events yet. Add your first event.</div></div>
+      </div>
+
+      <!-- ══ DEAL TRACKER ══ -->
+      <div class="page" id="page-deals">
+        <div class="filter-bar" style="align-items:center;gap:12px">
+          <input type="search" id="dealSearch" placeholder="Search deals…" oninput="renderDealBoard()" style="border:1.5px solid var(--border);border-radius:9px;padding:9px 13px;font-size:0.875rem;font-family:inherit;outline:none;background:var(--bg-2);color:var(--text);min-width:220px" />
+          <button class="btn btn-primary" style="margin-left:auto" onclick="openDealModal()">+ Add Deal</button>
+        </div>
+        <div id="dealBoard" style="display:flex;gap:12px;overflow-x:auto;padding-bottom:8px;margin-top:4px"></div>
       </div>
 
     </div>
@@ -1012,6 +1057,132 @@
 
 <!-- Toast container -->
 <div id="toastContainer" aria-live="polite" aria-atomic="false"></div>
+
+<!-- ══ MODAL: Subscription ══ -->
+<div class="modal-overlay" id="subModal">
+  <div class="modal">
+    <div class="modal-header">
+      <h2 id="subModalTitle">Add Subscription</h2>
+      <button class="modal-close" onclick="closeModal('subModal')">✕</button>
+    </div>
+    <input type="hidden" id="subEditId">
+    <div class="form-row">
+      <div class="form-group"><label>Name *</label><input type="text" id="subName" placeholder="e.g. Slack, Adobe CC"></div>
+      <div class="form-group"><label>Vendor</label><input type="text" id="subVendor" placeholder="Provider name"></div>
+    </div>
+    <div class="form-row">
+      <div class="form-group">
+        <label>Currency</label>
+        <select id="subCurrency">
+          <option value="GBP">GBP £</option>
+          <option value="USD">USD $</option>
+          <option value="AED">AED</option>
+          <option value="PHP">PHP ₱</option>
+        </select>
+      </div>
+      <div class="form-group"><label>Amount *</label><input type="number" id="subAmount" min="0" step="0.01" placeholder="0.00"></div>
+      <div class="form-group">
+        <label>Billing Cycle</label>
+        <select id="subCycle">
+          <option value="monthly">Monthly</option>
+          <option value="quarterly">Quarterly</option>
+          <option value="annually">Annually</option>
+          <option value="one_off">One-Off</option>
+        </select>
+      </div>
+    </div>
+    <div class="form-row">
+      <div class="form-group"><label>Renewal Date</label><input type="date" id="subRenewal"></div>
+      <div class="form-group"><label>Notes</label><input type="text" id="subNotes" placeholder="Optional notes"></div>
+    </div>
+    <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:20px">
+      <button class="btn btn-ghost" onclick="closeModal('subModal')">Cancel</button>
+      <button class="btn btn-primary" onclick="saveSub()">Save</button>
+    </div>
+  </div>
+</div>
+
+<!-- ══ MODAL: Portfolio Event ══ -->
+<div class="modal-overlay" id="portfolioModal">
+  <div class="modal">
+    <div class="modal-header">
+      <h2 id="portfolioModalTitle">Add Event</h2>
+      <button class="modal-close" onclick="closeModal('portfolioModal')">✕</button>
+    </div>
+    <input type="hidden" id="portEditId">
+    <div class="form-row">
+      <div class="form-group"><label>Event Name *</label><input type="text" id="portName" placeholder="e.g. CFO Summit NYC"></div>
+      <div class="form-group"><label>Date</label><input type="date" id="portDate"></div>
+    </div>
+    <div class="form-row">
+      <div class="form-group"><label>Location</label><input type="text" id="portLocation" placeholder="City / Venue"></div>
+    </div>
+    <div class="form-group"><label>Notes</label><textarea id="portNotes" rows="2" placeholder="Any notes…"></textarea></div>
+    <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:20px">
+      <button class="btn btn-ghost" onclick="closeModal('portfolioModal')">Cancel</button>
+      <button class="btn btn-primary" onclick="savePortfolioEvent()">Save</button>
+    </div>
+  </div>
+</div>
+
+<!-- ══ MODAL: Deal ══ -->
+<div class="modal-overlay" id="dealModal">
+  <div class="modal" style="max-width:600px">
+    <div class="modal-header">
+      <h2 id="dealModalTitle">Add Deal</h2>
+      <button class="modal-close" onclick="closeModal('dealModal')">✕</button>
+    </div>
+    <input type="hidden" id="dealEditId">
+    <div class="form-row">
+      <div class="form-group" style="flex:2"><label>Deal Title *</label><input type="text" id="dealTitle" placeholder="Sponsorship – Company X"></div>
+      <div class="form-group"><label>Stage</label>
+        <select id="dealStage">
+          <option>Prospect</option><option>Qualified</option><option>Proposal</option>
+          <option>Negotiation</option><option>Won</option><option>Lost</option>
+        </select>
+      </div>
+    </div>
+    <div class="form-row">
+      <div class="form-group"><label>Company</label><input type="text" id="dealCompany" placeholder="Company name"></div>
+      <div class="form-group"><label>Contact</label><input type="text" id="dealContact" placeholder="Contact name"></div>
+    </div>
+    <div class="form-row">
+      <div class="form-group">
+        <label>Currency</label>
+        <select id="dealCurrency">
+          <option value="GBP">GBP £</option><option value="USD">USD $</option>
+          <option value="AED">AED</option><option value="PHP">PHP ₱</option><option value="EUR">EUR €</option>
+        </select>
+      </div>
+      <div class="form-group"><label>Amount *</label><input type="number" id="dealAmount" min="0" step="0.01" placeholder="0.00"></div>
+    </div>
+    <div class="form-group">
+      <label>Events (hold Ctrl/Cmd for multiple — amount splits equally)</label>
+      <select id="dealEvents" multiple style="min-height:80px;border:1px solid var(--border);border-radius:9px;padding:8px;background:var(--bg);color:var(--text);font-family:inherit;width:100%">
+        <option value="">Loading events…</option>
+      </select>
+      <div id="dealSplitPreview" style="font-size:0.75rem;color:var(--muted);margin-top:4px"></div>
+    </div>
+    <div class="form-group"><label>Notes</label><textarea id="dealNotes" rows="2" placeholder="Deal notes…"></textarea></div>
+    <div class="modal-section-label" style="margin-top:16px">Invoices (PDF or Word, max 8 MB each)</div>
+    <div class="form-row">
+      <div class="form-group">
+        <label>Invoice 1</label>
+        <div id="dealInv1Preview" style="font-size:0.78rem;color:var(--muted);margin-bottom:4px"></div>
+        <label class="ht-upload-btn">📎 Upload<input type="file" id="dealInv1File" accept=".pdf,.doc,.docx" style="display:none" onchange="dealFilePreview(1,this)"></label>
+      </div>
+      <div class="form-group">
+        <label>Invoice 2</label>
+        <div id="dealInv2Preview" style="font-size:0.78rem;color:var(--muted);margin-bottom:4px"></div>
+        <label class="ht-upload-btn">📎 Upload<input type="file" id="dealInv2File" accept=".pdf,.doc,.docx" style="display:none" onchange="dealFilePreview(2,this)"></label>
+      </div>
+    </div>
+    <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:20px">
+      <button class="btn btn-ghost" onclick="closeModal('dealModal')">Cancel</button>
+      <button class="btn btn-primary" onclick="saveDeal()">Save Deal</button>
+    </div>
+  </div>
+</div>
 
 <script src="app.js"></script>
 </body>

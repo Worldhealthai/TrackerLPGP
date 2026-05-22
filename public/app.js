@@ -60,6 +60,9 @@ document.addEventListener('DOMContentLoaded', async () => {
   if (currentUser.role === 'admin') {
     document.querySelectorAll('.admin-only').forEach(el => el.classList.remove('hidden'));
   }
+  if (currentUser.role === 'admin' || currentUser.role === 'manager') {
+    document.querySelectorAll('.admin-manager-only').forEach(el => el.classList.remove('hidden'));
+  }
 
   const m = thisMonth();
   document.getElementById('repFrom').value = m.from;
@@ -124,13 +127,16 @@ function navigate(page) {
   document.getElementById('page-' + page).classList.add('active');
   document.querySelector(`.nav-item[data-page="${page}"]`)?.classList.add('active');
   document.querySelector(`.bottom-nav-item[data-page="${page}"]`)?.classList.add('active');
-  const titles = { dashboard:'Dashboard', tracking:'Daily Tracking', salary:'Salary Tracker', employees:'Employees', reports:'Reports', calendar:'Calendar', admins:'Admin Users', hotels:'Hotel Expenses' };
+  const titles = { dashboard:'Dashboard', tracking:'Daily Tracking', salary:'Salary Tracker', employees:'Employees', reports:'Reports', calendar:'Calendar', admins:'Admin Users', hotels:'Hotel Expenses', subscriptions:'Subscriptions', portfolio:'Portfolio', deals:'Deal Tracker' };
   document.getElementById('pageTitle').textContent = titles[page] || page;
   if (page === 'employees') loadEmpTable();
   if (page === 'admins') loadAdmins();
   if (page === 'calendar') loadCalendar();
   if (page === 'salary') { loadSalaryPage(); renderSalaryReminderPanel(); }
   if (page === 'hotels') loadHotelExpenses();
+  if (page === 'subscriptions') loadSubscriptions();
+  if (page === 'portfolio') loadPortfolio();
+  if (page === 'deals') loadDeals();
 }
 
 // ─── EMPLOYEES ───────────────────────────────────────────────────────────────
@@ -2826,4 +2832,459 @@ async function reviewHolidayRequest(id, action) {
   const remaining = document.querySelectorAll('#notifList .notif-item').length;
   if (!remaining) document.getElementById('notifList').innerHTML = '<div class="notif-empty">No pending requests</div>';
   refreshNotifBadge();
+}
+
+// ─── SUBSCRIPTIONS ────────────────────────────────────────────────────────────
+
+const SUB_FX = { GBP: 1, USD: 0.79, AED: 1/4.67, PHP: 0.014 };
+const CYCLE_MONTHS = { monthly: 1, quarterly: 3, annually: 12, one_off: 0 };
+let subsData = [];
+
+function subToGBPPerMonth(s) {
+  const rate = SUB_FX[s.currency] || 1;
+  const months = CYCLE_MONTHS[s.billing_cycle];
+  if (!months) return 0;
+  return (parseFloat(s.amount) * rate) / months;
+}
+
+async function loadSubscriptions() {
+  try {
+    const res = await fetch('/api/subscriptions');
+    subsData = await res.json();
+    renderSubTotals();
+    renderSubTable();
+  } catch { showToast('Failed to load subscriptions', 'error'); }
+}
+
+function renderSubTotals() {
+  const active = subsData.filter(s => s.active);
+  const perMonth = active.reduce((a, s) => a + subToGBPPerMonth(s), 0);
+  const perYear = active.reduce((a, s) => {
+    const rate = SUB_FX[s.currency] || 1;
+    const months = CYCLE_MONTHS[s.billing_cycle];
+    return a + (months ? parseFloat(s.amount) * rate * (12 / months) : parseFloat(s.amount) * rate);
+  }, 0);
+  document.getElementById('subTotals').innerHTML = `
+    <div style="display:flex;gap:14px;flex-wrap:wrap">
+      <div class="dash-mini-card dash-mini--indigo" style="flex:1;min-width:160px">
+        <div class="dash-mini-label">Total / Month (GBP)</div>
+        <div class="dash-mini-value">£${fmt(perMonth)}</div>
+      </div>
+      <div class="dash-mini-card dash-mini--green" style="flex:1;min-width:160px">
+        <div class="dash-mini-label">Total / Year (GBP)</div>
+        <div class="dash-mini-value">£${fmt(perYear)}</div>
+      </div>
+      <div class="dash-mini-card" style="flex:1;min-width:160px">
+        <div class="dash-mini-label">Active Subscriptions</div>
+        <div class="dash-mini-value">${active.length}</div>
+      </div>
+    </div>`;
+}
+
+function renderSubTable() {
+  const tbody = document.getElementById('subTableBody');
+  const empty = document.getElementById('subEmpty');
+  const count = document.getElementById('subCount');
+  count.textContent = `${subsData.length} subscription${subsData.length !== 1 ? 's' : ''}`;
+  if (!subsData.length) { tbody.innerHTML = ''; empty.classList.remove('hidden'); return; }
+  empty.classList.add('hidden');
+  const symMap = { GBP:'£', USD:'$', AED:'AED ', PHP:'₱' };
+  tbody.innerHTML = subsData.map(s => {
+    const sym = symMap[s.currency] || '';
+    const perMonth = subToGBPPerMonth(s);
+    const months = CYCLE_MONTHS[s.billing_cycle];
+    const perYear = months ? perMonth * 12 : parseFloat(s.amount) * (SUB_FX[s.currency] || 1);
+    const cycleLabel = { monthly:'Monthly', quarterly:'Quarterly', annually:'Annually', one_off:'One-Off' }[s.billing_cycle] || s.billing_cycle;
+    const renewal = s.renewal_date ? new Date(s.renewal_date).toLocaleDateString('en-GB',{day:'numeric',month:'short',year:'numeric'}) : '—';
+    const activeDot = s.active ? '<span style="color:var(--success)">●</span>' : '<span style="color:var(--muted)">●</span>';
+    return `<tr class="${s.active ? '' : 'sub-inactive'}">
+      <td>${activeDot} ${esc(s.name)}</td>
+      <td>${esc(s.vendor||'')}</td>
+      <td>${sym}${fmt(parseFloat(s.amount))}</td>
+      <td>${cycleLabel}</td>
+      <td>£${fmt(perMonth)}</td>
+      <td>£${fmt(perYear)}</td>
+      <td>${renewal}</td>
+      <td style="max-width:160px;white-space:normal;font-size:0.8rem;color:var(--muted)">${esc(s.notes||'')}</td>
+      <td>
+        <button class="btn-icon" title="Edit" onclick="openSubModal(${s.id})">✏️</button>
+        <button class="btn-icon" title="${s.active ? 'Deactivate' : 'Activate'}" onclick="toggleSubActive(${s.id},${!s.active})">
+          ${s.active ? '⏸️' : '▶️'}
+        </button>
+        <button class="btn-icon btn-icon--danger" title="Delete" onclick="deleteSub(${s.id})">🗑️</button>
+      </td>
+    </tr>`;
+  }).join('');
+}
+
+function openSubModal(id) {
+  document.getElementById('subEditId').value = id || '';
+  document.getElementById('subModalTitle').textContent = id ? 'Edit Subscription' : 'Add Subscription';
+  if (id) {
+    const s = subsData.find(x => x.id === id);
+    if (!s) return;
+    document.getElementById('subName').value = s.name;
+    document.getElementById('subVendor').value = s.vendor || '';
+    document.getElementById('subCurrency').value = s.currency;
+    document.getElementById('subAmount').value = s.amount;
+    document.getElementById('subCycle').value = s.billing_cycle;
+    document.getElementById('subRenewal').value = s.renewal_date ? s.renewal_date.split('T')[0] : '';
+    document.getElementById('subNotes').value = s.notes || '';
+  } else {
+    document.getElementById('subName').value = '';
+    document.getElementById('subVendor').value = '';
+    document.getElementById('subCurrency').value = 'GBP';
+    document.getElementById('subAmount').value = '';
+    document.getElementById('subCycle').value = 'monthly';
+    document.getElementById('subRenewal').value = '';
+    document.getElementById('subNotes').value = '';
+  }
+  openModal('subModal');
+}
+
+async function saveSub() {
+  const id = document.getElementById('subEditId').value;
+  const name = document.getElementById('subName').value.trim();
+  if (!name) { showToast('Name is required', 'error'); return; }
+  const amount = parseFloat(document.getElementById('subAmount').value);
+  if (isNaN(amount) || amount < 0) { showToast('Enter a valid amount', 'error'); return; }
+  const body = {
+    name, vendor: document.getElementById('subVendor').value.trim(),
+    currency: document.getElementById('subCurrency').value,
+    amount, billing_cycle: document.getElementById('subCycle').value,
+    renewal_date: document.getElementById('subRenewal').value || null,
+    notes: document.getElementById('subNotes').value.trim()
+  };
+  const method = id ? 'PUT' : 'POST';
+  const url = id ? `/api/subscriptions/${id}` : '/api/subscriptions';
+  const res = await fetch(url, { method, headers: {'Content-Type':'application/json'}, body: JSON.stringify(body) });
+  if (!res.ok) { const e = await res.json(); showToast(e.error || 'Save failed', 'error'); return; }
+  showToast(id ? 'Subscription updated' : 'Subscription added', 'success');
+  closeModal('subModal');
+  loadSubscriptions();
+}
+
+async function toggleSubActive(id, active) {
+  const res = await fetch(`/api/subscriptions/${id}`, { method: 'PUT', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ active }) });
+  if (!res.ok) { showToast('Update failed', 'error'); return; }
+  const idx = subsData.findIndex(s => s.id === id);
+  if (idx !== -1) subsData[idx].active = active;
+  renderSubTotals();
+  renderSubTable();
+}
+
+async function deleteSub(id) {
+  if (!confirm('Delete this subscription?')) return;
+  const res = await fetch(`/api/subscriptions/${id}`, { method: 'DELETE' });
+  if (!res.ok) { showToast('Delete failed', 'error'); return; }
+  showToast('Subscription deleted', 'success');
+  loadSubscriptions();
+}
+
+// ─── PORTFOLIO ────────────────────────────────────────────────────────────────
+
+let portfolioData = [];
+
+async function loadPortfolio() {
+  try {
+    const res = await fetch('/api/portfolio-events');
+    portfolioData = await res.json();
+    renderPortfolioGrid();
+  } catch { showToast('Failed to load portfolio', 'error'); }
+}
+
+function renderPortfolioGrid() {
+  const grid = document.getElementById('portfolioGrid');
+  const empty = document.getElementById('portfolioEmpty');
+  if (!portfolioData.length) { grid.innerHTML = ''; empty.classList.remove('hidden'); return; }
+  empty.classList.add('hidden');
+  grid.innerHTML = portfolioData.map(ev => {
+    const dateStr = ev.event_date ? new Date(ev.event_date).toLocaleDateString('en-GB',{day:'numeric',month:'short',year:'numeric'}) : 'TBD';
+    const won = parseFloat(ev.total_won) || 0;
+    const pipeline = parseFloat(ev.total_pipeline) || 0;
+    return `<div class="port-card">
+      <div class="port-card-header">
+        <div class="port-card-title">${esc(ev.name)}</div>
+        <div style="display:flex;gap:6px">
+          <button class="btn-icon" title="Edit" onclick="openPortfolioModal(${ev.id})">✏️</button>
+          <button class="btn-icon btn-icon--danger" title="Delete" onclick="deletePortfolioEvent(${ev.id})">🗑️</button>
+        </div>
+      </div>
+      <div class="port-card-meta">
+        ${ev.event_date ? `<span>📅 ${dateStr}</span>` : ''}
+        ${ev.location ? `<span>📍 ${esc(ev.location)}</span>` : ''}
+      </div>
+      <div class="port-card-stats">
+        <div class="port-stat">
+          <div class="port-stat-label">Won Revenue</div>
+          <div class="port-stat-val port-stat--green">£${fmt(won)}</div>
+        </div>
+        <div class="port-stat">
+          <div class="port-stat-label">Pipeline</div>
+          <div class="port-stat-val">£${fmt(pipeline)}</div>
+        </div>
+      </div>
+      ${ev.notes ? `<div class="port-card-notes">${esc(ev.notes)}</div>` : ''}
+    </div>`;
+  }).join('');
+}
+
+function openPortfolioModal(id) {
+  document.getElementById('portEditId').value = id || '';
+  document.getElementById('portfolioModalTitle').textContent = id ? 'Edit Event' : 'Add Event';
+  if (id) {
+    const ev = portfolioData.find(x => x.id === id);
+    if (!ev) return;
+    document.getElementById('portName').value = ev.name;
+    document.getElementById('portDate').value = ev.event_date ? ev.event_date.split('T')[0] : '';
+    document.getElementById('portLocation').value = ev.location || '';
+    document.getElementById('portNotes').value = ev.notes || '';
+  } else {
+    document.getElementById('portName').value = '';
+    document.getElementById('portDate').value = '';
+    document.getElementById('portLocation').value = '';
+    document.getElementById('portNotes').value = '';
+  }
+  openModal('portfolioModal');
+}
+
+async function savePortfolioEvent() {
+  const id = document.getElementById('portEditId').value;
+  const name = document.getElementById('portName').value.trim();
+  if (!name) { showToast('Event name is required', 'error'); return; }
+  const body = {
+    name, event_date: document.getElementById('portDate').value || null,
+    location: document.getElementById('portLocation').value.trim(),
+    notes: document.getElementById('portNotes').value.trim()
+  };
+  const method = id ? 'PUT' : 'POST';
+  const url = id ? `/api/portfolio-events/${id}` : '/api/portfolio-events';
+  const res = await fetch(url, { method, headers: {'Content-Type':'application/json'}, body: JSON.stringify(body) });
+  if (!res.ok) { const e = await res.json(); showToast(e.error || 'Save failed', 'error'); return; }
+  showToast(id ? 'Event updated' : 'Event added', 'success');
+  closeModal('portfolioModal');
+  loadPortfolio();
+}
+
+async function deletePortfolioEvent(id) {
+  if (!confirm('Delete this event? Associated deal allocations will also be removed.')) return;
+  const res = await fetch(`/api/portfolio-events/${id}`, { method: 'DELETE' });
+  if (!res.ok) { showToast('Delete failed', 'error'); return; }
+  showToast('Event deleted', 'success');
+  loadPortfolio();
+}
+
+// ─── DEAL TRACKER ─────────────────────────────────────────────────────────────
+
+const DEAL_STAGES = ['Prospect','Qualified','Proposal','Negotiation','Won','Lost'];
+const DEAL_STAGE_COLOR = { Prospect:'#64748b', Qualified:'#7c3aed', Proposal:'#2563eb', Negotiation:'#d97706', Won:'#16a34a', Lost:'#dc2626' };
+let dealsData = [];
+let _dealInv1 = null; // { name, base64 }
+let _dealInv2 = null;
+
+async function loadDeals() {
+  try {
+    const res = await fetch('/api/deals');
+    dealsData = await res.json();
+    renderDealBoard();
+  } catch { showToast('Failed to load deals', 'error'); }
+}
+
+function renderDealBoard() {
+  const q = (document.getElementById('dealSearch')?.value || '').trim().toLowerCase();
+  const filtered = q ? dealsData.filter(d =>
+    (d.title||'').toLowerCase().includes(q) ||
+    (d.company||'').toLowerCase().includes(q) ||
+    (d.contact_name||'').toLowerCase().includes(q)
+  ) : dealsData;
+
+  const board = document.getElementById('dealBoard');
+  const symMap = { GBP:'£', USD:'$', AED:'AED ', PHP:'₱', EUR:'€' };
+  board.innerHTML = DEAL_STAGES.map(stage => {
+    const cards = filtered.filter(d => d.stage === stage);
+    const total = cards.reduce((a,d) => a + (parseFloat(d.amount)||0), 0);
+    const sym = ''; // mixed currencies, just show number
+    return `<div class="deal-col">
+      <div class="deal-col-hd" style="border-top:3px solid ${DEAL_STAGE_COLOR[stage]}">
+        <span class="deal-col-title">${stage}</span>
+        <span class="deal-col-count">${cards.length}</span>
+      </div>
+      <div class="deal-col-total">${cards.length ? `${cards.map(d=>(symMap[d.currency]||'')+fmt(parseFloat(d.amount)||0)).join(' + ')}` : '—'}</div>
+      <div class="deal-col-cards">
+        ${cards.map(d => dealCardHTML(d)).join('')}
+      </div>
+      <button class="deal-add-btn" onclick="openDealModal(null,'${stage}')">+ Add</button>
+    </div>`;
+  }).join('');
+}
+
+function dealCardHTML(d) {
+  const sym = { GBP:'£', USD:'$', AED:'AED ', PHP:'₱', EUR:'€' }[d.currency] || '';
+  const evNames = Array.isArray(d.events) ? d.events.map(e => e.event_name).filter(Boolean) : [];
+  const inv1 = d.invoice1_name ? `<a class="deal-inv-link" href="/api/deals/${d.id}/invoice/1" target="_blank" title="${esc(d.invoice1_name)}">📄 Inv 1</a>` : '';
+  const inv2 = d.invoice2_name ? `<a class="deal-inv-link" href="/api/deals/${d.id}/invoice/2" target="_blank" title="${esc(d.invoice2_name)}">📄 Inv 2</a>` : '';
+  return `<div class="deal-card" draggable="true" data-id="${d.id}" ondragstart="dealDragStart(event,${d.id})" ondragend="dealDragEnd(event)">
+    <div class="deal-card-title">${esc(d.title)}</div>
+    ${d.company ? `<div class="deal-card-company">${esc(d.company)}</div>` : ''}
+    <div class="deal-card-amount">${sym}${fmt(parseFloat(d.amount)||0)}</div>
+    ${evNames.length ? `<div class="deal-card-events">${evNames.map(n=>`<span class="deal-event-tag">${esc(n.trim())}</span>`).join('')}</div>` : ''}
+    ${(inv1||inv2) ? `<div class="deal-card-invs">${inv1}${inv2}</div>` : ''}
+    <div class="deal-card-footer">
+      <span class="deal-stage-chip" style="background:${DEAL_STAGE_COLOR[d.stage]}20;color:${DEAL_STAGE_COLOR[d.stage]}">${d.stage}</span>
+      <div style="display:flex;gap:4px">
+        <button class="btn-icon" onclick="openDealModal(${d.id})" title="Edit">✏️</button>
+        <button class="btn-icon btn-icon--danger" onclick="deleteDeal(${d.id})" title="Delete">🗑️</button>
+      </div>
+    </div>
+    <div class="deal-stage-select-wrap">
+      <select class="deal-stage-sel" onchange="changeDealStage(${d.id},this.value)" title="Move to stage">
+        ${DEAL_STAGES.map(s => `<option ${s===d.stage?'selected':''}>${s}</option>`).join('')}
+      </select>
+    </div>
+  </div>`;
+}
+
+// Drag and drop
+let _dragId = null;
+function dealDragStart(e, id) { _dragId = id; e.currentTarget.classList.add('dragging'); }
+function dealDragEnd(e) { e.currentTarget.classList.remove('dragging'); _dragId = null; }
+
+document.addEventListener('dragover', e => {
+  const col = e.target.closest('.deal-col');
+  if (col) e.preventDefault();
+});
+document.addEventListener('drop', async e => {
+  const col = e.target.closest('.deal-col');
+  if (!col || _dragId == null) return;
+  e.preventDefault();
+  const stage = col.querySelector('.deal-col-title')?.textContent?.trim();
+  if (stage && DEAL_STAGES.includes(stage)) await changeDealStage(_dragId, stage);
+});
+
+async function changeDealStage(id, stage) {
+  const res = await fetch(`/api/deals/${id}/stage`, {
+    method: 'PATCH', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ stage })
+  });
+  if (!res.ok) { showToast('Stage update failed', 'error'); return; }
+  const idx = dealsData.findIndex(d => d.id === id);
+  if (idx !== -1) dealsData[idx].stage = stage;
+  renderDealBoard();
+}
+
+async function openDealModal(id, defaultStage) {
+  _dealInv1 = null; _dealInv2 = null;
+  document.getElementById('dealEditId').value = id || '';
+  document.getElementById('dealModalTitle').textContent = id ? 'Edit Deal' : 'Add Deal';
+  document.getElementById('dealInv1Preview').textContent = '';
+  document.getElementById('dealInv2Preview').textContent = '';
+  document.getElementById('dealInv1File').value = '';
+  document.getElementById('dealInv2File').value = '';
+
+  // Load events into select
+  const sel = document.getElementById('dealEvents');
+  try {
+    const evRes = await fetch('/api/portfolio-events');
+    const evs = await evRes.json();
+    sel.innerHTML = evs.map(ev => `<option value="${ev.id}">${esc(ev.name)}${ev.event_date ? ' ('+new Date(ev.event_date).toLocaleDateString('en-GB',{month:'short',year:'numeric'})+')' : ''}</option>`).join('');
+  } catch { sel.innerHTML = '<option>Failed to load events</option>'; }
+
+  if (id) {
+    const d = dealsData.find(x => x.id === id);
+    if (!d) return;
+    document.getElementById('dealTitle').value = d.title;
+    document.getElementById('dealStage').value = d.stage;
+    document.getElementById('dealCompany').value = d.company || '';
+    document.getElementById('dealContact').value = d.contact_name || '';
+    document.getElementById('dealCurrency').value = d.currency || 'GBP';
+    document.getElementById('dealAmount').value = d.amount;
+    document.getElementById('dealNotes').value = d.notes || '';
+    // Pre-select linked events
+    const evIds = Array.isArray(d.events) ? d.events.map(e => e.event_id).filter(Boolean) : [];
+    Array.from(sel.options).forEach(o => { o.selected = evIds.includes(parseInt(o.value)); });
+    if (d.invoice1_name) document.getElementById('dealInv1Preview').textContent = `Current: ${d.invoice1_name}`;
+    if (d.invoice2_name) document.getElementById('dealInv2Preview').textContent = `Current: ${d.invoice2_name}`;
+  } else {
+    document.getElementById('dealTitle').value = '';
+    document.getElementById('dealStage').value = defaultStage || 'Prospect';
+    document.getElementById('dealCompany').value = '';
+    document.getElementById('dealContact').value = '';
+    document.getElementById('dealCurrency').value = 'GBP';
+    document.getElementById('dealAmount').value = '';
+    document.getElementById('dealNotes').value = '';
+    Array.from(sel.options).forEach(o => o.selected = false);
+  }
+  updateDealSplitPreview();
+  sel.addEventListener('change', updateDealSplitPreview);
+  document.getElementById('dealAmount').addEventListener('input', updateDealSplitPreview);
+  openModal('dealModal');
+}
+
+function updateDealSplitPreview() {
+  const sel = document.getElementById('dealEvents');
+  const selected = Array.from(sel.selectedOptions);
+  const amount = parseFloat(document.getElementById('dealAmount').value) || 0;
+  const sym = { GBP:'£', USD:'$', AED:'AED ', PHP:'₱', EUR:'€' }[document.getElementById('dealCurrency')?.value] || '';
+  const preview = document.getElementById('dealSplitPreview');
+  if (selected.length > 1 && amount > 0) {
+    const each = amount / selected.length;
+    preview.textContent = `${sym}${fmt(each)} allocated to each of ${selected.length} events`;
+  } else if (selected.length === 1 && amount > 0) {
+    preview.textContent = `${sym}${fmt(amount)} allocated to ${selected[0].text}`;
+  } else {
+    preview.textContent = '';
+  }
+}
+
+function dealFilePreview(n, input) {
+  const file = input.files[0];
+  const previewEl = document.getElementById(`dealInv${n}Preview`);
+  if (!file) { previewEl.textContent = ''; return; }
+  if (file.size > 8 * 1024 * 1024) { showToast('File must be under 8 MB', 'error'); input.value = ''; return; }
+  previewEl.textContent = `Selected: ${file.name}`;
+  const reader = new FileReader();
+  reader.onload = e => {
+    const base64 = e.target.result.split(',')[1];
+    if (n === 1) _dealInv1 = { name: file.name, data: base64 };
+    else _dealInv2 = { name: file.name, data: base64 };
+  };
+  reader.readAsDataURL(file);
+}
+
+async function saveDeal() {
+  const id = document.getElementById('dealEditId').value;
+  const title = document.getElementById('dealTitle').value.trim();
+  if (!title) { showToast('Deal title is required', 'error'); return; }
+  const amount = parseFloat(document.getElementById('dealAmount').value);
+  if (isNaN(amount) || amount < 0) { showToast('Enter a valid amount', 'error'); return; }
+  const sel = document.getElementById('dealEvents');
+  const event_ids = Array.from(sel.selectedOptions).map(o => parseInt(o.value)).filter(Boolean);
+
+  const body = {
+    title, company: document.getElementById('dealCompany').value.trim(),
+    contact_name: document.getElementById('dealContact').value.trim(),
+    currency: document.getElementById('dealCurrency').value,
+    amount, stage: document.getElementById('dealStage').value,
+    notes: document.getElementById('dealNotes').value.trim(),
+    event_ids
+  };
+  if (_dealInv1) { body.invoice1_name = _dealInv1.name; body.invoice1_data = _dealInv1.data; }
+  if (_dealInv2) { body.invoice2_name = _dealInv2.name; body.invoice2_data = _dealInv2.data; }
+
+  const method = id ? 'PUT' : 'POST';
+  const url = id ? `/api/deals/${id}` : '/api/deals';
+  const res = await fetch(url, { method, headers: {'Content-Type':'application/json'}, body: JSON.stringify(body) });
+  if (!res.ok) { const e = await res.json(); showToast(e.error || 'Save failed', 'error'); return; }
+  showToast(id ? 'Deal updated' : 'Deal added', 'success');
+  closeModal('dealModal');
+  loadDeals();
+  loadPortfolio(); // refresh portfolio revenue totals
+}
+
+async function deleteDeal(id) {
+  if (!confirm('Delete this deal?')) return;
+  const res = await fetch(`/api/deals/${id}`, { method: 'DELETE' });
+  if (!res.ok) { showToast('Delete failed', 'error'); return; }
+  showToast('Deal deleted', 'success');
+  loadDeals();
+  loadPortfolio();
 }

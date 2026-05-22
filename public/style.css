@@ -1942,3 +1942,142 @@ tr.hotel-row-partial:hover td {
   border-color: var(--primary);
   box-shadow: 0 0 0 3px rgba(129,140,248,0.15), 0 0 12px rgba(99,102,241,0.2);
 }
+
+/* ── Subscriptions ─────────────────────────────────────────────────────────── */
+.sub-inactive { opacity: 0.5; }
+.sub-inactive td { text-decoration: line-through; }
+
+/* ── Portfolio ─────────────────────────────────────────────────────────────── */
+.port-card {
+  background: var(--bg-2);
+  border: 1.5px solid var(--border);
+  border-radius: 14px;
+  padding: 18px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  transition: box-shadow .15s;
+}
+.port-card:hover { box-shadow: 0 4px 20px rgba(0,0,0,.08); }
+.port-card-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; }
+.port-card-title { font-weight: 700; font-size: 1rem; color: var(--text); }
+.port-card-meta { display: flex; gap: 10px; flex-wrap: wrap; font-size: 0.78rem; color: var(--muted); }
+.port-card-stats { display: flex; gap: 12px; }
+.port-stat { flex: 1; background: var(--bg); border-radius: 10px; padding: 10px 14px; }
+.port-stat-label { font-size: 0.72rem; color: var(--muted); margin-bottom: 4px; }
+.port-stat-val { font-size: 1.1rem; font-weight: 700; color: var(--text); }
+.port-stat--green { color: var(--success) !important; }
+.port-card-notes { font-size: 0.8rem; color: var(--muted); border-top: 1px solid var(--border); padding-top: 8px; }
+
+/* ── Deal Tracker ──────────────────────────────────────────────────────────── */
+.deal-col {
+  flex: 0 0 220px;
+  min-width: 200px;
+  background: var(--bg-2);
+  border-radius: 14px;
+  border: 1.5px solid var(--border);
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  max-height: calc(100vh - 200px);
+}
+.deal-col-hd {
+  padding: 12px 14px 8px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: var(--bg-2);
+  border-radius: 14px 14px 0 0;
+}
+.deal-col-title { font-weight: 700; font-size: 0.85rem; color: var(--text); }
+.deal-col-count {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 20px;
+  padding: 1px 8px;
+  font-size: 0.72rem;
+  color: var(--muted);
+  font-weight: 600;
+}
+.deal-col-total {
+  padding: 0 14px 8px;
+  font-size: 0.72rem;
+  color: var(--muted);
+  border-bottom: 1px solid var(--border);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.deal-col-cards {
+  flex: 1;
+  overflow-y: auto;
+  padding: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.deal-add-btn {
+  margin: 8px;
+  padding: 7px;
+  background: none;
+  border: 1.5px dashed var(--border);
+  border-radius: 9px;
+  color: var(--muted);
+  font-size: 0.8rem;
+  cursor: pointer;
+  transition: background .12s;
+}
+.deal-add-btn:hover { background: var(--bg); color: var(--text); }
+
+.deal-card {
+  background: var(--bg);
+  border: 1.5px solid var(--border);
+  border-radius: 10px;
+  padding: 12px;
+  cursor: grab;
+  transition: box-shadow .12s, transform .12s;
+}
+.deal-card:hover { box-shadow: 0 4px 16px rgba(0,0,0,.1); transform: translateY(-1px); }
+.deal-card.dragging { opacity: .5; cursor: grabbing; }
+.deal-card-title { font-weight: 600; font-size: 0.85rem; color: var(--text); margin-bottom: 2px; }
+.deal-card-company { font-size: 0.75rem; color: var(--muted); margin-bottom: 4px; }
+.deal-card-amount { font-weight: 700; font-size: 1rem; color: var(--primary); margin-bottom: 4px; }
+.deal-card-events { display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 4px; }
+.deal-event-tag {
+  background: var(--bg-2);
+  border: 1px solid var(--border);
+  border-radius: 20px;
+  padding: 1px 7px;
+  font-size: 0.68rem;
+  color: var(--muted);
+}
+.deal-card-invs { display: flex; gap: 6px; margin-bottom: 4px; }
+.deal-inv-link {
+  font-size: 0.72rem;
+  color: var(--primary);
+  text-decoration: none;
+  background: rgba(99,102,241,.08);
+  border-radius: 6px;
+  padding: 2px 7px;
+}
+.deal-inv-link:hover { text-decoration: underline; }
+.deal-card-footer { display: flex; align-items: center; justify-content: space-between; margin-top: 6px; }
+.deal-stage-chip {
+  font-size: 0.68rem;
+  font-weight: 700;
+  border-radius: 20px;
+  padding: 2px 8px;
+  letter-spacing: .03em;
+}
+.deal-stage-select-wrap { margin-top: 6px; }
+.deal-stage-sel {
+  width: 100%;
+  font-size: 0.72rem;
+  padding: 4px 6px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg-2);
+  color: var(--text);
+  font-family: inherit;
+  cursor: pointer;
+}
