@@ -3025,6 +3025,7 @@ function renderPortfolioGrid() {
         </div>
       </div>
       ${ev.notes ? `<div class="port-card-notes">${esc(ev.notes)}</div>` : ''}
+      ${ev.companies ? `<div class="port-card-companies"><span style="font-size:0.72rem;color:var(--muted)">Companies: </span>${esc(ev.companies)}</div>` : ''}
     </div>`;
   }).join('');
 }
@@ -3078,97 +3079,206 @@ async function deletePortfolioEvent(id) {
 
 const DEAL_STAGES = ['Prospect','Qualified','Proposal','Negotiation','Won','Lost'];
 const DEAL_STAGE_COLOR = { Prospect:'#64748b', Qualified:'#7c3aed', Proposal:'#2563eb', Negotiation:'#d97706', Won:'#16a34a', Lost:'#dc2626' };
+const DEAL_VAT_QUARTERS = {
+  Q1: [11, 12, 1],   // Nov, Dec, Jan
+  Q2: [2, 3, 4],     // Feb, Mar, Apr
+  Q3: [5, 6, 7],     // May, Jun, Jul
+  Q4: [8, 9, 10]     // Aug, Sep, Oct
+};
 let dealsData = [];
-let _dealInv1 = null; // { name, base64 }
+let _dealInv1 = null;
 let _dealInv2 = null;
+let _dealQFilter = 'all';
+let _lastInvoiceId = null;
+let _nextInvoiceNum = null;
 
 async function loadDeals() {
   try {
-    const res = await fetch('/api/deals');
-    dealsData = await res.json();
-    renderDealBoard();
+    const [dealsRes, invRes] = await Promise.all([
+      fetch('/api/deals'),
+      fetch('/api/deals/last-invoice')
+    ]);
+    dealsData = await dealsRes.json();
+    const invData = await invRes.json();
+    _lastInvoiceId = invData.id;
+    _nextInvoiceNum = invData.next_number;
+    // Update last invoice banner
+    const banner = document.getElementById('dealLastInvoice');
+    const link = document.getElementById('dealLastInvLink');
+    const nextEl = document.getElementById('dealNextInvNum');
+    if (invData.invoice_number) {
+      banner.style.display = 'flex';
+      link.textContent = invData.invoice_number;
+      link.dataset.dealId = invData.id;
+      // Build prefix + next
+      const prefix = invData.invoice_number.replace(/\d+$/, '');
+      const nextNum = invData.next_number;
+      nextEl.textContent = prefix + String(nextNum).padStart(3, '0');
+      document.getElementById('dealNextInvNum').dataset.prefix = prefix;
+      document.getElementById('dealNextInvNum').dataset.num = nextNum;
+    } else {
+      banner.style.display = 'none';
+    }
+    renderDealsTable();
   } catch { showToast('Failed to load deals', 'error'); }
 }
 
-function renderDealBoard() {
-  const q = (document.getElementById('dealSearch')?.value || '').trim().toLowerCase();
-  const filtered = q ? dealsData.filter(d =>
-    (d.title||'').toLowerCase().includes(q) ||
-    (d.company||'').toLowerCase().includes(q) ||
-    (d.contact_name||'').toLowerCase().includes(q)
-  ) : dealsData;
-
-  const board = document.getElementById('dealBoard');
-  const symMap = { GBP:'£', USD:'$', AED:'AED ', PHP:'₱', EUR:'€' };
-  board.innerHTML = DEAL_STAGES.map(stage => {
-    const cards = filtered.filter(d => d.stage === stage);
-    const total = cards.reduce((a,d) => a + (parseFloat(d.amount)||0), 0);
-    const sym = ''; // mixed currencies, just show number
-    return `<div class="deal-col">
-      <div class="deal-col-hd" style="border-top:3px solid ${DEAL_STAGE_COLOR[stage]}">
-        <span class="deal-col-title">${stage}</span>
-        <span class="deal-col-count">${cards.length}</span>
-      </div>
-      <div class="deal-col-total">${cards.length ? `${cards.map(d=>(symMap[d.currency]||'')+fmt(parseFloat(d.amount)||0)).join(' + ')}` : '—'}</div>
-      <div class="deal-col-cards">
-        ${cards.map(d => dealCardHTML(d)).join('')}
-      </div>
-      <button class="deal-add-btn" onclick="openDealModal(null,'${stage}')">+ Add</button>
-    </div>`;
-  }).join('');
-}
-
-function dealCardHTML(d) {
-  const sym = { GBP:'£', USD:'$', AED:'AED ', PHP:'₱', EUR:'€' }[d.currency] || '';
-  const evNames = Array.isArray(d.events) ? d.events.map(e => e.event_name).filter(Boolean) : [];
-  const inv1 = d.invoice1_name ? `<a class="deal-inv-link" href="/api/deals/${d.id}/invoice/1" target="_blank" title="${esc(d.invoice1_name)}">📄 Inv 1</a>` : '';
-  const inv2 = d.invoice2_name ? `<a class="deal-inv-link" href="/api/deals/${d.id}/invoice/2" target="_blank" title="${esc(d.invoice2_name)}">📄 Inv 2</a>` : '';
-  return `<div class="deal-card" draggable="true" data-id="${d.id}" ondragstart="dealDragStart(event,${d.id})" ondragend="dealDragEnd(event)">
-    <div class="deal-card-title">${esc(d.title)}</div>
-    ${d.company ? `<div class="deal-card-company">${esc(d.company)}</div>` : ''}
-    <div class="deal-card-amount">${sym}${fmt(parseFloat(d.amount)||0)}</div>
-    ${evNames.length ? `<div class="deal-card-events">${evNames.map(n=>`<span class="deal-event-tag">${esc(n.trim())}</span>`).join('')}</div>` : ''}
-    ${(inv1||inv2) ? `<div class="deal-card-invs">${inv1}${inv2}</div>` : ''}
-    <div class="deal-card-footer">
-      <span class="deal-stage-chip" style="background:${DEAL_STAGE_COLOR[d.stage]}20;color:${DEAL_STAGE_COLOR[d.stage]}">${d.stage}</span>
-      <div style="display:flex;gap:4px">
-        <button class="btn-icon" onclick="openDealModal(${d.id})" title="Edit">✏️</button>
-        <button class="btn-icon btn-icon--danger" onclick="deleteDeal(${d.id})" title="Delete">🗑️</button>
-      </div>
-    </div>
-    <div class="deal-stage-select-wrap">
-      <select class="deal-stage-sel" onchange="changeDealStage(${d.id},this.value)" title="Move to stage">
-        ${DEAL_STAGES.map(s => `<option ${s===d.stage?'selected':''}>${s}</option>`).join('')}
-      </select>
-    </div>
-  </div>`;
-}
-
-// Drag and drop
-let _dragId = null;
-function dealDragStart(e, id) { _dragId = id; e.currentTarget.classList.add('dragging'); }
-function dealDragEnd(e) { e.currentTarget.classList.remove('dragging'); _dragId = null; }
-
-document.addEventListener('dragover', e => {
-  const col = e.target.closest('.deal-col');
-  if (col) e.preventDefault();
-});
-document.addEventListener('drop', async e => {
-  const col = e.target.closest('.deal-col');
-  if (!col || _dragId == null) return;
+function scrollToLastInvoice(e) {
   e.preventDefault();
-  const stage = col.querySelector('.deal-col-title')?.textContent?.trim();
-  if (stage && DEAL_STAGES.includes(stage)) await changeDealStage(_dragId, stage);
-});
+  if (!_lastInvoiceId) return;
+  const row = document.getElementById(`deal-row-${_lastInvoiceId}`);
+  if (row) {
+    row.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    row.classList.add('deal-row-highlight');
+    setTimeout(() => row.classList.remove('deal-row-highlight'), 2000);
+  }
+}
 
-async function changeDealStage(id, stage) {
-  const res = await fetch(`/api/deals/${id}/stage`, {
-    method: 'PATCH', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ stage })
+function copyNextInvoice() {
+  const el = document.getElementById('dealNextInvNum');
+  if (!el) return;
+  navigator.clipboard.writeText(el.textContent).then(() => showToast('Copied!', 'success'));
+}
+
+function setDealQ(btn, q) {
+  _dealQFilter = q;
+  document.querySelectorAll('.deal-q-btn').forEach(b => b.classList.toggle('active', b.dataset.q === q));
+  renderDealsTable();
+}
+
+function dealPassesFilter(d) {
+  const q = _dealQFilter;
+  const search = (document.getElementById('dealSearch')?.value || '').trim().toLowerCase();
+  const stageFilter = document.getElementById('dealStageFilter')?.value || '';
+  if (search && ![(d.company||''),(d.title||''),(d.contact_name||''),(d.invoice_number||'')].some(s => s.toLowerCase().includes(search))) return false;
+  if (stageFilter && d.stage !== stageFilter) return false;
+  if (q !== 'all') {
+    const months = DEAL_VAT_QUARTERS[q];
+    const date = d.invoice_date ? new Date(d.invoice_date) : null;
+    if (!date) return false;
+    if (!months.includes(date.getMonth() + 1)) return false;
+  }
+  return true;
+}
+
+function renderDealsTable() {
+  const filtered = dealsData.filter(dealPassesFilter);
+  const tbody = document.getElementById('dealsTableBody');
+  const empty = document.getElementById('dealsEmpty');
+  const tfoot = document.getElementById('dealsTfoot');
+
+  if (!filtered.length) {
+    tbody.innerHTML = ''; tfoot.innerHTML = '';
+    empty.classList.remove('hidden');
+    renderDealTotals([], tfoot);
+    return;
+  }
+  empty.classList.add('hidden');
+
+  const symMap = { GBP:'£', USD:'$', AED:'AED ', PHP:'₱', EUR:'€' };
+  tbody.innerHTML = filtered.map(d => {
+    const sym = symMap[d.currency] || '£';
+    const invMonth = d.invoice_date ? (() => {
+      const dt = new Date(d.invoice_date);
+      const yy = String(dt.getFullYear()).slice(2);
+      const mo = dt.toLocaleDateString('en-GB',{month:'short'});
+      return `${yy}-${mo}`;
+    })() : '';
+    const invDateStr = d.invoice_date ? new Date(d.invoice_date).toLocaleDateString('en-GB',{day:'2-digit',month:'2-digit',year:'2-digit'}) : '';
+    const paidDateStr = d.paid_date ? new Date(d.paid_date).toLocaleDateString('en-GB',{day:'2-digit',month:'2-digit',year:'2-digit'}) : '';
+    const rowClass = {paid:'deal-row-paid', flagged:'deal-row-flagged', issue:'deal-row-issue', urgent:'deal-row-urgent'}[d.row_status] || '';
+    const stageChip = `<span class="deal-stage-chip" style="background:${DEAL_STAGE_COLOR[d.stage]}20;color:${DEAL_STAGE_COLOR[d.stage]}">${d.stage}</span>`;
+    const sentIcon = d.invoice_agreement_sent ? '✅' : '—';
+    const signIcon = d.signature_received ? '✅' : '—';
+    const inv1 = d.invoice1_name ? `<a class="deal-inv-link" href="/api/deals/${d.id}/invoice/1" target="_blank" title="${esc(d.invoice1_name)}">📄</a>` : '';
+    const inv2 = d.invoice2_name ? `<a class="deal-inv-link" href="/api/deals/${d.id}/invoice/2" target="_blank" title="${esc(d.invoice2_name)}">📄</a>` : '';
+    const invCell = d.invoice_number
+      ? `<span class="deal-inv-num" title="${esc(d.invoice_number)}">${esc(d.invoice_number)}</span>${inv1}${inv2}`
+      : `${inv1}${inv2}`;
+    const paidCell = d.paid_inc_vat != null
+      ? `<span class="${d.row_status === 'issue' ? 'deal-cell-issue' : ''}">${sym}${fmt(parseFloat(d.paid_inc_vat))}</span>`
+      : '—';
+    const statusCycle = ['none','paid','flagged','issue','urgent'];
+    const nextStatus = statusCycle[(statusCycle.indexOf(d.row_status || 'none') + 1) % statusCycle.length];
+    const statusIcon = {none:'⬜',paid:'🟢',flagged:'🚩',issue:'🟠',urgent:'🔴'}[d.row_status||'none'];
+    return `<tr id="deal-row-${d.id}" class="${rowClass}">
+      <td style="font-size:0.78rem;white-space:nowrap;color:var(--muted)">${invMonth}</td>
+      <td class="${d.row_status==='flagged'?'deal-company-flagged':''}"><strong>${esc(d.company||d.title)}</strong>${d.initials?` <span class="deal-initials-badge">${esc(d.initials)}</span>`:''}</td>
+      <td style="font-size:0.82rem;color:var(--muted)">${esc(d.title)}</td>
+      <td>${stageChip}</td>
+      <td style="text-align:right">${paidCell}</td>
+      <td style="text-align:right">${sym}${fmt(parseFloat(d.amount)||0)}</td>
+      <td style="text-align:right">${d.tax_vat ? sym+fmt(parseFloat(d.tax_vat)) : '—'}</td>
+      <td style="font-size:0.78rem;white-space:nowrap">${invDateStr}</td>
+      <td style="font-size:0.78rem;white-space:nowrap">${paidDateStr}</td>
+      <td style="font-size:0.78rem">${esc(d.bank||'')}</td>
+      <td style="font-size:0.75rem">${invCell}</td>
+      <td style="text-align:center">${sentIcon}</td>
+      <td style="text-align:center">${signIcon}</td>
+      <td style="text-align:center"><span class="deal-initials-badge">${esc(d.initials||'')}</span></td>
+      <td>
+        <div style="display:flex;gap:3px;align-items:center">
+          <button class="btn-icon" title="Set status: ${nextStatus}" onclick="cycleDealStatus(${d.id},'${nextStatus}')" style="font-size:1rem;line-height:1">${statusIcon}</button>
+          <button class="btn-icon" title="Edit" onclick="openDealModal(${d.id})">✏️</button>
+          <button class="btn-icon btn-icon--danger" title="Delete" onclick="deleteDeal(${d.id})">🗑️</button>
+        </div>
+      </td>
+    </tr>`;
+  }).join('');
+
+  renderDealTotals(filtered, tfoot);
+  renderDealsByInitials(filtered);
+}
+
+function renderDealTotals(filtered, tfoot) {
+  const totalPaid = filtered.reduce((a,d) => a + (parseFloat(d.paid_inc_vat)||0), 0);
+  const totalDeal = filtered.reduce((a,d) => a + (parseFloat(d.amount)||0), 0);
+  const totalTax = filtered.reduce((a,d) => a + (parseFloat(d.tax_vat)||0), 0);
+  const remaining = totalDeal - totalPaid;
+  tfoot.innerHTML = `<tr class="deal-totals-row">
+    <td colspan="4" style="font-weight:700;font-size:0.82rem">Totals (${filtered.length} deals)</td>
+    <td style="text-align:right;font-weight:700">£${fmt(totalPaid)}</td>
+    <td style="text-align:right;font-weight:700">£${fmt(totalDeal)}</td>
+    <td style="text-align:right;font-weight:700">£${fmt(totalTax)}</td>
+    <td colspan="8" style="font-size:0.8rem;color:var(--muted)">
+      Outstanding: <strong style="color:${remaining > 0 ? 'var(--danger)' : 'var(--success)'}">£${fmt(Math.abs(remaining))}</strong>
+      ${_dealQFilter !== 'all' ? `&nbsp;·&nbsp; VAT Quarter: <strong>£${fmt(totalTax)}</strong>` : ''}
+    </td>
+  </tr>`;
+  // Also update the top totals summary
+  document.getElementById('dealTotals').innerHTML = `
+    <div style="display:flex;gap:10px;flex-wrap:wrap">
+      <div class="dash-mini-card" style="flex:1;min-width:130px">
+        <div class="dash-mini-label">Total Paid</div>
+        <div class="dash-mini-value">£${fmt(totalPaid)}</div>
+      </div>
+      <div class="dash-mini-card dash-mini--green" style="flex:1;min-width:130px">
+        <div class="dash-mini-label">Total Revenue</div>
+        <div class="dash-mini-value">£${fmt(totalDeal)}</div>
+      </div>
+      <div class="dash-mini-card dash-mini--alert" style="flex:1;min-width:130px">
+        <div class="dash-mini-label">Outstanding</div>
+        <div class="dash-mini-value">£${fmt(Math.max(0,remaining))}</div>
+      </div>
+      <div class="dash-mini-card dash-mini--indigo" style="flex:1;min-width:130px">
+        <div class="dash-mini-label">VAT${_dealQFilter !== 'all' ? ' '+_dealQFilter : ' Total'}</div>
+        <div class="dash-mini-value">£${fmt(totalTax)}</div>
+      </div>
+    </div>`;
+}
+
+function renderDealsByInitials(filtered) {
+  // Build summary by initials — shown in totals if any
+}
+
+async function cycleDealStatus(id, newStatus) {
+  const res = await fetch(`/api/deals/${id}/row-status`, {
+    method: 'PATCH', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ row_status: newStatus })
   });
-  if (!res.ok) { showToast('Stage update failed', 'error'); return; }
+  if (!res.ok) { showToast('Failed', 'error'); return; }
   const idx = dealsData.findIndex(d => d.id === id);
-  if (idx !== -1) dealsData[idx].stage = stage;
-  renderDealBoard();
+  if (idx !== -1) dealsData[idx].row_status = newStatus;
+  renderDealsTable();
 }
 
 async function openDealModal(id, defaultStage) {
@@ -3192,31 +3302,50 @@ async function openDealModal(id, defaultStage) {
     const d = dealsData.find(x => x.id === id);
     if (!d) return;
     document.getElementById('dealTitle').value = d.title;
-    document.getElementById('dealStage').value = d.stage;
     document.getElementById('dealCompany').value = d.company || '';
-    document.getElementById('dealContact').value = d.contact_name || '';
+    document.getElementById('dealInitials').value = d.initials || '';
+    document.getElementById('dealStage').value = d.stage;
     document.getElementById('dealCurrency').value = d.currency || 'GBP';
     document.getElementById('dealAmount').value = d.amount;
+    document.getElementById('dealPaidIncVat').value = d.paid_inc_vat || '';
+    document.getElementById('dealTaxVat').value = d.tax_vat || '';
+    document.getElementById('dealInvoiceNumber').value = d.invoice_number || '';
+    document.getElementById('dealInvoiceDate').value = d.invoice_date ? d.invoice_date.split('T')[0] : '';
+    document.getElementById('dealPaidDate').value = d.paid_date ? d.paid_date.split('T')[0] : '';
+    document.getElementById('dealBank').value = d.bank || '';
+    document.getElementById('dealInvSent').checked = !!d.invoice_agreement_sent;
+    document.getElementById('dealSigReceived').checked = !!d.signature_received;
     document.getElementById('dealNotes').value = d.notes || '';
-    // Pre-select linked events
     const evIds = Array.isArray(d.events) ? d.events.map(e => e.event_id).filter(Boolean) : [];
     Array.from(sel.options).forEach(o => { o.selected = evIds.includes(parseInt(o.value)); });
     if (d.invoice1_name) document.getElementById('dealInv1Preview').textContent = `Current: ${d.invoice1_name}`;
     if (d.invoice2_name) document.getElementById('dealInv2Preview').textContent = `Current: ${d.invoice2_name}`;
   } else {
     document.getElementById('dealTitle').value = '';
-    document.getElementById('dealStage').value = defaultStage || 'Prospect';
     document.getElementById('dealCompany').value = '';
-    document.getElementById('dealContact').value = '';
+    document.getElementById('dealInitials').value = '';
+    document.getElementById('dealStage').value = defaultStage || 'Prospect';
     document.getElementById('dealCurrency').value = 'GBP';
     document.getElementById('dealAmount').value = '';
+    document.getElementById('dealPaidIncVat').value = '';
+    document.getElementById('dealTaxVat').value = '';
+    document.getElementById('dealInvoiceNumber').value = '';
+    document.getElementById('dealInvoiceDate').value = '';
+    document.getElementById('dealPaidDate').value = '';
+    document.getElementById('dealBank').value = '';
+    document.getElementById('dealInvSent').checked = false;
+    document.getElementById('dealSigReceived').checked = false;
     document.getElementById('dealNotes').value = '';
     Array.from(sel.options).forEach(o => o.selected = false);
   }
   updateDealSplitPreview();
-  sel.addEventListener('change', updateDealSplitPreview);
-  document.getElementById('dealAmount').addEventListener('input', updateDealSplitPreview);
   openModal('dealModal');
+}
+
+function fillNextInvoiceNumber() {
+  const el = document.getElementById('dealNextInvNum');
+  if (!el) return;
+  document.getElementById('dealInvoiceNumber').value = el.textContent;
 }
 
 function updateDealSplitPreview() {
@@ -3258,12 +3387,21 @@ async function saveDeal() {
   if (isNaN(amount) || amount < 0) { showToast('Enter a valid amount', 'error'); return; }
   const sel = document.getElementById('dealEvents');
   const event_ids = Array.from(sel.selectedOptions).map(o => parseInt(o.value)).filter(Boolean);
-
+  const paidIncVat = document.getElementById('dealPaidIncVat').value;
+  const taxVat = document.getElementById('dealTaxVat').value;
   const body = {
     title, company: document.getElementById('dealCompany').value.trim(),
-    contact_name: document.getElementById('dealContact').value.trim(),
+    contact_name: '', initials: document.getElementById('dealInitials').value.trim().toUpperCase(),
     currency: document.getElementById('dealCurrency').value,
     amount, stage: document.getElementById('dealStage').value,
+    paid_inc_vat: paidIncVat ? parseFloat(paidIncVat) : null,
+    tax_vat: taxVat ? parseFloat(taxVat) : null,
+    invoice_number: document.getElementById('dealInvoiceNumber').value.trim(),
+    invoice_date: document.getElementById('dealInvoiceDate').value || null,
+    paid_date: document.getElementById('dealPaidDate').value || null,
+    bank: document.getElementById('dealBank').value,
+    invoice_agreement_sent: document.getElementById('dealInvSent').checked,
+    signature_received: document.getElementById('dealSigReceived').checked,
     notes: document.getElementById('dealNotes').value.trim(),
     event_ids
   };
@@ -3277,7 +3415,7 @@ async function saveDeal() {
   showToast(id ? 'Deal updated' : 'Deal added', 'success');
   closeModal('dealModal');
   loadDeals();
-  loadPortfolio(); // refresh portfolio revenue totals
+  loadPortfolio();
 }
 
 async function deleteDeal(id) {

@@ -1175,25 +1175,27 @@
 </div>
 
 <!-- ══ MODAL: Deal ══ -->
+<!-- ══ MODAL: Deal ══ -->
 <div class="modal-overlay" id="dealModal">
-  <div class="modal" style="max-width:600px">
+  <div class="modal" style="max-width:660px">
     <div class="modal-header">
       <h2 id="dealModalTitle">Add Deal</h2>
       <button class="modal-close" onclick="closeModal('dealModal')">✕</button>
     </div>
     <input type="hidden" id="dealEditId">
     <div class="form-row">
+      <div class="form-group" style="flex:2"><label>Company *</label><input type="text" id="dealCompany" placeholder="Company name"></div>
+      <div class="form-group"><label>Initials</label><input type="text" id="dealInitials" placeholder="MR" maxlength="5" style="text-transform:uppercase"></div>
+    </div>
+    <div class="form-row">
       <div class="form-group" style="flex:2"><label>Deal Title *</label><input type="text" id="dealTitle" placeholder="Sponsorship – Company X"></div>
-      <div class="form-group"><label>Stage</label>
+      <div class="form-group">
+        <label>Stage</label>
         <select id="dealStage">
           <option>Prospect</option><option>Qualified</option><option>Proposal</option>
           <option>Negotiation</option><option>Won</option><option>Lost</option>
         </select>
       </div>
-    </div>
-    <div class="form-row">
-      <div class="form-group"><label>Company</label><input type="text" id="dealCompany" placeholder="Company name"></div>
-      <div class="form-group"><label>Contact</label><input type="text" id="dealContact" placeholder="Contact name"></div>
     </div>
     <div class="form-row">
       <div class="form-group">
@@ -1203,17 +1205,49 @@
           <option value="AED">AED</option><option value="PHP">PHP ₱</option><option value="EUR">EUR €</option>
         </select>
       </div>
-      <div class="form-group"><label>Amount *</label><input type="number" id="dealAmount" min="0" step="0.01" placeholder="0.00"></div>
+      <div class="form-group"><label>Deal Value *</label><input type="number" id="dealAmount" min="0" step="0.01" placeholder="0.00" oninput="updateDealSplitPreview()"></div>
+      <div class="form-group"><label>Paid inc VAT</label><input type="number" id="dealPaidIncVat" min="0" step="0.01" placeholder="0.00"></div>
+      <div class="form-group"><label>Tax/VAT</label><input type="number" id="dealTaxVat" min="0" step="0.01" placeholder="0.00"></div>
+    </div>
+    <div class="form-row">
+      <div class="form-group"><label>Invoice Number</label>
+        <div style="display:flex;gap:6px;align-items:center">
+          <input type="text" id="dealInvoiceNumber" placeholder="LPGPCONNECTCOMLTD001" style="flex:1">
+          <button type="button" class="btn btn-ghost" style="padding:6px 10px;font-size:0.78rem;white-space:nowrap" onclick="fillNextInvoiceNumber()">Use Next</button>
+        </div>
+      </div>
+      <div class="form-group"><label>Invoice Date</label><input type="date" id="dealInvoiceDate"></div>
+    </div>
+    <div class="form-row">
+      <div class="form-group"><label>Date Paid</label><input type="date" id="dealPaidDate"></div>
+      <div class="form-group">
+        <label>Bank / Payment</label>
+        <select id="dealBank">
+          <option value="">—</option>
+          <option value="HSBC">HSBC</option>
+          <option value="Stripe">Stripe</option>
+          <option value="Barclays">Barclays</option>
+          <option value="Other">Other</option>
+        </select>
+      </div>
+      <div class="form-group" style="justify-content:flex-end;align-items:flex-end;gap:14px;padding-bottom:4px">
+        <label style="display:flex;align-items:center;gap:6px;font-weight:500;cursor:pointer">
+          <input type="checkbox" id="dealInvSent"> Sent
+        </label>
+        <label style="display:flex;align-items:center;gap:6px;font-weight:500;cursor:pointer">
+          <input type="checkbox" id="dealSigReceived"> Signed
+        </label>
+      </div>
     </div>
     <div class="form-group">
       <label>Events (hold Ctrl/Cmd for multiple — amount splits equally)</label>
-      <select id="dealEvents" multiple style="min-height:80px;border:1px solid var(--border);border-radius:9px;padding:8px;background:var(--bg);color:var(--text);font-family:inherit;width:100%">
+      <select id="dealEvents" multiple style="min-height:72px;border:1px solid var(--border);border-radius:9px;padding:8px;background:var(--bg);color:var(--text);font-family:inherit;width:100%" onchange="updateDealSplitPreview()">
         <option value="">Loading events…</option>
       </select>
       <div id="dealSplitPreview" style="font-size:0.75rem;color:var(--muted);margin-top:4px"></div>
     </div>
     <div class="form-group"><label>Notes</label><textarea id="dealNotes" rows="2" placeholder="Deal notes…"></textarea></div>
-    <div class="modal-section-label" style="margin-top:16px">Invoices (PDF or Word, max 8 MB each)</div>
+    <div class="modal-section-label" style="margin-top:14px">Invoices (PDF or Word, max 8 MB each)</div>
     <div class="form-row">
       <div class="form-group">
         <label>Invoice 1</label>

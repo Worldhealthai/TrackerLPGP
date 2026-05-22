@@ -2081,3 +2081,40 @@ tr.hotel-row-partial:hover td {
   font-family: inherit;
   cursor: pointer;
 }
+
+/* ── Deal Tracker Table ───────────────────────────────────────────────────── */
+.deal-q-filters { display: flex; gap: 4px; }
+.deal-q-btn {
+  padding: 6px 12px; border-radius: 8px; font-size: 0.8rem; font-weight: 600;
+  border: 1.5px solid var(--border); background: var(--bg-2); color: var(--muted);
+  cursor: pointer; transition: all .12s;
+}
+.deal-q-btn:hover { background: var(--bg); color: var(--text); }
+.deal-q-btn.active { background: var(--primary); color: #fff; border-color: var(--primary); }
+
+.deal-row-paid { background: rgba(22,163,74,.12) !important; }
+.deal-row-paid td { border-bottom-color: rgba(22,163,74,.2) !important; }
+.deal-row-flagged { background: rgba(234,179,8,.07) !important; }
+.deal-row-issue { background: rgba(234,88,12,.07) !important; }
+.deal-row-urgent { background: rgba(220,38,38,.12) !important; }
+.deal-row-highlight { outline: 3px solid var(--primary); outline-offset: -1px; }
+
+.deal-company-flagged { background: rgba(234,179,8,.25); border-radius: 4px; padding: 2px 4px; }
+.deal-cell-issue { color: #ea580c; font-weight: 700; }
+
+.deal-initials-badge {
+  display: inline-block; background: var(--primary); color: #fff;
+  border-radius: 20px; padding: 1px 6px; font-size: 0.68rem; font-weight: 700;
+  vertical-align: middle; margin-left: 4px;
+}
+
+.deal-inv-num {
+  font-family: monospace; font-size: 0.72rem; color: var(--text);
+  display: inline-block; max-width: 130px; overflow: hidden;
+  text-overflow: ellipsis; white-space: nowrap; vertical-align: middle;
+}
+
+.deal-totals-row { background: var(--bg-2) !important; }
+.deal-totals-row td { border-top: 2px solid var(--border) !important; padding: 10px 12px !important; }
+
+.port-card-companies { font-size: 0.75rem; color: var(--text); border-top: 1px solid var(--border); padding-top: 6px; }
