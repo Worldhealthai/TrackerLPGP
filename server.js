@@ -1420,6 +1420,20 @@ app.patch('/api/deals/:id/row-status', requireAuth, requireAdminOrManager, async
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+// PATCH /api/deals/:id/field — inline cell edit (single field update)
+app.patch('/api/deals/:id/field', requireAuth, requireAdminOrManager, async (req, res) => {
+  const ALLOWED = ['title','company','initials','stage','amount','currency','paid_inc_vat',
+    'tax_vat','invoice_number','invoice_date','paid_date','bank',
+    'invoice_agreement_sent','signature_received','notes'];
+  try {
+    const { field, value } = req.body;
+    if (!ALLOWED.includes(field)) return res.status(400).json({ error: 'Field not allowed' });
+    const { rows } = await q(`UPDATE deals SET ${field}=? WHERE id=? RETURNING id`, [value, req.params.id]);
+    if (!rows.length) return res.status(404).json({ error: 'Not found' });
+    res.json({ ok: true });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 // ─── GLOBAL ERROR HANDLER ────────────────────────────────────────────────────
 // Catches any unhandled async errors thrown in routes (e.g. DB failures)
 // eslint-disable-next-line no-unused-vars
