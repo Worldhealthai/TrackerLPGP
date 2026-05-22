@@ -3373,15 +3373,13 @@ function renderHotelSummary() {
 
   const byCur = {};
   yearData.forEach(r => {
-    const c = r.paid_currency || 'USD';
+    const c = r.currency || r.paid_currency || 'USD';
     byCur[c] = byCur[c] || { paid: 0, av: 0, cost: 0 };
     if (r.paid_amount != null) byCur[c].paid += parseFloat(r.paid_amount) || 0;
     if (r.av_amount != null && r.av_billing !== 'included') {
-      const ac = r.av_currency || 'USD';
-      byCur[ac] = byCur[ac] || { paid: 0, av: 0, cost: 0 };
-      byCur[ac].av += parseFloat(r.av_amount) || 0;
+      byCur[c].av += parseFloat(r.av_amount) || 0;
     }
-    // Accumulate cost (from text cost field) per paid_currency
+    // Accumulate cost (from text cost field) per row currency
     const costNum = parseCost(r.cost);
     if (costNum > 0) byCur[c].cost += costNum;
   });
@@ -3460,8 +3458,9 @@ function renderHotelTable() {
 
   tbody.innerHTML = filtered.map(r => {
     const rowClass = r.status === 'paid' ? 'hotel-row-paid' : r.status === 'partial' ? 'hotel-row-partial' : '';
-    const avSym   = hotelCurrencySymbol(r.av_currency || 'USD');
-    const paidSym = hotelCurrencySymbol(r.paid_currency || 'USD');
+    const rowCur  = r.currency || r.paid_currency || 'USD';
+    const avSym   = hotelCurrencySymbol(rowCur);
+    const paidSym = hotelCurrencySymbol(rowCur);
 
     function cellText(field, val, style='') {
       const display = val != null && val !== '' ? esc(String(val)) : '<span class="ht-empty">—</span>';
@@ -3498,7 +3497,7 @@ function renderHotelTable() {
       ${cellText('event_name', r.event_name, 'font-weight:700')}
       ${cellText('hotel', r.hotel||'')}
       ${cellText('cost', r.cost||'')}
-      ${cellCur('av_currency', r.av_currency)}
+      ${cellCur('currency', r.currency || r.paid_currency || 'USD')}
       ${cellNum('av_amount', r.av_amount)}
       <td class="ht-cell ht-cur-sel" data-id="${r.id}" data-field="av_billing" data-val="${r.av_billing||'separate'}">
         <select class="ht-select" onchange="htPatchField(${r.id},'av_billing',this.value)" onclick="event.stopPropagation()">
@@ -3506,7 +3505,6 @@ function renderHotelTable() {
           <option value="included"${r.av_billing==='included'?' selected':''}>Incl.</option>
         </select>
       </td>
-      ${cellCur('paid_currency', r.paid_currency)}
       ${cellNum('paid_amount', r.paid_amount, 'font-weight:600')}
       <td class="ht-cell ht-cur-sel" data-id="${r.id}" data-field="status">
         <select class="ht-select ht-status-sel" onchange="htPatchField(${r.id},'status',this.value);htUpdateRowClass(${r.id},this.value)" onclick="event.stopPropagation()">
@@ -3538,10 +3536,9 @@ function openHotelModal(id) {
   document.getElementById('hotelHotelName').value  = r ? (r.hotel || '') : '';
   document.getElementById('hotelCost').value        = r ? (r.cost || '') : '';
   document.getElementById('hotelStatus').value      = r ? r.status : 'pending';
-  document.getElementById('hotelAvCurrency').value  = r ? (r.av_currency || 'USD') : 'USD';
+  document.getElementById('hotelRowCurrency').value = r ? (r.currency || r.paid_currency || 'USD') : 'USD';
   document.getElementById('hotelAvAmount').value    = r && r.av_amount != null ? r.av_amount : '';
   document.getElementById('hotelAvBilling').value   = r ? (r.av_billing || 'separate') : 'separate';
-  document.getElementById('hotelPaidCurrency').value= r ? (r.paid_currency || 'USD') : 'USD';
   document.getElementById('hotelPaidAmount').value  = r && r.paid_amount != null ? r.paid_amount : '';
   document.getElementById('hotelStaffHotel').value  = r && r.staff_hotel != null ? r.staff_hotel : '';
   document.getElementById('hotelFlights').value     = r && r.flights    != null ? r.flights    : '';
@@ -3563,16 +3560,14 @@ async function saveHotelExpense() {
     hotel:         document.getElementById('hotelHotelName').value.trim(),
     cost:          document.getElementById('hotelCost').value.trim(),
     status:        document.getElementById('hotelStatus').value,
-    av_currency:   document.getElementById('hotelAvCurrency').value,
+    currency:      document.getElementById('hotelRowCurrency').value,
     av_amount:     document.getElementById('hotelAvAmount').value || null,
     av_billing:    document.getElementById('hotelAvBilling').value,
-    paid_currency: document.getElementById('hotelPaidCurrency').value,
     paid_amount:   document.getElementById('hotelPaidAmount').value || null,
     staff_hotel:    document.getElementById('hotelStaffHotel').value || null,
     flights:        document.getElementById('hotelFlights').value || null,
     printing:       document.getElementById('hotelPrinting').value || null,
     notes:          document.getElementById('hotelNotes').value.trim(),
-    total_cost_num: document.getElementById('hotelTotalCostNum').value || null,
     event_year:     document.getElementById('hotelEventYear').value || null
   };
   if (!payload.event_name) { showToast('Event name is required', 'error'); return; }
@@ -3634,7 +3629,7 @@ async function htPatchField(id, field, value) {
     const idx = hotelData.findIndex(r => r.id === id);
     if (idx !== -1) hotelData[idx] = updated;
     renderHotelSummary();
-    if (field === 'cost' || field === 'paid_amount' || field === 'paid_currency') {
+    if (field === 'cost' || field === 'paid_amount' || field === 'currency') {
       renderHotelTable();
     }
   } catch { showToast('Save failed', 'error'); }
@@ -4149,7 +4144,7 @@ function renderDealsTable() {
 
     // Paid cell: orange background if partial payment
     const paidDisplay = hasPaid ? `${sym}${fmt(paidAmt)}` : '<span style="color:var(--muted)">—</span>';
-    const paidExtra = `style="text-align:right${isPartial ? ';background:rgba(234,88,12,.28)' : ''}"`;
+    const paidExtra = `class="deal-num" style="text-align:right${isPartial ? ';background:rgba(234,88,12,.28)' : ''}"`;
 
     // Notes: truncated display
     const notesDisplay = d.notes
@@ -4163,8 +4158,8 @@ function renderDealsTable() {
       ${ec('invoice_date','date',d.invoice_date||'', `<span class="deal-month-disp">${invMonth||'<span style="color:var(--muted)">—</span>'}</span>`)}
       <td class="deal-cell-company${coHl?' deal-cell-orange':''}" data-id="${d.id}" data-hlkey="${coHlKey}" onclick="dealCompanyClick(event,${d.id},this)" title="Click to open deal · Shift+click to highlight"><strong class="deal-co-link">${esc(d.company||d.title)}</strong>${d.initials?` <span class="deal-initials-badge">${esc(d.initials)}</span>`:''}</td>
       ${ec('paid_inc_vat','number',d.paid_inc_vat??'', paidDisplay, paidExtra)}
-      ${ec('amount','number',d.amount||0, `${sym}${fmt(dealAmt)}`, 'style="text-align:right"')}
-      ${ec('tax_vat','number',d.tax_vat??'', d.tax_vat ? `${sym}${fmt(parseFloat(d.tax_vat))}` : '<span style="color:var(--muted)">—</span>', 'style="text-align:right"')}
+      ${ec('amount','number',d.amount||0, `${sym}${fmt(dealAmt)}`, 'class="deal-num" style="text-align:right"')}
+      ${ec('tax_vat','number',d.tax_vat??'', d.tax_vat ? `${sym}${fmt(parseFloat(d.tax_vat))}` : '<span style="color:var(--muted)">—</span>', 'class="deal-num" style="text-align:right"')}
       ${ec('invoice_date','date',d.invoice_date||'', `<span style="font-size:0.78rem">${invDateStr||'<span style="color:var(--muted)">—</span>'}</span>`)}
       ${ec('bank','select-bank',d.bank||'', `<span style="font-size:0.78rem">${esc(d.bank||'')||'<span style="color:var(--muted)">—</span>'}</span>`)}
       ${ec('invoice_number','text',d.invoice_number||'', `<span style="font-family:monospace;font-size:0.72rem">${esc(d.invoice_number||'')}</span>${inv1}${inv2}`)}
