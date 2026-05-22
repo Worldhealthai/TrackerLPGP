@@ -12,6 +12,41 @@ const MONTHS = ['','January','February','March','April','May','June',
 function currencySymbol(c) { return c === 'AED' ? 'AED ' : '£'; }
 function fmtMoney(amount, currency) { return currencySymbol(currency) + Number(amount || 0).toLocaleString('en-GB', {minimumFractionDigits:2}); }
 
+// ─── THEME ───────────────────────────────────────────────────────────────────
+(function applyStoredTheme() {
+  const saved = localStorage.getItem('emptracker-theme');
+  if (saved === 'dark') {
+    document.documentElement.setAttribute('data-theme', 'dark');
+    // update button once DOM is ready
+    document.addEventListener('DOMContentLoaded', () => _updateThemeBtn('dark'));
+  }
+})();
+
+function toggleTheme() {
+  const current = document.documentElement.getAttribute('data-theme');
+  const next = current === 'dark' ? 'light' : 'dark';
+  if (next === 'dark') {
+    document.documentElement.setAttribute('data-theme', 'dark');
+  } else {
+    document.documentElement.removeAttribute('data-theme');
+  }
+  localStorage.setItem('emptracker-theme', next);
+  _updateThemeBtn(next);
+}
+
+function _updateThemeBtn(theme) {
+  const icon  = document.getElementById('themeToggleIcon');
+  const label = document.getElementById('themeToggleLabel');
+  if (!icon || !label) return;
+  if (theme === 'dark') {
+    icon.textContent  = '☀️';
+    label.textContent = 'Light Mode';
+  } else {
+    icon.textContent  = '🌙';
+    label.textContent = 'Dark Mode';
+  }
+}
+
 // ─── INIT ─────────────────────────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', async () => {
   const res = await fetch('/api/me');

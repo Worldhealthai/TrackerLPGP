@@ -7,6 +7,7 @@
   <link rel="stylesheet" href="style.css">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <script>if (localStorage.getItem('emptracker-theme') === 'dark') document.documentElement.setAttribute('data-theme','dark');</script>
 </head>
 <body>
   <div class="login-wrap">
@@ -40,37 +41,6 @@
       </p>
     </div>
   </div>
-
-  <script>
-    document.getElementById('loginForm').addEventListener('submit', async e => {
-      e.preventDefault();
-      const btn = e.target.querySelector('button');
-      const err = document.getElementById('loginError');
-      err.classList.add('hidden');
-      btn.textContent = 'Signing in…';
-      btn.disabled = true;
-
-      const res = await fetch('/api/login', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          username: document.getElementById('username').value,
-          password: document.getElementById('password').value
-        })
-      });
-      const data = await res.json();
-      if (res.ok) {
-        window.location.href = '/';
-      } else {
-        err.textContent = data.error;
-        err.classList.remove('hidden');
-        btn.textContent = 'Sign In →';
-        btn.disabled = false;
-      }
-    });
-  </script>
-</body>
-</html>
 
   <script>
     document.getElementById('loginForm').addEventListener('submit', async e => {

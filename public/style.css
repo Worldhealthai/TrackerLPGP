@@ -1336,3 +1336,288 @@ tr.hotel-row-partial td {
 tr.hotel-row-partial:hover td {
   background: rgba(217,119,6,0.09) !important;
 }
+
+/* ══════════════════════════════════════════
+   THEME TOGGLE BUTTON
+══════════════════════════════════════════ */
+.theme-toggle-btn {
+  display: flex; align-items: center; gap: 10px;
+  width: 100%; padding: 10px 14px; margin-bottom: 8px;
+  background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1);
+  border-radius: 10px; color: #a8b3d8; font-size: 0.82rem; font-weight: 600;
+  cursor: pointer; transition: all 0.2s; letter-spacing: 0.2px;
+  font-family: 'Inter', sans-serif;
+}
+.theme-toggle-btn:hover { background: rgba(255,255,255,0.09); color: #fff; border-color: rgba(255,255,255,0.18); }
+.theme-toggle-btn span:first-child { font-size: 1rem; }
+
+/* smooth theme transition */
+*, *::before, *::after { transition: background-color 0.2s ease, border-color 0.2s ease, color 0.15s ease; }
+/* but don't slow down transforms/opacity/shadows on interactive elements */
+.btn, .nav-item, .dash-mini-card, .sc-card, .salary-overview-card { transition: all 0.18s ease !important; }
+
+/* ══════════════════════════════════════════
+   DARK THEME
+══════════════════════════════════════════ */
+[data-theme="dark"] {
+  --primary:        #818cf8;
+  --primary-dark:   #6366f1;
+  --primary-dim:    rgba(129,140,248,0.14);
+  --primary-light:  rgba(129,140,248,0.1);
+  --accent:         #22d3ee;
+  --accent-dim:     rgba(34,211,238,0.12);
+  --danger:         #f87171;
+  --danger-light:   rgba(248,113,113,0.1);
+  --warning:        #fbbf24;
+  --warning-light:  rgba(251,191,36,0.1);
+  --success:        #34d399;
+  --success-light:  rgba(52,211,153,0.1);
+  --info:           #38bdf8;
+  --info-light:     rgba(56,189,248,0.1);
+
+  --bg:             #070c1b;
+  --bg-2:           #0a1020;
+  --card:           #0e1530;
+  --card-raised:    #111a36;
+  --border:         rgba(129,140,248,0.18);
+  --border-light:   rgba(129,140,248,0.09);
+  --border-white:   rgba(255,255,255,0.06);
+
+  --text:           #e2e8ff;
+  --text-2:         #b4c0e8;
+  --muted:          #6b7ab8;
+  --muted-light:    #4a5580;
+
+  --sidebar-bg:     #04060f;
+
+  --shadow-sm:  0 1px 4px rgba(0,0,0,0.5);
+  --shadow:     0 4px 20px rgba(0,0,0,0.6), 0 0 0 1px rgba(129,140,248,0.08);
+  --shadow-lg:  0 24px 64px rgba(0,0,0,0.7), 0 0 40px rgba(99,102,241,0.1);
+  --shadow-card: 0 2px 12px rgba(0,0,0,0.5), 0 0 0 1px rgba(129,140,248,0.1);
+
+  --glow-p: 0 0 24px rgba(129,140,248,0.4);
+  --glow-a: 0 0 24px rgba(34,211,238,0.35);
+  --glow-g: 0 0 20px rgba(52,211,153,0.35);
+  --glow-r: 0 0 20px rgba(248,113,113,0.35);
+}
+
+/* Dark body background — deep space with glowing grid */
+[data-theme="dark"] body {
+  background: var(--bg);
+  background-image:
+    radial-gradient(ellipse at 15% 40%, rgba(99,102,241,0.07) 0%, transparent 55%),
+    radial-gradient(ellipse at 85% 10%, rgba(139,92,246,0.05) 0%, transparent 50%),
+    linear-gradient(rgba(99,102,241,0.07) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(99,102,241,0.07) 1px, transparent 1px);
+  background-size: 100% 100%, 100% 100%, 44px 44px, 44px 44px;
+  background-attachment: fixed;
+}
+
+/* Dark cards — glass effect with glow border */
+[data-theme="dark"] .card,
+[data-theme="dark"] .sc-card,
+[data-theme="dark"] .salary-overview-card,
+[data-theme="dark"] .employee-card {
+  background: var(--card);
+  border-color: var(--border);
+  box-shadow: var(--shadow-card);
+}
+[data-theme="dark"] .card:hover,
+[data-theme="dark"] .sc-card:hover {
+  box-shadow: 0 4px 24px rgba(0,0,0,0.6), 0 0 0 1px rgba(129,140,248,0.22), 0 0 20px rgba(99,102,241,0.08);
+}
+
+/* Dark inputs */
+[data-theme="dark"] .form-group input,
+[data-theme="dark"] .form-group select,
+[data-theme="dark"] .form-group textarea {
+  background: rgba(255,255,255,0.04);
+  border-color: rgba(129,140,248,0.2);
+  color: var(--text);
+}
+[data-theme="dark"] .form-group input:focus,
+[data-theme="dark"] .form-group select:focus,
+[data-theme="dark"] .form-group textarea:focus {
+  background: rgba(129,140,248,0.07);
+  border-color: var(--primary);
+  box-shadow: 0 0 0 3px rgba(129,140,248,0.15), 0 0 12px rgba(99,102,241,0.2);
+}
+[data-theme="dark"] .form-group input::placeholder { color: var(--muted-light); }
+[data-theme="dark"] select option { background: #0e1530; color: var(--text); }
+
+/* Dark table */
+[data-theme="dark"] table thead th {
+  background: rgba(129,140,248,0.06);
+  border-bottom-color: var(--border);
+  color: var(--muted);
+}
+[data-theme="dark"] table tbody tr:hover td { background: rgba(129,140,248,0.05); }
+[data-theme="dark"] table tbody td { border-bottom-color: var(--border-light); color: var(--text); }
+
+/* Dark filter bar */
+[data-theme="dark"] .filter-bar {
+  background: var(--card);
+  border-color: var(--border);
+  border-left-color: var(--primary);
+}
+
+/* Dark modal */
+[data-theme="dark"] .modal {
+  background: #0b1228;
+  border-color: rgba(129,140,248,0.2);
+  border-top-color: var(--primary);
+  box-shadow: 0 32px 80px rgba(0,0,0,0.8), 0 0 60px rgba(99,102,241,0.12);
+}
+[data-theme="dark"] .modal-overlay { background: rgba(4,6,15,0.75); }
+[data-theme="dark"] .modal-close { background: rgba(255,255,255,0.04); border-color: var(--border); color: var(--muted); }
+
+/* Dark hm-body panels in hotel modal */
+[data-theme="dark"] .hm-body { background: rgba(255,255,255,0.03); border-color: rgba(129,140,248,0.12); }
+
+/* Dark hero dashboard card — neon pulse */
+[data-theme="dark"] .dash-hero-card {
+  background: linear-gradient(135deg, #0d1535 0%, #111e45 50%, #0d1535 100%);
+  border-color: rgba(129,140,248,0.25);
+  box-shadow: 0 4px 32px rgba(0,0,0,0.6), inset 0 1px 0 rgba(129,140,248,0.12), 0 0 40px rgba(99,102,241,0.08);
+}
+[data-theme="dark"] .dash-hero-glow {
+  background: radial-gradient(circle at 30% 50%, rgba(99,102,241,0.25) 0%, transparent 65%);
+}
+[data-theme="dark"] .dash-hero-value { color: var(--text); text-shadow: 0 0 30px rgba(129,140,248,0.4); }
+
+/* Dark mini cards */
+[data-theme="dark"] .dash-mini-card {
+  background: var(--card);
+  border-color: var(--border);
+}
+[data-theme="dark"] .dash-mini-card:hover {
+  box-shadow: 0 8px 32px rgba(0,0,0,0.5), 0 0 24px rgba(99,102,241,0.12);
+  border-color: rgba(129,140,248,0.3);
+}
+[data-theme="dark"] .dash-mini--indigo { border-left-color: #818cf8; }
+[data-theme="dark"] .dash-mini--green  { border-left-color: #34d399; }
+[data-theme="dark"] .dash-mini--alert  { border-left-color: #fbbf24; }
+[data-theme="dark"] .dash-mini--red    { border-left-color: #f87171; }
+
+/* Dark primary button — neon glow */
+[data-theme="dark"] .btn-primary {
+  background: linear-gradient(135deg, #6366f1, #818cf8);
+  box-shadow: 0 4px 16px rgba(99,102,241,0.4);
+}
+[data-theme="dark"] .btn-primary:hover {
+  background: linear-gradient(135deg, #818cf8, #a5b4fc);
+  box-shadow: 0 4px 24px rgba(129,140,248,0.55), 0 0 40px rgba(99,102,241,0.25);
+  transform: translateY(-1px);
+}
+[data-theme="dark"] .btn-ghost {
+  background: rgba(255,255,255,0.04);
+  border-color: rgba(255,255,255,0.1);
+  color: var(--text-2);
+}
+[data-theme="dark"] .btn-ghost:hover { background: rgba(255,255,255,0.08); border-color: var(--primary); color: var(--text); }
+
+/* Dark badges */
+[data-theme="dark"] .badge-blue   { background: rgba(99,102,241,0.18); color: #a5b4fc; border-color: rgba(99,102,241,0.3); }
+[data-theme="dark"] .badge-green  { background: rgba(52,211,153,0.14); color: #6ee7b7; border-color: rgba(52,211,153,0.25); }
+[data-theme="dark"] .badge-red    { background: rgba(248,113,113,0.14); color: #fca5a5; border-color: rgba(248,113,113,0.25); }
+[data-theme="dark"] .badge-yellow { background: rgba(251,191,36,0.14); color: #fde68a; border-color: rgba(251,191,36,0.25); }
+
+/* Dark alerts */
+[data-theme="dark"] .alert-error   { background: rgba(248,113,113,0.1);  color: #fca5a5; border-color: rgba(248,113,113,0.2); }
+[data-theme="dark"] .alert-success { background: rgba(52,211,153,0.1);   color: #6ee7b7; border-color: rgba(52,211,153,0.2); }
+[data-theme="dark"] .alert-info    { background: rgba(56,189,248,0.1);   color: #7dd3fc; border-color: rgba(56,189,248,0.2); }
+
+/* Dark stat cards */
+[data-theme="dark"] .stat-card.blue   { background: rgba(99,102,241,0.12);  border-color: rgba(99,102,241,0.25); color: #a5b4fc; }
+[data-theme="dark"] .stat-card.yellow { background: rgba(251,191,36,0.1);   border-color: rgba(251,191,36,0.22); color: #fde68a; }
+[data-theme="dark"] .stat-card.red    { background: rgba(248,113,113,0.1);  border-color: rgba(248,113,113,0.22); color: #fca5a5; }
+[data-theme="dark"] .stat-card.green  { background: rgba(52,211,153,0.1);   border-color: rgba(52,211,153,0.2); color: #6ee7b7; }
+
+/* Dark salary overview card */
+[data-theme="dark"] .salary-overview-card {
+  background: var(--card);
+  border-color: var(--border);
+}
+[data-theme="dark"] .salary-overview-card:hover {
+  border-color: rgba(129,140,248,0.3);
+  box-shadow: 0 4px 24px rgba(0,0,0,0.5), 0 0 20px rgba(99,102,241,0.1);
+}
+[data-theme="dark"] .salary-overview-card.soc-gbp-total {
+  background: linear-gradient(135deg, rgba(52,211,153,0.08), rgba(52,211,153,0.04));
+  border-color: rgba(52,211,153,0.25);
+}
+
+/* Dark deduction box */
+[data-theme="dark"] .deduction-box {
+  background: rgba(129,140,248,0.07);
+  border-color: rgba(129,140,248,0.2);
+}
+
+/* Dark salary progress bar */
+[data-theme="dark"] .salary-progress-bar { background: rgba(255,255,255,0.06); border-color: var(--border); }
+
+/* Dark sc breakdown */
+[data-theme="dark"] .sc-breakdown-item { border-color: var(--border-light); }
+[data-theme="dark"] .sc-breakdown-secondary { background: rgba(255,255,255,0.03); }
+
+/* Dark hotel table rows */
+[data-theme="dark"] tr.hotel-row-paid td   { background: rgba(52,211,153,0.07) !important; }
+[data-theme="dark"] tr.hotel-row-paid:hover td { background: rgba(52,211,153,0.12) !important; }
+[data-theme="dark"] tr.hotel-row-partial td { background: rgba(251,191,36,0.07) !important; }
+[data-theme="dark"] tr.hotel-row-partial:hover td { background: rgba(251,191,36,0.11) !important; }
+
+/* Dark employee cards */
+[data-theme="dark"] .employee-card:hover {
+  border-color: rgba(129,140,248,0.3);
+  box-shadow: 0 8px 32px rgba(0,0,0,0.5), 0 0 20px rgba(99,102,241,0.1);
+}
+
+/* Dark scrollbar */
+[data-theme="dark"] ::-webkit-scrollbar-track { background: rgba(255,255,255,0.03); }
+[data-theme="dark"] ::-webkit-scrollbar-thumb { background: rgba(129,140,248,0.25); border-radius: 99px; }
+[data-theme="dark"] ::-webkit-scrollbar-thumb:hover { background: rgba(129,140,248,0.4); }
+
+/* Dark theme toggle button style */
+[data-theme="dark"] .theme-toggle-btn {
+  background: rgba(129,140,248,0.1);
+  border-color: rgba(129,140,248,0.2);
+  color: #a5b4fc;
+}
+[data-theme="dark"] .theme-toggle-btn:hover {
+  background: rgba(129,140,248,0.18);
+  border-color: rgba(129,140,248,0.4);
+  box-shadow: 0 0 16px rgba(99,102,241,0.25);
+  color: #c7d2fe;
+}
+
+/* Dark login page */
+[data-theme="dark"] .login-wrap {
+  background: var(--bg);
+  background-image:
+    radial-gradient(ellipse at 20% 50%, rgba(99,102,241,0.1) 0%, transparent 55%),
+    radial-gradient(ellipse at 80% 20%, rgba(139,92,246,0.07) 0%, transparent 50%),
+    linear-gradient(rgba(99,102,241,0.07) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(99,102,241,0.07) 1px, transparent 1px);
+  background-size: 100% 100%, 100% 100%, 44px 44px, 44px 44px;
+}
+[data-theme="dark"] .login-card {
+  background: rgba(14,21,48,0.95);
+  border-color: rgba(129,140,248,0.2);
+  box-shadow: 0 32px 80px rgba(0,0,0,0.7), 0 0 60px rgba(99,102,241,0.1);
+}
+[data-theme="dark"] .login-submit {
+  box-shadow: 0 4px 16px rgba(99,102,241,0.4);
+}
+[data-theme="dark"] .login-submit:hover {
+  box-shadow: 0 8px 28px rgba(129,140,248,0.55), 0 0 40px rgba(99,102,241,0.25);
+}
+[data-theme="dark"] .login-card input {
+  background: rgba(255,255,255,0.04);
+  border-color: rgba(129,140,248,0.2);
+  color: var(--text);
+}
+[data-theme="dark"] .login-card input:focus {
+  background: rgba(129,140,248,0.07);
+  border-color: var(--primary);
+  box-shadow: 0 0 0 3px rgba(129,140,248,0.15), 0 0 12px rgba(99,102,241,0.2);
+}
