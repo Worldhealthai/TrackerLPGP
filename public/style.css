@@ -3808,6 +3808,8 @@ tbody tr:last-child td { border-bottom: none; }
   vertical-align: bottom;
   line-height: 1.2;
   padding: 10px 8px;
+  background: var(--bg-2);
+  color: var(--text-2);
 }
 
 #dealsTable td {

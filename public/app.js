@@ -4261,6 +4261,14 @@ function dealCellClick(td) {
     if (ok) {
       const idx = dealsData.findIndex(d => d.id === id);
       if (idx !== -1) dealsData[idx][field] = newVal;
+      // Instantly update row green/white when paid amount changes
+      if (field === 'paid_inc_vat') {
+        const row = document.getElementById(`deal-row-${id}`);
+        if (row) {
+          const paid = parseFloat(newVal) || 0;
+          row.classList.toggle('deal-row-paid', paid > 0);
+        }
+      }
       renderDealsTable();
     }
   };
