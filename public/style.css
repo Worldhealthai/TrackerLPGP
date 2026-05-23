@@ -4202,30 +4202,37 @@ tbody tr:last-child td { border-bottom: none; }
 
 /* ── Revenue Intelligence: light mode overrides ── */
 :root .ri-card {
-  background: linear-gradient(145deg, #f0f2f7 0%, #eaecf5 40%, #f0f2f7 100%);
-  border-color: rgba(79,70,229,0.2);
-  box-shadow: 0 0 40px rgba(79,70,229,0.06), 0 2px 8px rgba(0,0,0,0.06);
+  background: #ffffff;
+  border: 1.5px solid rgba(79,70,229,0.22);
+  box-shadow: 0 4px 24px rgba(79,70,229,0.10), 0 1px 4px rgba(0,0,0,0.06);
 }
-:root .ri-glow { background: radial-gradient(ellipse, rgba(79,70,229,0.10) 0%, transparent 70%); }
-:root .ri-title { color: var(--text-2); }
-:root .ri-year { color: var(--muted); background: rgba(79,70,229,0.08); }
-:root .ri-donut-num { color: var(--text); }
-:root .ri-donut-label { color: var(--muted); }
-:root .ri-metric { background: rgba(79,70,229,0.05); border-color: rgba(79,70,229,0.12); }
-:root .ri-metric-label { color: var(--muted); }
-:root .ri-metric-val { color: var(--text); }
-:root .ri-winbar-wrap { background: rgba(0,0,0,0.08); }
-:root .ri-stages { border-top-color: var(--border); }
-:root .ri-stage-name { color: var(--muted); }
-:root .ri-stage-bar-wrap { background: rgba(0,0,0,0.08); }
-:root .ri-stage-amt { color: var(--muted); }
-:root .ri-evt-section { border-top-color: var(--border); }
-:root .ri-evt-section-title { color: var(--muted); }
-:root .ri-evt-search { background: var(--surface); border-color: var(--border); color: var(--text); }
-:root .ri-evt-search::placeholder { color: var(--dim); }
+:root .ri-glow { background: radial-gradient(ellipse, rgba(79,70,229,0.08) 0%, transparent 70%); }
+:root .ri-title { color: #4338ca; letter-spacing: .1em; }
+:root .ri-year { color: #4338ca; background: rgba(79,70,229,0.10); border-radius: 6px; }
+:root .ri-donut-num { color: #1e1b4b; font-weight: 800; }
+:root .ri-donut-label { color: #6366f1; font-weight: 700; }
+:root .ri-metric { background: #f5f3ff; border: 1px solid rgba(99,102,241,0.18); }
+:root .ri-metric-label { color: #6366f1; font-weight: 600; }
+:root .ri-metric-val { color: #1e1b4b; font-weight: 700; }
+:root .ri-green { color: #16a34a !important; }
+:root .ri-blue  { color: #4f46e5 !important; }
+:root .ri-winbar-wrap { background: rgba(99,102,241,0.10); }
+:root .ri-winbar-fill { background: linear-gradient(90deg, #4f46e5, #818cf8); }
+:root .ri-stages { border-top-color: rgba(99,102,241,0.15); }
+:root .ri-stage-name { color: #374151; }
+:root .ri-stage-bar-wrap { background: rgba(99,102,241,0.10); }
+:root .ri-stage-amt { color: #6b7280; }
+:root .ri-stage-count { color: #4f46e5; }
+:root .ri-evt-section { border-top-color: rgba(99,102,241,0.15); }
+:root .ri-evt-section-title { color: #6366f1; font-weight: 700; }
+:root .ri-evt-search { background: #f5f3ff; border: 1px solid rgba(99,102,241,0.2); color: #1e1b4b; }
+:root .ri-evt-search::placeholder { color: #a5b4fc; }
 :root .ri-expiry-section { border-top-color: rgba(217,119,6,0.3); }
-:root .ri-expiry-title { color: var(--warning); }
-:root .ri-expiry-row { color: var(--text-2); }
+:root .ri-expiry-title { color: #b45309; }
+:root .ri-expiry-row { color: #374151; }
+:root .ri-expiry-yellow { background: rgba(245,158,11,0.12); color: #92400e; }
+:root .ri-expiry-red    { background: rgba(239,68,68,0.12);  color: #991b1b; }
+:root .ri-expiry-badge  { font-weight: 700; }
 :root .ri-expiry-yellow { background: rgba(234,179,8,.15); color: #92400e; }
 :root .ri-expiry-red    { background: rgba(239,68,68,.15); color: #991b1b; }
 :root .ri-green { color: #15803d !important; }

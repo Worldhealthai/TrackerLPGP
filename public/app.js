@@ -2028,14 +2028,13 @@ async function loadSalaryPage() {
         </div>` : ''}
 
         <div class="sc-head">
-          <div class="sc-avatar">${initials}</div>
           <div class="sc-info">
             <div class="sc-emp-name">${esc(emp.name || '')}</div>
             ${emp.job_title || emp.department ? `<div class="sc-emp-role">${[emp.job_title, emp.department].filter(Boolean).map(s => esc(s)).join(' · ')}</div>` : ''}
             <div class="sc-emp-badges">
               <span class="badge ${typeBadge}" style="font-size:0.67rem">${typeLabel}</span>
               <span class="badge badge-grey" style="font-size:0.67rem">${cur}</span>
-              ${emp.start_date ? `<span class="sc-emp-since">${isTerminated ? 'Started' : 'Since'} ${emp.start_date}</span>` : `<span class="badge" style="background:#7f1d1d;color:#fca5a5;font-size:0.67rem;cursor:pointer" onclick="openEditEmployee(${emp.employee_id})">⚠ No start date — click to set</span>`}
+              ${emp.start_date ? `<span class="sc-emp-since">${isTerminated ? 'Started' : 'Since'} ${emp.start_date}</span>` : ''}
             </div>
           </div>
           <div class="sc-annual">
@@ -2842,13 +2841,7 @@ async function renderCalSummary(byDate, empFilter) {
     </div>`;
   });
 
-  if (!daysHtml && !remHtml) { summary.classList.add('hidden'); } else {
-    let html = '';
-    if (daysHtml) html += `<div class="cal-sum-section"><div class="cal-sum-section-title">🏖 Days Off This Month</div>${daysHtml}</div>`;
-    if (remHtml)  html += `<div class="cal-sum-section"><div class="cal-sum-section-title">🔔 Upcoming Reminders</div>${remHtml}</div>`;
-    summary.innerHTML = html;
-    summary.classList.remove('hidden');
-  }
+  summary.classList.add('hidden');
 
   // ── Upcoming panel (next 60 days) ──
   const upcoming = document.getElementById('calUpcoming');
@@ -4661,7 +4654,11 @@ function renderDealTotals(filtered, tfoot) {
 function openVatBreakdown() {
   const filtered = window._dealTotalsFiltered || [];
   const withVat = filtered.filter(d => parseFloat(d.tax_vat) > 0)
-    .sort((a,b) => parseFloat(b.tax_vat) - parseFloat(a.tax_vat));
+    .sort((a,b) => {
+      const da = a.invoice_date || '';
+      const db = b.invoice_date || '';
+      return da < db ? -1 : da > db ? 1 : 0;
+    });
   const totalTax = filtered.reduce((a,d) => a + (parseFloat(d.tax_vat)||0), 0);
 
   const rows = withVat.map(d => {
