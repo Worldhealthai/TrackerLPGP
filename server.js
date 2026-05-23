@@ -1555,6 +1555,21 @@ app.get('/api/portfolio-events', requireAuth, requireAdminOrManager, async (req,
     res.json(rows);
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
+// GET /api/portfolio-events/:id/deals — deals linked to an event with paid status
+app.get('/api/portfolio-events/:id/deals', requireAuth, requireAdminOrManager, async (req, res) => {
+  try {
+    const { rows } = await q(`
+      SELECT d.id, COALESCE(NULLIF(d.company,''),d.title) AS company,
+        de.allocated_amount AS amount, d.currency,
+        d.paid_inc_vat, d.stage
+      FROM deal_events de
+      JOIN deals d ON d.id=de.deal_id
+      WHERE de.event_id=?
+      ORDER BY d.company`, [req.params.id]);
+    res.json(rows);
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 app.post('/api/portfolio-events', requireAuth, requireAdminOrManager, async (req, res) => {
   try {
     const { name, event_date, location, notes } = req.body;

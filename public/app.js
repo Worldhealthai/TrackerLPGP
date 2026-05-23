@@ -3900,12 +3900,65 @@ function renderPortfolioGrid() {
       </div>
       ${ev.companies ? `<div class="port-card-companies"><span style="font-size:0.72rem;color:var(--muted)">Companies: </span>${esc(ev.companies)}</div>` : ''}
       ${ev.notes ? `<div class="port-card-notes">${esc(ev.notes)}</div>` : ''}
-      <div style="margin-top:10px;padding-top:10px;border-top:1px solid var(--border);display:flex;justify-content:space-between;align-items:center">
-        <span style="font-size:0.75rem;color:var(--muted)">${dealCount} deal${dealCount !== 1 ? 's' : ''} linked</span>
-        <button class="btn btn-ghost btn-sm" onclick="viewEventDeals(${ev.id},'${esc(ev.name)}')" style="font-size:0.78rem;padding:4px 10px">View Deals →</button>
+      <div style="margin-top:10px;padding-top:10px;border-top:1px solid var(--border)">
+        <button onclick="togglePortfolioDeals(this,${ev.id})" style="background:none;border:none;cursor:pointer;font-size:0.78rem;color:var(--primary);font-weight:600;padding:0;display:flex;align-items:center;gap:5px">
+          <span class="port-deal-arrow" style="display:inline-block;transition:transform .2s">▶</span>
+          ${dealCount} deal${dealCount !== 1 ? 's' : ''} linked
+        </button>
+        <div class="port-deals-list" style="display:none;margin-top:8px"></div>
       </div>
     </div>`;
   }).join('');
+}
+
+async function togglePortfolioDeals(btn, eventId) {
+  const arrow = btn.querySelector('.port-deal-arrow');
+  const list = btn.nextElementSibling;
+  const isOpen = list.style.display !== 'none';
+
+  if (isOpen) {
+    list.style.display = 'none';
+    arrow.style.transform = '';
+    return;
+  }
+
+  arrow.style.transform = 'rotate(90deg)';
+  list.style.display = 'block';
+  list.innerHTML = '<div style="font-size:0.75rem;color:var(--muted)">Loading…</div>';
+
+  try {
+    const res = await fetch(`/api/portfolio-events/${eventId}/deals`);
+    const deals = res.ok ? await res.json() : [];
+    if (!deals.length) {
+      list.innerHTML = '<div style="font-size:0.75rem;color:var(--muted)">No deals linked yet.</div>';
+      return;
+    }
+    const symMap = { GBP:'£', USD:'$', AED:'AED ', PHP:'₱', EUR:'€' };
+    list.innerHTML = deals.map(d => {
+      const sym = symMap[d.currency] || '£';
+      const paid = parseFloat(d.paid_inc_vat) || 0;
+      const amt = parseFloat(d.amount) || 0;
+      const isPaid = paid > 0;
+      const isPartial = isPaid && paid < amt;
+      const statusDot = isPaid && !isPartial
+        ? `<span style="color:#16a34a;font-size:11px;font-weight:700">● Paid</span>`
+        : isPartial
+        ? `<span style="color:#d97706;font-size:11px;font-weight:700">● Part paid</span>`
+        : `<span style="color:var(--muted);font-size:11px">○ Unpaid</span>`;
+      return `<div style="display:flex;align-items:center;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--border)">
+        <div>
+          <div style="font:600 13px/1.3 var(--font-sans);color:var(--text)">${esc(d.company)}</div>
+          <div style="margin-top:2px">${statusDot}</div>
+        </div>
+        <div style="text-align:right;flex-shrink:0">
+          <div style="font:700 13px/1 var(--font-sans);color:var(--text)">${sym}${fmt(amt)}</div>
+          ${isPaid ? `<div style="font-size:11px;color:#16a34a;margin-top:2px">paid ${sym}${fmt(paid)}</div>` : ''}
+        </div>
+      </div>`;
+    }).join('');
+  } catch {
+    list.innerHTML = '<div style="font-size:0.75rem;color:var(--negative)">Failed to load deals.</div>';
+  }
 }
 
 function viewEventDeals(eventId, eventName) {
