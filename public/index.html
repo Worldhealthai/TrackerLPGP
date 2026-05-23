@@ -491,8 +491,19 @@
 
       <!-- ══ SUBSCRIPTIONS ══ -->
       <div class="page" id="page-subscriptions">
-        <div class="filter-bar" style="align-items:center">
-          <button class="btn btn-primary" style="margin-left:auto" onclick="openSubModal()">+ Add Subscription</button>
+        <div class="deal-filter-card deal-filter-actions" style="margin-bottom:16px">
+          <div class="deal-q-filters" id="subCycleFilters">
+            <button class="deal-q-btn active" data-cycle="all" onclick="setSubFilter('all')">All</button>
+            <button class="deal-q-btn" data-cycle="monthly" onclick="setSubFilter('monthly')">Monthly</button>
+            <button class="deal-q-btn" data-cycle="quarterly" onclick="setSubFilter('quarterly')">Quarterly</button>
+            <button class="deal-q-btn" data-cycle="annually" onclick="setSubFilter('annually')">Annually</button>
+            <button class="deal-q-btn" data-cycle="one_off" onclick="setSubFilter('one_off')">One-Off</button>
+          </div>
+          <div class="deal-q-sep"></div>
+          <label style="display:flex;align-items:center;gap:6px;font-size:13px;color:var(--muted);cursor:pointer">
+            <input type="checkbox" id="subActiveOnly" onchange="renderSubTable()" checked> Active only
+          </label>
+          <button class="btn btn-primary deal-add-btn" onclick="openSubModal()">+ Add Subscription</button>
         </div>
         <div id="subTotals" style="margin-bottom:20px"></div>
         <div class="card" style="padding:0;overflow:hidden">

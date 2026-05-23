@@ -3714,6 +3714,13 @@ async function reviewHolidayRequest(id, action) {
 const SUB_FX = { GBP: 1, USD: 0.79, AED: 1/4.67, PHP: 0.014 };
 const CYCLE_MONTHS = { monthly: 1, quarterly: 3, annually: 12, one_off: 0 };
 let subsData = [];
+let _subCycleFilter = 'all';
+
+function setSubFilter(cycle) {
+  _subCycleFilter = cycle;
+  document.querySelectorAll('#subCycleFilters .deal-q-btn').forEach(b => b.classList.toggle('active', b.dataset.cycle === cycle));
+  renderSubTable();
+}
 
 function subToGBPPerMonth(s) {
   const rate = SUB_FX[s.currency] || 1;
@@ -3732,7 +3739,10 @@ async function loadSubscriptions() {
 }
 
 function renderSubTotals() {
-  const active = subsData.filter(s => s.active);
+  const activeOnlyChk = document.getElementById('subActiveOnly');
+  const activeOnly = !activeOnlyChk || activeOnlyChk.checked;
+  let filtered = _subCycleFilter === 'all' ? subsData : subsData.filter(s => s.billing_cycle === _subCycleFilter);
+  const active = activeOnly ? filtered.filter(s => s.active) : filtered;
   const perMonth = active.reduce((a, s) => a + subToGBPPerMonth(s), 0);
   const perYear = active.reduce((a, s) => {
     const rate = SUB_FX[s.currency] || 1;
@@ -4214,7 +4224,7 @@ function renderDealsTable() {
     const finalRowClass = isFlagged ? 'deal-row-flagged' : rowClass;
     return `<tr id="deal-row-${d.id}" class="${finalRowClass}">
       <td style="text-align:center;padding:0 2px"><button onclick="event.stopPropagation();dealToggleFlag(${d.id})" title="Flag row" style="background:none;border:none;cursor:pointer;font-size:15px;color:${isFlagged?'#f59e0b':'var(--border)'};padding:4px;line-height:1">⚑</button></td>
-      ${ec('invoice_date','date',d.invoice_date||'', `<span class="deal-month-disp">${invMonth||'<span style="color:var(--muted)">—</span>'}</span>`)}
+      <td><span class="deal-month-disp">${invMonth||'<span style="color:var(--muted)">—</span>'}</span></td>
       <td class="deal-cell-company${coHl?' deal-cell-orange':''}" data-id="${d.id}" data-hlkey="${coHlKey}" onclick="dealCompanyClick(event,${d.id},this)" title="Click to open deal · Shift+click to highlight"><strong class="deal-co-link">${esc(d.company||d.title)}</strong></td>
       ${ec('paid_inc_vat','number',d.paid_inc_vat??'', paidDisplay, `class="deal-num dt-r" oncontextmenu="dealCellContextMenu(event,this)"${isPartial?' style="background:rgba(234,88,12,.28)"':''}`)}
       ${ec('amount','number',d.amount||0, `${sym}${fmt(dealAmt)}`, 'class="deal-num dt-r"')}
