@@ -3770,25 +3770,45 @@ function renderSubTable() {
   const tbody = document.getElementById('subTableBody');
   const empty = document.getElementById('subEmpty');
   const count = document.getElementById('subCount');
-  count.textContent = `${subsData.length} subscription${subsData.length !== 1 ? 's' : ''}`;
-  if (!subsData.length) { tbody.innerHTML = ''; empty.classList.remove('hidden'); return; }
+  const activeOnlyChk = document.getElementById('subActiveOnly');
+  const activeOnly = !activeOnlyChk || activeOnlyChk.checked;
+  let filtered = _subCycleFilter === 'all' ? subsData : subsData.filter(s => s.billing_cycle === _subCycleFilter);
+  if (activeOnly) filtered = filtered.filter(s => s.active);
+  count.textContent = `${filtered.length} of ${subsData.length} subscription${subsData.length !== 1 ? 's' : ''}`;
+  if (!filtered.length) { tbody.innerHTML = ''; empty.classList.remove('hidden'); return; }
   empty.classList.add('hidden');
   const symMap = { GBP:'£', USD:'$', AED:'AED ', PHP:'₱' };
-  tbody.innerHTML = subsData.map(s => {
+  const now = new Date(); now.setHours(0,0,0,0);
+  const in30 = new Date(now); in30.setDate(in30.getDate() + 30);
+  tbody.innerHTML = filtered.map(s => {
     const sym = symMap[s.currency] || '';
     const perMonth = subToGBPPerMonth(s);
     const months = CYCLE_MONTHS[s.billing_cycle];
     const perYear = months ? perMonth * 12 : parseFloat(s.amount) * (SUB_FX[s.currency] || 1);
     const cycleLabel = { monthly:'Monthly', quarterly:'Quarterly', annually:'Annually', one_off:'One-Off' }[s.billing_cycle] || s.billing_cycle;
-    const renewal = s.renewal_date ? new Date(s.renewal_date).toLocaleDateString('en-GB',{day:'numeric',month:'short',year:'numeric'}) : '—';
-    const activeDot = s.active ? '<span style="color:var(--success)">●</span>' : '<span style="color:var(--muted)">●</span>';
-    return `<tr class="${s.active ? '' : 'sub-inactive'}">
+    let renewalHtml = '—';
+    if (s.renewal_date) {
+      const rd = new Date(s.renewal_date); rd.setHours(0,0,0,0);
+      const renewalStr = rd.toLocaleDateString('en-GB',{day:'numeric',month:'short',year:'numeric'});
+      if (rd < now) {
+        renewalHtml = `<span class="sub-renewal-overdue">${renewalStr}</span>`;
+      } else if (rd <= in30) {
+        renewalHtml = `<span class="sub-renewal-warn">${renewalStr}</span>`;
+      } else {
+        renewalHtml = renewalStr;
+      }
+    }
+    const activeDot = s.active
+      ? '<span style="color:var(--success);font-size:1.1em;vertical-align:middle">●</span>'
+      : '<span style="color:var(--muted);font-size:1.1em;vertical-align:middle">●</span>';
+    const rowCycleClass = `sub-row-${s.billing_cycle}`;
+    return `<tr class="${rowCycleClass}${s.active ? '' : ' sub-inactive'}">
       <td>${activeDot} ${esc(s.name)}</td>
       <td>${sym}${fmt(parseFloat(s.amount))}</td>
       <td>${cycleLabel}</td>
       <td>£${fmt(perMonth)}</td>
       <td>£${fmt(perYear)}</td>
-      <td>${renewal}</td>
+      <td>${renewalHtml}</td>
       <td style="max-width:160px;white-space:normal;font-size:0.8rem;color:var(--muted)">${esc(s.notes||'')}</td>
       <td>
         <button class="btn-icon" title="Edit" onclick="openSubModal(${s.id})">✏️</button>

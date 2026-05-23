@@ -3568,6 +3568,12 @@ tbody tr:last-child td { border-bottom: none; }
 /* ── Subscriptions ─────────────────────────────────────────────────────────── */
 .sub-inactive { opacity: 0.5; }
 .sub-inactive td { text-decoration: line-through; }
+.sub-row-monthly   td:first-child { border-left: 3px solid var(--accent); }
+.sub-row-quarterly td:first-child { border-left: 3px solid var(--positive); }
+.sub-row-annually  td:first-child { border-left: 3px solid #7c3aed; }
+.sub-row-one_off   td:first-child { border-left: 3px solid var(--muted); }
+.sub-renewal-warn    { color: var(--warning) !important; font-weight: 600; }
+.sub-renewal-overdue { color: var(--negative) !important; font-weight: 600; }
 
 /* ── Portfolio ─────────────────────────────────────────────────────────────── */
 .port-card {
