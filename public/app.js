@@ -4488,7 +4488,7 @@ function dealCellClick(td) {
     input.type = type === 'number' ? 'number' : type === 'date' ? 'date' : 'text';
     input.value = val;
     if (type === 'number') { input.step = '0.01'; input.min = '0'; }
-    if (field === 'initials') { input.maxLength = 5; input.style.textTransform = 'uppercase'; input.style.width = '52px'; }
+    if (field === 'initials') { input.maxLength = 4; input.style.textTransform = 'uppercase'; input.style.width = '46px'; }
     if (field === 'invoice_number') input.style.fontFamily = 'monospace';
   }
 
