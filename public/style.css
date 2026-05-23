@@ -4242,6 +4242,32 @@ tbody tr:last-child td { border-bottom: none; }
   background: linear-gradient(145deg, #0d1117 0%, #161b2e 40%, #0d1117 100%);
   border-color: rgba(99,102,241,0.25);
 }
+[data-theme="dark"] .ri-glow { background: radial-gradient(ellipse, rgba(99,102,241,0.18) 0%, transparent 70%); }
+[data-theme="dark"] .ri-title { color: rgba(255,255,255,0.55); letter-spacing: .12em; }
+[data-theme="dark"] .ri-year { color: rgba(255,255,255,0.3); background: rgba(255,255,255,0.06); }
+[data-theme="dark"] .ri-donut-num { color: rgba(255,255,255,0.85); font-weight: 800; }
+[data-theme="dark"] .ri-donut-label { color: rgba(255,255,255,0.45); }
+[data-theme="dark"] .ri-metric { background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.06); }
+[data-theme="dark"] .ri-metric-label { color: rgba(255,255,255,0.38); font-weight: 400; }
+[data-theme="dark"] .ri-metric-val { color: rgba(255,255,255,0.85); font-weight: 800; }
+[data-theme="dark"] .ri-green { color: #4ade80 !important; }
+[data-theme="dark"] .ri-blue  { color: #818cf8 !important; }
+[data-theme="dark"] .ri-winbar-wrap { background: rgba(255,255,255,0.08); }
+[data-theme="dark"] .ri-winbar-fill { background: linear-gradient(90deg, #22c55e, #4ade80); }
+[data-theme="dark"] .ri-stages { border-top-color: rgba(255,255,255,0.06); }
+[data-theme="dark"] .ri-stage-name { color: rgba(255,255,255,0.55); }
+[data-theme="dark"] .ri-stage-bar-wrap { background: rgba(255,255,255,0.08); }
+[data-theme="dark"] .ri-stage-amt { color: rgba(255,255,255,0.3); }
+[data-theme="dark"] .ri-stage-count { color: rgba(255,255,255,0.85); }
+[data-theme="dark"] .ri-evt-section { border-top-color: rgba(255,255,255,0.06); }
+[data-theme="dark"] .ri-evt-section-title { color: rgba(255,255,255,0.55); font-weight: 400; }
+[data-theme="dark"] .ri-evt-search { background: rgba(255,255,255,0.04); border-color: rgba(255,255,255,0.08); color: rgba(255,255,255,0.85); }
+[data-theme="dark"] .ri-evt-search::placeholder { color: rgba(255,255,255,0.25); }
+[data-theme="dark"] .ri-expiry-section { border-top-color: rgba(217,119,6,0.3); }
+[data-theme="dark"] .ri-expiry-title { color: #fbbf24; }
+[data-theme="dark"] .ri-expiry-row { color: rgba(255,255,255,0.65); }
+[data-theme="dark"] .ri-expiry-yellow { background: rgba(234,179,8,.2); color: #fde68a; }
+[data-theme="dark"] .ri-expiry-red    { background: rgba(239,68,68,.2); color: #fca5a5; }
 #contractExpiryPanel .ri-evt-list {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
