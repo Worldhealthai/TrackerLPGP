@@ -4197,6 +4197,42 @@ tbody tr:last-child td { border-bottom: none; }
 
 /* Full-width RI on dashboard — cards go horizontal when space allows */
 #contractExpiryPanel .ri-card { max-width: 100%; }
+
+/* ── Revenue Intelligence: light mode overrides ── */
+:root .ri-card {
+  background: linear-gradient(145deg, #f0f2f7 0%, #eaecf5 40%, #f0f2f7 100%);
+  border-color: rgba(79,70,229,0.2);
+  box-shadow: 0 0 40px rgba(79,70,229,0.06), 0 2px 8px rgba(0,0,0,0.06);
+}
+:root .ri-glow { background: radial-gradient(ellipse, rgba(79,70,229,0.10) 0%, transparent 70%); }
+:root .ri-title { color: var(--text-2); }
+:root .ri-year { color: var(--muted); background: rgba(79,70,229,0.08); }
+:root .ri-donut-num { color: var(--text); }
+:root .ri-donut-label { color: var(--muted); }
+:root .ri-metric { background: rgba(79,70,229,0.05); border-color: rgba(79,70,229,0.12); }
+:root .ri-metric-label { color: var(--muted); }
+:root .ri-metric-val { color: var(--text); }
+:root .ri-winbar-wrap { background: rgba(0,0,0,0.08); }
+:root .ri-stages { border-top-color: var(--border); }
+:root .ri-stage-name { color: var(--muted); }
+:root .ri-stage-bar-wrap { background: rgba(0,0,0,0.08); }
+:root .ri-stage-amt { color: var(--muted); }
+:root .ri-evt-section { border-top-color: var(--border); }
+:root .ri-evt-section-title { color: var(--muted); }
+:root .ri-evt-search { background: var(--surface); border-color: var(--border); color: var(--text); }
+:root .ri-evt-search::placeholder { color: var(--dim); }
+:root .ri-expiry-section { border-top-color: rgba(217,119,6,0.3); }
+:root .ri-expiry-title { color: var(--warning); }
+:root .ri-expiry-row { color: var(--text-2); }
+:root .ri-expiry-yellow { background: rgba(234,179,8,.15); color: #92400e; }
+:root .ri-expiry-red    { background: rgba(239,68,68,.15); color: #991b1b; }
+:root .ri-green { color: #15803d !important; }
+:root .ri-blue  { color: #4f46e5 !important; }
+
+[data-theme="dark"] .ri-card {
+  background: linear-gradient(145deg, #0d1117 0%, #161b2e 40%, #0d1117 100%);
+  border-color: rgba(99,102,241,0.25);
+}
 #contractExpiryPanel .ri-evt-list {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
