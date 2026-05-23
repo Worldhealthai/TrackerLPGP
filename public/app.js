@@ -4256,14 +4256,17 @@ function dealPassesFilter(d) {
     const evtId = String(_dealEventFilter);
     if (!Array.isArray(d.events) || !d.events.some(ev => String(ev.event_id) === evtId)) return false;
   }
-  const date = d.invoice_date ? new Date(d.invoice_date) : null;
+  // Q and year filters are based strictly on invoice_date (the date on the actual invoice)
+  const invDateStr = d.invoice_date ? String(d.invoice_date).slice(0, 10) : null;
+  const invYear  = invDateStr ? parseInt(invDateStr.slice(0, 4), 10) : null;
+  const invMonth = invDateStr ? parseInt(invDateStr.slice(5, 7), 10) : null;
   if (yr !== 'all') {
-    if (!date || String(date.getFullYear()) !== yr) return false;
+    if (!invYear || String(invYear) !== yr) return false;
   }
   if (q !== 'all') {
     const months = DEAL_VAT_QUARTERS[q];
-    if (!date) return false;
-    if (!months.includes(date.getMonth() + 1)) return false;
+    if (!invMonth) return false;
+    if (!months.includes(invMonth)) return false;
   }
   return true;
 }
