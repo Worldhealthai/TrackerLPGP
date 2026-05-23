@@ -353,6 +353,7 @@ async function runMigrations() {
 
   await sql(`ALTER TABLE deals ADD COLUMN IF NOT EXISTS cancelled_reason TEXT DEFAULT ''`);
   await sql(`ALTER TABLE deals ADD COLUMN IF NOT EXISTS stage_cancelled BOOLEAN NOT NULL DEFAULT false`);
+  await sql(`ALTER TABLE deals ADD COLUMN IF NOT EXISTS is_flagged BOOLEAN NOT NULL DEFAULT false`);
 
   // Single row-level currency for hotel expenses (replaces separate av_currency / paid_currency)
   await sql(`ALTER TABLE hotel_expenses ADD COLUMN IF NOT EXISTS currency TEXT DEFAULT 'USD'`);

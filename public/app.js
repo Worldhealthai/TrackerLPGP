@@ -4176,7 +4176,7 @@ function renderDealsTable() {
     const sym = symMap[d.currency] || '£';
     const invMonth = d.invoice_date ? (() => {
       const dt = new Date(d.invoice_date);
-      return dt.toLocaleDateString('en-GB',{month:'short'});
+      return `${dt.toLocaleDateString('en-GB',{month:'short'})} '${String(dt.getFullYear()).slice(2)}`;
     })() : '';
     const invDateStr = d.invoice_date ? new Date(d.invoice_date).toLocaleDateString('en-GB',{day:'2-digit',month:'2-digit',year:'2-digit'}) : '';
 
@@ -4216,7 +4216,7 @@ function renderDealsTable() {
       <td style="text-align:center;padding:0 2px"><button onclick="event.stopPropagation();dealToggleFlag(${d.id})" title="Flag row" style="background:none;border:none;cursor:pointer;font-size:15px;color:${isFlagged?'#f59e0b':'var(--border)'};padding:4px;line-height:1">⚑</button></td>
       ${ec('invoice_date','date',d.invoice_date||'', `<span class="deal-month-disp">${invMonth||'<span style="color:var(--muted)">—</span>'}</span>`)}
       <td class="deal-cell-company${coHl?' deal-cell-orange':''}" data-id="${d.id}" data-hlkey="${coHlKey}" onclick="dealCompanyClick(event,${d.id},this)" title="Click to open deal · Shift+click to highlight"><strong class="deal-co-link">${esc(d.company||d.title)}</strong></td>
-      ${ec('paid_inc_vat','number',d.paid_inc_vat??'', paidDisplay, `class="deal-num dt-r"${isPartial?' style="background:rgba(234,88,12,.28)"':''}`)}
+      ${ec('paid_inc_vat','number',d.paid_inc_vat??'', paidDisplay, `class="deal-num dt-r" oncontextmenu="dealCellContextMenu(event,this)"${isPartial?' style="background:rgba(234,88,12,.28)"':''}`)}
       ${ec('amount','number',d.amount||0, `${sym}${fmt(dealAmt)}`, 'class="deal-num dt-r"')}
       ${ec('tax_vat','number',d.tax_vat??'', d.tax_vat ? `${sym}${fmt(parseFloat(d.tax_vat))}` : '<span style="color:var(--muted)">—</span>', 'class="deal-num dt-r"')}
       ${ec('invoice_date','date',d.invoice_date||'', `${invDateStr||'<span style="color:var(--muted)">—</span>'}`)}
@@ -4236,6 +4236,32 @@ function renderDealsTable() {
 
   renderDealTotals(filtered, tfoot);
   renderDealsByInitials(filtered);
+}
+
+let _dealCellMenuTd = null;
+function dealCellContextMenu(evt, td) {
+  evt.preventDefault();
+  _dealCellMenuTd = td;
+  const menu = document.getElementById('dealCellMenu');
+  const isHl = td.classList.contains('deal-cell-orange');
+  document.getElementById('dealCellMenuHL').style.display = isHl ? 'none' : 'block';
+  document.getElementById('dealCellMenuClear').style.display = isHl ? 'block' : 'none';
+  menu.style.display = 'block';
+  const x = Math.min(evt.clientX, window.innerWidth - 200);
+  const y = Math.min(evt.clientY, window.innerHeight - 80);
+  menu.style.left = x + 'px';
+  menu.style.top  = y + 'px';
+  const close = () => { menu.style.display = 'none'; document.removeEventListener('click', close); document.removeEventListener('contextmenu', close); };
+  setTimeout(() => { document.addEventListener('click', close); document.addEventListener('contextmenu', close); }, 0);
+}
+function dealCellMenuAction(action) {
+  const td = _dealCellMenuTd;
+  if (!td) return;
+  const hlKey = td.dataset.hlkey;
+  if (!hlKey) return;
+  if (action === 'hl') { localStorage.setItem(hlKey, '1'); td.classList.add('deal-cell-orange'); }
+  else { localStorage.removeItem(hlKey); td.classList.remove('deal-cell-orange'); }
+  document.getElementById('dealCellMenu').style.display = 'none';
 }
 
 function dealCompanyClick(evt, id, td) {

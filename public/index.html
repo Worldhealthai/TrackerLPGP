@@ -575,8 +575,8 @@
     <table id="dealsTable">
       <colgroup>
         <col style="width:32px">   <!-- Flag -->
-        <col style="width:66px">   <!-- Month -->
-        <col style="width:176px">  <!-- Company -->
+        <col style="width:72px">   <!-- Month -->
+        <col style="width:170px">  <!-- Company -->
         <col style="width:108px">  <!-- Paid inc VAT -->
         <col style="width:104px">  <!-- Deal Value -->
         <col style="width:96px">   <!-- Tax/VAT -->
@@ -1351,6 +1351,12 @@
       <button class="btn btn-primary" onclick="saveSub()">Save</button>
     </div>
   </div>
+</div>
+
+<!-- ══ Cell context menu ══ -->
+<div id="dealCellMenu" style="display:none;position:fixed;z-index:9999;background:var(--surface);border:1px solid var(--border);border-radius:8px;box-shadow:0 4px 20px rgba(0,0,0,.15);padding:4px;min-width:180px">
+  <button id="dealCellMenuHL" onclick="dealCellMenuAction('hl')" style="display:block;width:100%;text-align:left;padding:8px 12px;background:none;border:none;cursor:pointer;border-radius:6px;font-size:13px;color:var(--text)">🟠 Highlight orange</button>
+  <button id="dealCellMenuClear" onclick="dealCellMenuAction('clear')" style="display:block;width:100%;text-align:left;padding:8px 12px;background:none;border:none;cursor:pointer;border-radius:6px;font-size:13px;color:var(--muted)">✕ Clear highlight</button>
 </div>
 
 <!-- ══ PANEL: Deal Invoice Upload ══ -->
