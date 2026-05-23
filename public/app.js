@@ -4167,6 +4167,7 @@ let _dealYearFilter = 'all';
 let _dealEventFilter = '';
 let _dealRangeFrom = '';  // YYYY-MM
 let _dealRangeTo   = '';  // YYYY-MM
+let _selectedDealIds = new Set();
 let _lastInvoiceId = null;
 let _nextInvoiceNum = null;
 let _importRows = [];
@@ -4371,9 +4372,13 @@ function renderDealsTable() {
     const coHl = localStorage.getItem(coHlKey) === '1';
 
     const isFlagged = d.is_flagged || false;
-    const finalRowClass = isFlagged ? 'deal-row-flagged' : rowClass;
+    const isSelected = _selectedDealIds.has(d.id);
+    const finalRowClass = (isFlagged ? 'deal-row-flagged' : rowClass) + (isSelected ? ' deal-row-selected' : '');
     return `<tr id="deal-row-${d.id}" class="${finalRowClass}">
-      <td style="text-align:center;padding:0 2px"><button onclick="event.stopPropagation();dealToggleFlag(${d.id})" title="Flag row" style="background:none;border:none;cursor:pointer;font-size:15px;color:${isFlagged?'#f59e0b':'var(--border)'};padding:4px;line-height:1">⚑</button></td>
+      <td style="text-align:center;padding:0 2px">
+        <input type="checkbox" class="deal-select-cb" ${isSelected?'checked':''} onclick="event.stopPropagation();toggleDealSelect(${d.id})" style="cursor:pointer;width:14px;height:14px">
+        <button onclick="event.stopPropagation();dealToggleFlag(${d.id})" title="Flag row" style="background:none;border:none;cursor:pointer;font-size:15px;color:${isFlagged?'#f59e0b':'var(--border)'};padding:4px;line-height:1">⚑</button>
+      </td>
       <td><span class="deal-month-disp">${invMonth||'<span style="color:var(--muted)">—</span>'}</span></td>
       <td class="deal-cell-company${coHl?' deal-cell-orange':''}" data-id="${d.id}" data-hlkey="${coHlKey}" onclick="dealCompanyClick(event,${d.id},this)" title="Click to open deal · Shift+click to highlight"><strong class="deal-co-link">${esc(d.company||d.title)}</strong></td>
       ${ec('paid_inc_vat','number',d.paid_inc_vat??'', paidDisplay, `class="deal-num dt-r" oncontextmenu="dealCellContextMenu(event,this)"${isPartial?' style="background:rgba(234,88,12,.28)"':''}`)}
@@ -4394,8 +4399,10 @@ function renderDealsTable() {
     </tr>`;
   }).join('');
 
+  window._dealCurrentFiltered = filtered;
   renderDealTotals(filtered, tfoot);
   renderDealsByInitials(filtered);
+  updateDealSelectionUI();
 }
 
 let _dealCellMenuTd = null;
@@ -6443,7 +6450,53 @@ async function deleteDeal(id) {
   if (!confirm('Delete this deal?')) return;
   const res = await fetch(`/api/deals/${id}`, { method: 'DELETE' });
   if (!res.ok) { showToast('Delete failed', 'error'); return; }
+  _selectedDealIds.delete(id);
   showToast('Deal deleted', 'success');
+  loadDeals();
+  loadPortfolio();
+}
+
+function toggleDealSelect(id) {
+  if (_selectedDealIds.has(id)) _selectedDealIds.delete(id);
+  else _selectedDealIds.add(id);
+  updateDealSelectionUI();
+  renderDealsTable();
+}
+
+function selectAllDeals() {
+  const filtered = window._dealCurrentFiltered || [];
+  const allSelected = filtered.every(d => _selectedDealIds.has(d.id));
+  if (allSelected) filtered.forEach(d => _selectedDealIds.delete(d.id));
+  else filtered.forEach(d => _selectedDealIds.add(d.id));
+  updateDealSelectionUI();
+  renderDealsTable();
+}
+
+function updateDealSelectionUI() {
+  const n = _selectedDealIds.size;
+  const btn = document.getElementById('deleteSelectedDealsBtn');
+  if (!btn) return;
+  if (n > 0) {
+    btn.textContent = `🗑 Delete Selected (${n})`;
+    btn.style.display = 'inline-flex';
+  } else {
+    btn.style.display = 'none';
+  }
+}
+
+async function deleteSelectedDeals() {
+  const ids = [..._selectedDealIds];
+  if (!ids.length) return;
+  if (!confirm(`Delete ${ids.length} selected deal${ids.length > 1 ? 's' : ''}? This cannot be undone.`)) return;
+  const res = await fetch('/api/deals/bulk', {
+    method: 'DELETE',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ ids })
+  });
+  if (!res.ok) { showToast('Bulk delete failed', 'error'); return; }
+  _selectedDealIds.clear();
+  updateDealSelectionUI();
+  showToast(`${ids.length} deal${ids.length > 1 ? 's' : ''} deleted`, 'success');
   loadDeals();
   loadPortfolio();
 }

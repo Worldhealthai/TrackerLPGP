@@ -1749,6 +1749,16 @@ app.patch('/api/deals/:id/stage', requireAuth, requireAdminOrManager, async (req
     res.json(rows[0]);
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
+app.delete('/api/deals/bulk', requireAuth, requireAdminOrManager, async (req, res) => {
+  try {
+    const { ids } = req.body;
+    if (!Array.isArray(ids) || !ids.length) return res.status(400).json({ error: 'ids required' });
+    const safe = ids.map(Number).filter(n => Number.isInteger(n) && n > 0);
+    if (!safe.length) return res.status(400).json({ error: 'No valid ids' });
+    await q(`DELETE FROM deals WHERE id IN (${safe.join(',')})`, []);
+    res.json({ ok: true, deleted: safe.length });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
 app.delete('/api/deals/:id', requireAuth, requireAdminOrManager, async (req, res) => {
   try { await q('DELETE FROM deals WHERE id=?', [req.params.id]); res.json({ ok: true }); }
   catch (e) { res.status(500).json({ error: e.message }); }

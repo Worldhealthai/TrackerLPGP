@@ -570,6 +570,8 @@
     <select id="dealEventFilter" class="deal-select" onchange="setDealEvent(this.value)">
       <option value="">All Events</option>
     </select>
+    <button class="btn btn-ghost" onclick="selectAllDeals()">☑ Select All</button>
+    <button id="deleteSelectedDealsBtn" class="btn btn-danger" onclick="deleteSelectedDeals()" style="display:none">🗑 Delete Selected</button>
     <button class="btn btn-ghost" onclick="openDealImport()">⬆ Import CSV</button>
     <button class="btn btn-primary deal-add-btn" onclick="openDealModal()">+ Add Deal</button>
   </div>
@@ -581,7 +583,7 @@
   <div class="card deal-table-card">
     <table id="dealsTable">
       <colgroup>
-        <col style="width:32px">   <!-- Flag -->
+        <col style="width:52px">   <!-- Select + Flag -->
         <col style="width:72px">   <!-- Month -->
         <col style="width:170px">  <!-- Company -->
         <col style="width:108px">  <!-- Paid inc VAT -->

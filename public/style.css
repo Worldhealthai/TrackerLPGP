@@ -4451,15 +4451,17 @@ tbody tr:last-child td { border-bottom: none; }
 }
 
 /* ── Row colour highlights — solid fills ───────────────────────────────────── */
-.deal-row-paid,   .deal-row-paid td   { background: rgba(22,163,74,.18)  !important; }
-.deal-row-flagged,.deal-row-flagged td{ background: rgba(234,179,8,.18)  !important; }
-.deal-row-issue,  .deal-row-issue td  { background: rgba(234,88,12,.18)  !important; }
-.deal-row-urgent, .deal-row-urgent td { background: rgba(220,38,38,.22)  !important; }
+.deal-row-paid,     .deal-row-paid td     { background: rgba(22,163,74,.18)   !important; }
+.deal-row-flagged,  .deal-row-flagged td  { background: rgba(234,179,8,.18)   !important; }
+.deal-row-issue,    .deal-row-issue td    { background: rgba(234,88,12,.18)   !important; }
+.deal-row-urgent,   .deal-row-urgent td   { background: rgba(220,38,38,.22)   !important; }
+.deal-row-selected, .deal-row-selected td { background: rgba(99,102,241,.15)  !important; outline: 1px solid rgba(99,102,241,.4); }
 
-[data-theme="dark"] .deal-row-paid td    { background: rgba(22,163,74,.22)  !important; }
-[data-theme="dark"] .deal-row-flagged td { background: rgba(234,179,8,.2)   !important; }
-[data-theme="dark"] .deal-row-issue td   { background: rgba(234,88,12,.2)   !important; }
-[data-theme="dark"] .deal-row-urgent td  { background: rgba(220,38,38,.26)  !important; }
+[data-theme="dark"] .deal-row-paid td     { background: rgba(22,163,74,.22)   !important; }
+[data-theme="dark"] .deal-row-flagged td  { background: rgba(234,179,8,.2)    !important; }
+[data-theme="dark"] .deal-row-issue td    { background: rgba(234,88,12,.2)    !important; }
+[data-theme="dark"] .deal-row-urgent td   { background: rgba(220,38,38,.26)   !important; }
+[data-theme="dark"] .deal-row-selected td { background: rgba(99,102,241,.22)  !important; }
 
 /* ── Colour picker popup ────────────────────────────────────────────────────── */
 .deal-color-picker {
