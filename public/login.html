@@ -10,13 +10,14 @@
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap">
   <style>
     .login-tabs { display:flex; gap:0; margin-bottom:24px; border:1px solid var(--border); border-radius:10px; overflow:hidden; }
-    .login-tab { flex:1; padding:10px; text-align:center; font:600 13px/1 var(--font-mono); color:var(--muted); cursor:pointer; background:var(--surface); border:none; transition:all .2s; }
-    .login-tab.active { background:var(--primary); color:#000; }
+    .login-tab { flex:1; padding:10px; text-align:center; font:600 13px/1 var(--font-mono); color:var(--muted); cursor:pointer; background:transparent; border:none; transition:all .2s; }
+    .login-tab.active { background: linear-gradient(135deg, #4f46e5, #7c3aed); color:#fff; }
     .login-tab-panel { display:none; }
     .login-tab-panel.active { display:block; }
   </style>
 </head>
 <body class="login-body">
+  <button class="login-theme-btn" onclick="loginToggleTheme()" title="Toggle theme" id="loginThemeBtn">🌙</button>
   <div class="login-wrap">
     <div class="login-card">
       <div class="login-logo">
@@ -72,6 +73,31 @@
   </div>
 
   <script>
+    // Apply saved theme immediately
+    (function() {
+      const saved = localStorage.getItem('emptracker-theme');
+      if (saved === 'dark') {
+        document.documentElement.setAttribute('data-theme', 'dark');
+      }
+      document.addEventListener('DOMContentLoaded', function() {
+        const btn = document.getElementById('loginThemeBtn');
+        if (btn) btn.textContent = saved === 'dark' ? '☀️' : '🌙';
+      });
+    })();
+
+    function loginToggleTheme() {
+      const current = document.documentElement.getAttribute('data-theme');
+      const next = current === 'dark' ? 'light' : 'dark';
+      if (next === 'dark') {
+        document.documentElement.setAttribute('data-theme', 'dark');
+      } else {
+        document.documentElement.removeAttribute('data-theme');
+      }
+      localStorage.setItem('emptracker-theme', next);
+      const btn = document.getElementById('loginThemeBtn');
+      if (btn) btn.textContent = next === 'dark' ? '☀️' : '🌙';
+    }
+
     function switchTab(tab) {
       document.querySelectorAll('.login-tab').forEach((t,i) => t.classList.toggle('active', (i===0&&tab==='admin')||(i===1&&tab==='staff')));
       document.getElementById('tab-admin').classList.toggle('active', tab==='admin');

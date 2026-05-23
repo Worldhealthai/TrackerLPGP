@@ -78,11 +78,6 @@ document.addEventListener('DOMContentLoaded', async () => {
     await initEmployeePortal(currentUser);
     return;
   }
-  if (currentUser.role === 'accounts') {
-    await initAccountsPortal(currentUser);
-    return;
-  }
-
   const initials = currentUser.username.slice(0,2).toUpperCase();
   document.getElementById('userLabel').innerHTML = `<div class="sidebar-user-pill"><div class="sidebar-user-avatar">${esc(initials)}</div><span class="sidebar-user-name">${esc(currentUser.username)}</span><span class="sidebar-user-role">${esc(currentUser.role)}</span></div>`;
   document.getElementById('todayDate').textContent = formatDate(today());
@@ -90,7 +85,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   if (currentUser.role === 'admin') {
     document.querySelectorAll('.admin-only').forEach(el => el.classList.remove('hidden'));
   }
-  if (currentUser.role === 'admin' || currentUser.role === 'manager') {
+  if (currentUser.role === 'admin' || currentUser.role === 'manager' || currentUser.role === 'accounts') {
     document.querySelectorAll('.admin-manager-only').forEach(el => el.classList.remove('hidden'));
   }
 
@@ -164,8 +159,8 @@ function initSidebarCollapse() {
 
 // ─── NAVIGATION ──────────────────────────────────────────────────────────────
 function navigate(page) {
-  // Salary section is admin-only
-  if (page === 'salary' && currentUser?.role !== 'admin') return;
+  // Salary and Employees sections are admin-only
+  if ((page === 'salary' || page === 'employees') && currentUser?.role !== 'admin') return;
   document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
   document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
   document.querySelectorAll('.bottom-nav-item').forEach(n => n.classList.remove('active'));
@@ -475,17 +470,25 @@ async function loadDashboard() {
   const hotelPaidTotal   = hotelData.reduce((a, h) => a + (parseFloat(h.paid_amount) || 0), 0);
 
   document.getElementById('dashStats').innerHTML = `
-    <div class="dash-bento">
-      <div class="dash-hero-card">
+    <div class="dash-bento dash-bento--3col">
+      <div class="dash-hero-card dash-hero-card--compact">
         <div class="dash-hero-glow"></div>
         <div class="dash-hero-label">Active Headcount</div>
-        <div class="dash-hero-value">${totalHeadcount}</div>
+        <div class="dash-hero-value dash-hero-value--sm">${totalHeadcount}</div>
         <div class="dash-hero-pills">
           <span class="dash-hero-pill dash-hero-pill--blue">${payrollCount} Payroll</span>
           <span class="dash-hero-pill dash-hero-pill--amber">${seCount} Self-Emp</span>
         </div>
+        <div style="margin-top:auto;padding-top:12px;border-top:1px solid rgba(255,255,255,0.08);cursor:pointer" onclick="navigate('salary')">
+          <div style="font:600 9px/1 var(--font-mono);text-transform:uppercase;letter-spacing:1px;color:var(--muted);margin-bottom:6px">Unpaid This Month</div>
+          <div style="display:flex;align-items:center;gap:8px">
+            <span style="font:700 24px/1 var(--font-mono);color:${unpaidCount > 0 ? 'var(--warning)' : 'var(--positive)'}">${unpaidCount}</span>
+            <span style="font:500 11px/1.3 var(--font-mono);color:var(--muted)">${unpaidCount > 0 ? 'Action required →' : 'All paid up'}</span>
+          </div>
+        </div>
         <div class="dash-hero-footer">Total workforce · ${year}</div>
       </div>
+      <div id="headcountPanel"></div>
       <div class="dash-mini-grid">
         <div class="dash-mini-card dash-mini--indigo" style="cursor:pointer" onclick="navigate('salary')" title="Go to salary page">
           <div class="dash-mini-icon">💷</div>
@@ -503,14 +506,6 @@ async function loadDashboard() {
             <div class="dash-mini-sub">${hotelUnpaidCount > 0 ? `${hotelUnpaidCount} unpaid / partial →` : 'All settled'}</div>
           </div>
         </div>
-        <div class="dash-mini-card ${unpaidCount > 0 ? 'dash-mini--alert' : 'dash-mini--green'}" style="cursor:pointer" onclick="navigate('salary')" title="Go to salary page">
-          <div class="dash-mini-icon">${unpaidCount > 0 ? '🔔' : '✅'}</div>
-          <div class="dash-mini-body">
-            <div class="dash-mini-label">Unpaid This Month</div>
-            <div class="dash-mini-value">${unpaidCount}</div>
-            <div class="dash-mini-sub">${unpaidCount > 0 ? 'Action required →' : 'All paid up'}</div>
-          </div>
-        </div>
       </div>
     </div>
   `;
@@ -518,7 +513,7 @@ async function loadDashboard() {
   // Revenue Intelligence + contract expiry panel
   renderRevenueIntelPanel(dashDeals, expiring, evtRevData);
 
-  // Headcount by department
+  // Headcount by department (now renders into #headcountPanel inside the bento)
   renderHeadcountPanel(activeEmps, payrollCount, seCount, totalHeadcount, year);
 
   // Upcoming reminders panel (calendar reminders + day offs)
@@ -2033,14 +2028,13 @@ async function loadSalaryPage() {
         </div>` : ''}
 
         <div class="sc-head">
-          <div class="sc-avatar">${initials}</div>
           <div class="sc-info">
             <div class="sc-emp-name">${esc(emp.name || '')}</div>
             ${emp.job_title || emp.department ? `<div class="sc-emp-role">${[emp.job_title, emp.department].filter(Boolean).map(s => esc(s)).join(' · ')}</div>` : ''}
             <div class="sc-emp-badges">
               <span class="badge ${typeBadge}" style="font-size:0.67rem">${typeLabel}</span>
               <span class="badge badge-grey" style="font-size:0.67rem">${cur}</span>
-              ${emp.start_date ? `<span class="sc-emp-since">${isTerminated ? 'Started' : 'Since'} ${emp.start_date}</span>` : `<span class="badge" style="background:#7f1d1d;color:#fca5a5;font-size:0.67rem;cursor:pointer" onclick="openEditEmployee(${emp.employee_id})">⚠ No start date — click to set</span>`}
+              ${emp.start_date ? `<span class="sc-emp-since">${isTerminated ? 'Started' : 'Since'} ${emp.start_date}</span>` : ''}
             </div>
           </div>
           <div class="sc-annual">
@@ -2820,6 +2814,7 @@ async function renderCalSummary(byDate, empFilter) {
 
   const dates = Object.keys(byDate).sort();
   let daysHtml = '';
+  let fullDaysTotal = 0, halfDaysTotal = 0;
   dates.forEach(date => {
     const entries = byDate[date].filter(r => !empFilter || String(r.employee_id) === empFilter);
     if (!entries.length) return;
@@ -2846,14 +2841,73 @@ async function renderCalSummary(byDate, empFilter) {
     </div>`;
   });
 
-  if (!daysHtml && !remHtml) { summary.classList.add('hidden'); return; }
+  summary.classList.add('hidden');
 
-  let html = '';
-  if (daysHtml) html += `<div class="cal-sum-section"><div class="cal-sum-section-title">🏖 Days Off This Month</div>${daysHtml}</div>`;
-  if (remHtml)  html += `<div class="cal-sum-section"><div class="cal-sum-section-title">🔔 Upcoming Reminders</div>${remHtml}</div>`;
+  // ── Upcoming panel (next 60 days) ──
+  const upcoming = document.getElementById('calUpcoming');
+  if (!upcoming) return;
 
-  summary.innerHTML = html;
-  summary.classList.remove('hidden');
+  const MONS_SHORT = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  const todayD = new Date(); todayD.setHours(0,0,0,0);
+  const in60 = new Date(todayD); in60.setDate(in60.getDate() + 60);
+
+  // Future day-offs (all employees, next 60 days)
+  let upcomingDayOffs = [];
+  try {
+    const r = await fetch(`/api/calendar?year=${todayD.getFullYear()}&month=${todayD.getMonth()+1}`);
+    const d2r = await fetch(`/api/calendar?year=${in60.getFullYear()}&month=${in60.getMonth()+1}`);
+    const d1 = r.ok ? await r.json() : [];
+    const d2 = d2r.ok ? await d2r.json() : [];
+    upcomingDayOffs = [...d1, ...d2].filter(r => {
+      const d = new Date(r.record_date); d.setHours(0,0,0,0);
+      return d >= todayD && d <= in60;
+    }).sort((a,b) => a.record_date.localeCompare(b.record_date));
+  } catch {}
+
+  const dayOffItems = upcomingDayOffs.slice(0,10).map(r => {
+    const d = new Date(r.record_date);
+    const typeLabel = parseFloat(r.is_day_off) === 1 ? 'Full day' : 'Half day';
+    const cls = parseFloat(r.is_day_off) === 1 ? 'chip-full' : 'chip-half';
+    return `<div class="cal-upcoming-item">
+      <div class="cal-upcoming-badge">
+        <div class="cal-upcoming-badge-day">${d.getUTCDate()}</div>
+        <div class="cal-upcoming-badge-mon">${MONS_SHORT[d.getUTCMonth()]}</div>
+      </div>
+      <div style="flex:1;min-width:0">
+        <div class="cal-upcoming-name">${esc(r.employee_name)}</div>
+        <div class="cal-upcoming-sub"><span class="cal-chip ${cls}" style="font-size:9px;padding:1px 5px">${typeLabel}</span></div>
+      </div>
+    </div>`;
+  }).join('') || '<div class="cal-upcoming-empty">No days off in the next 60 days</div>';
+
+  const remItems = reminders.slice(0,10).map(r => {
+    const d = new Date(r.virtual_date);
+    const sym = r.currency === 'AED' ? 'AED ' : r.currency === 'EUR' ? '€' : '£';
+    const amt = r.amount ? `<div class="cal-upcoming-amt">${sym}${parseFloat(r.amount).toLocaleString('en-GB',{minimumFractionDigits:2})}</div>` : '';
+    const daysUntil = Math.round((d - todayD) / 86400000);
+    const urgency = daysUntil <= 7 ? 'color:var(--negative);font-weight:700' : daysUntil <= 14 ? 'color:var(--warning);font-weight:600' : 'color:var(--muted)';
+    return `<div class="cal-upcoming-item">
+      <div class="cal-upcoming-badge">
+        <div class="cal-upcoming-badge-day">${d.getUTCDate()}</div>
+        <div class="cal-upcoming-badge-mon">${MONS_SHORT[d.getUTCMonth()]}</div>
+      </div>
+      <div style="flex:1;min-width:0">
+        <div class="cal-upcoming-name">${esc(r.title)}</div>
+        <div class="cal-upcoming-sub" style="${urgency}">${daysUntil === 0 ? 'Today' : daysUntil === 1 ? 'Tomorrow' : `in ${daysUntil} days`}</div>
+      </div>
+      ${amt}
+    </div>`;
+  }).join('') || '<div class="cal-upcoming-empty">No upcoming expense reminders</div>';
+
+  upcoming.innerHTML = `
+    <div class="cal-upcoming-section">
+      <div class="cal-upcoming-head"><span class="cal-upcoming-icon">🏖</span> Upcoming Days Off</div>
+      ${dayOffItems}
+    </div>
+    <div class="cal-upcoming-section">
+      <div class="cal-upcoming-head"><span class="cal-upcoming-icon">🔔</span> Upcoming Expenses</div>
+      ${remItems}
+    </div>`;
 }
 
 function renderDayOffRequestsBanner(pending) {
@@ -3351,13 +3405,20 @@ function renderHotelSummary() {
   }
 
   const byCur = {};
+  function ensureCur(c) { byCur[c] = byCur[c] || { paid: 0, av: 0, cost: 0 }; }
   yearData.forEach(r => {
-    const c = r.currency || r.paid_currency || 'USD';
-    byCur[c] = byCur[c] || { paid: 0, av: 0, cost: 0 };
-    if (r.paid_amount != null) byCur[c].paid += parseFloat(r.paid_amount) || 0;
-    if (r.av_amount != null && r.av_billing !== 'included') byCur[c].av += parseFloat(r.av_amount) || 0;
+    const paidCur = r.paid_currency || r.currency || 'USD';
+    const avCur   = r.av_currency   || r.currency || 'USD';
+    const costCur = r.paid_currency || r.currency || 'USD';
+    ensureCur(paidCur);
+    if (r.paid_amount != null) byCur[paidCur].paid += parseFloat(r.paid_amount) || 0;
+    if (r.av_amount != null && r.av_billing !== 'included') {
+      ensureCur(avCur);
+      byCur[avCur].av += parseFloat(r.av_amount) || 0;
+    }
     const costNum = parseCost(r.cost);
-    if (costNum > 0) byCur[c].cost += costNum;
+    ensureCur(costCur);
+    if (costNum > 0) byCur[costCur].cost += costNum;
   });
 
   const total  = yearData.length;
@@ -3390,9 +3451,29 @@ function renderHotelSummary() {
       </div>`;
   }).join('');
 
+  // GBP conversion rates (approximate)
+  const TO_GBP = { GBP:1, USD:0.787, EUR:0.855, CHF:0.885, AED:0.2141, PHP:0.0138 };
+  let gbpPaid = 0, gbpAv = 0, gbpCost = 0;
+  Object.entries(byCur).forEach(([cur, sums]) => {
+    const rate = TO_GBP[cur] || 0.787;
+    gbpPaid += sums.paid * rate;
+    gbpAv   += sums.av   * rate;
+    gbpCost += sums.cost * rate;
+  });
+  const gbpTotal = gbpPaid + gbpAv;
+  const gbpOutstanding = gbpCost > 0 ? Math.max(0, gbpCost - gbpPaid) : null;
+  const gbpCard = `<div class="hotel-fin-card hotel-fin-card--gbp">
+    <div class="hotel-fin-currency" style="color:var(--accent)">≈ GBP TOTAL <span style="font-size:9px;font-weight:400;opacity:0.7">estimated</span></div>
+    <div class="hotel-fin-row"><span class="hotel-fin-lbl">Venue / Hotel</span><span class="hotel-fin-val hotel-fin-green">£${fmtN(gbpPaid)}</span></div>
+    <div class="hotel-fin-row"><span class="hotel-fin-lbl">AV Charges</span><span class="hotel-fin-val hotel-fin-blue">£${fmtN(gbpAv)}</span></div>
+    <div class="hotel-fin-row hotel-fin-total-row"><span class="hotel-fin-lbl">Total Spent</span><span class="hotel-fin-val">£${fmtN(gbpTotal)}</span></div>
+    ${gbpOutstanding !== null ? `<div class="hotel-fin-row" style="margin-top:6px;border-top:1px solid var(--border);padding-top:6px"><span class="hotel-fin-lbl">Outstanding</span><span class="hotel-fin-val ${gbpOutstanding > 0 ? 'hotel-fin-red' : 'hotel-fin-green'}">${gbpOutstanding > 0 ? '£'+fmtN(gbpOutstanding) : '✓ Settled'}</span></div>` : ''}
+    <div style="margin-top:8px;padding-top:6px;border-top:1px dashed var(--border);font:500 9px/1.5 var(--font-mono);color:var(--muted)">USD×0.787 · EUR×0.855<br>CHF×0.885 · AED×0.214</div>
+  </div>`;
+
   document.getElementById('hotelSummary').innerHTML = `
     <div class="hotel-fin-strip">
-      ${currencyCards}
+      ${currencyCards}${gbpCard}
       <div class="hotel-fin-card hotel-fin-card--status">
         <div class="hotel-fin-currency">STATUS${_hotelYearFilter !== 'all' ? ` · ${_hotelYearFilter}` : ''}</div>
         <div class="hotel-fin-row"><span class="hotel-fin-lbl">Total Events</span><span class="hotel-fin-val">${total}</span></div>
@@ -3714,6 +3795,13 @@ async function reviewHolidayRequest(id, action) {
 const SUB_FX = { GBP: 1, USD: 0.79, AED: 1/4.67, PHP: 0.014 };
 const CYCLE_MONTHS = { monthly: 1, quarterly: 3, annually: 12, one_off: 0 };
 let subsData = [];
+let _subCycleFilter = 'all';
+
+function setSubFilter(cycle) {
+  _subCycleFilter = cycle;
+  document.querySelectorAll('#subCycleFilters .deal-q-btn').forEach(b => b.classList.toggle('active', b.dataset.cycle === cycle));
+  renderSubTable();
+}
 
 function subToGBPPerMonth(s) {
   const rate = SUB_FX[s.currency] || 1;
@@ -3732,7 +3820,10 @@ async function loadSubscriptions() {
 }
 
 function renderSubTotals() {
-  const active = subsData.filter(s => s.active);
+  const activeOnlyChk = document.getElementById('subActiveOnly');
+  const activeOnly = !activeOnlyChk || activeOnlyChk.checked;
+  let filtered = _subCycleFilter === 'all' ? subsData : subsData.filter(s => s.billing_cycle === _subCycleFilter);
+  const active = activeOnly ? filtered.filter(s => s.active) : filtered;
   const perMonth = active.reduce((a, s) => a + subToGBPPerMonth(s), 0);
   const perYear = active.reduce((a, s) => {
     const rate = SUB_FX[s.currency] || 1;
@@ -3760,25 +3851,45 @@ function renderSubTable() {
   const tbody = document.getElementById('subTableBody');
   const empty = document.getElementById('subEmpty');
   const count = document.getElementById('subCount');
-  count.textContent = `${subsData.length} subscription${subsData.length !== 1 ? 's' : ''}`;
-  if (!subsData.length) { tbody.innerHTML = ''; empty.classList.remove('hidden'); return; }
+  const activeOnlyChk = document.getElementById('subActiveOnly');
+  const activeOnly = !activeOnlyChk || activeOnlyChk.checked;
+  let filtered = _subCycleFilter === 'all' ? subsData : subsData.filter(s => s.billing_cycle === _subCycleFilter);
+  if (activeOnly) filtered = filtered.filter(s => s.active);
+  count.textContent = `${filtered.length} of ${subsData.length} subscription${subsData.length !== 1 ? 's' : ''}`;
+  if (!filtered.length) { tbody.innerHTML = ''; empty.classList.remove('hidden'); return; }
   empty.classList.add('hidden');
   const symMap = { GBP:'£', USD:'$', AED:'AED ', PHP:'₱' };
-  tbody.innerHTML = subsData.map(s => {
+  const now = new Date(); now.setHours(0,0,0,0);
+  const in30 = new Date(now); in30.setDate(in30.getDate() + 30);
+  tbody.innerHTML = filtered.map(s => {
     const sym = symMap[s.currency] || '';
     const perMonth = subToGBPPerMonth(s);
     const months = CYCLE_MONTHS[s.billing_cycle];
     const perYear = months ? perMonth * 12 : parseFloat(s.amount) * (SUB_FX[s.currency] || 1);
     const cycleLabel = { monthly:'Monthly', quarterly:'Quarterly', annually:'Annually', one_off:'One-Off' }[s.billing_cycle] || s.billing_cycle;
-    const renewal = s.renewal_date ? new Date(s.renewal_date).toLocaleDateString('en-GB',{day:'numeric',month:'short',year:'numeric'}) : '—';
-    const activeDot = s.active ? '<span style="color:var(--success)">●</span>' : '<span style="color:var(--muted)">●</span>';
-    return `<tr class="${s.active ? '' : 'sub-inactive'}">
+    let renewalHtml = '—';
+    if (s.renewal_date) {
+      const rd = new Date(s.renewal_date); rd.setHours(0,0,0,0);
+      const renewalStr = rd.toLocaleDateString('en-GB',{day:'numeric',month:'short',year:'numeric'});
+      if (rd < now) {
+        renewalHtml = `<span class="sub-renewal-overdue">${renewalStr}</span>`;
+      } else if (rd <= in30) {
+        renewalHtml = `<span class="sub-renewal-warn">${renewalStr}</span>`;
+      } else {
+        renewalHtml = renewalStr;
+      }
+    }
+    const activeDot = s.active
+      ? '<span style="color:var(--success);font-size:1.1em;vertical-align:middle">●</span>'
+      : '<span style="color:var(--muted);font-size:1.1em;vertical-align:middle">●</span>';
+    const rowCycleClass = `sub-row-${s.billing_cycle}`;
+    return `<tr class="${rowCycleClass}${s.active ? '' : ' sub-inactive'}">
       <td>${activeDot} ${esc(s.name)}</td>
       <td>${sym}${fmt(parseFloat(s.amount))}</td>
       <td>${cycleLabel}</td>
       <td>£${fmt(perMonth)}</td>
       <td>£${fmt(perYear)}</td>
-      <td>${renewal}</td>
+      <td>${renewalHtml}</td>
       <td style="max-width:160px;white-space:normal;font-size:0.8rem;color:var(--muted)">${esc(s.notes||'')}</td>
       <td>
         <button class="btn-icon" title="Edit" onclick="openSubModal(${s.id})">✏️</button>
@@ -3874,6 +3985,7 @@ function renderPortfolioGrid() {
     const dateStr = ev.event_date ? new Date(ev.event_date).toLocaleDateString('en-GB',{day:'numeric',month:'short',year:'numeric'}) : 'TBD';
     const won = parseFloat(ev.total_won) || 0;
     const pipeline = parseFloat(ev.total_pipeline) || 0;
+    const outstanding = Math.max(0, pipeline - won);
     const dealCount = parseInt(ev.deal_count) || 0;
     return `<div class="port-card">
       <div class="port-card-header">
@@ -3889,22 +4001,75 @@ function renderPortfolioGrid() {
       </div>
       <div class="port-card-stats">
         <div class="port-stat">
-          <div class="port-stat-label">Won Revenue</div>
+          <div class="port-stat-label">Revenue Made</div>
           <div class="port-stat-val port-stat--green">£${fmt(won)}</div>
         </div>
         <div class="port-stat">
-          <div class="port-stat-label">Pipeline</div>
-          <div class="port-stat-val">£${fmt(pipeline)}</div>
+          <div class="port-stat-label">Outstanding</div>
+          <div class="port-stat-val ${outstanding > 0 ? 'port-stat--amber' : ''}">£${fmt(outstanding)}</div>
         </div>
       </div>
       ${ev.companies ? `<div class="port-card-companies"><span style="font-size:0.72rem;color:var(--muted)">Companies: </span>${esc(ev.companies)}</div>` : ''}
       ${ev.notes ? `<div class="port-card-notes">${esc(ev.notes)}</div>` : ''}
-      <div style="margin-top:10px;padding-top:10px;border-top:1px solid var(--border);display:flex;justify-content:space-between;align-items:center">
-        <span style="font-size:0.75rem;color:var(--muted)">${dealCount} deal${dealCount !== 1 ? 's' : ''} linked</span>
-        <button class="btn btn-ghost btn-sm" onclick="viewEventDeals(${ev.id},'${esc(ev.name)}')" style="font-size:0.78rem;padding:4px 10px">View Deals →</button>
+      <div style="margin-top:10px;padding-top:10px;border-top:1px solid var(--border)">
+        <button onclick="togglePortfolioDeals(this,${ev.id})" style="background:none;border:none;cursor:pointer;font-size:0.78rem;color:var(--primary);font-weight:600;padding:0;display:flex;align-items:center;gap:5px">
+          <span class="port-deal-arrow" style="display:inline-block;transition:transform .2s">▶</span>
+          ${dealCount} deal${dealCount !== 1 ? 's' : ''} linked
+        </button>
+        <div class="port-deals-list" style="display:none;margin-top:8px"></div>
       </div>
     </div>`;
   }).join('');
+}
+
+async function togglePortfolioDeals(btn, eventId) {
+  const arrow = btn.querySelector('.port-deal-arrow');
+  const list = btn.nextElementSibling;
+  const isOpen = list.style.display !== 'none';
+
+  if (isOpen) {
+    list.style.display = 'none';
+    arrow.style.transform = '';
+    return;
+  }
+
+  arrow.style.transform = 'rotate(90deg)';
+  list.style.display = 'block';
+  list.innerHTML = '<div style="font-size:0.75rem;color:var(--muted)">Loading…</div>';
+
+  try {
+    const res = await fetch(`/api/portfolio-events/${eventId}/deals`);
+    const deals = res.ok ? await res.json() : [];
+    if (!deals.length) {
+      list.innerHTML = '<div style="font-size:0.75rem;color:var(--muted)">No deals linked yet.</div>';
+      return;
+    }
+    const symMap = { GBP:'£', USD:'$', AED:'AED ', PHP:'₱', EUR:'€' };
+    list.innerHTML = deals.map(d => {
+      const sym = symMap[d.currency] || '£';
+      const paid = parseFloat(d.paid_inc_vat) || 0;
+      const amt = parseFloat(d.amount) || 0;
+      const isPaid = paid > 0;
+      const isPartial = isPaid && paid < amt;
+      const statusDot = isPaid && !isPartial
+        ? `<span style="color:#16a34a;font-size:11px;font-weight:700">● Paid</span>`
+        : isPartial
+        ? `<span style="color:#d97706;font-size:11px;font-weight:700">● Part paid</span>`
+        : `<span style="color:var(--muted);font-size:11px">○ Unpaid</span>`;
+      return `<div style="display:flex;align-items:center;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--border)">
+        <div>
+          <div style="font:600 13px/1.3 var(--font-sans);color:var(--text)">${esc(d.company)}</div>
+          <div style="margin-top:2px">${statusDot}</div>
+        </div>
+        <div style="text-align:right;flex-shrink:0">
+          <div style="font:700 13px/1 var(--font-sans);color:var(--text)">${sym}${fmt(amt)}</div>
+          ${isPaid ? `<div style="font-size:11px;color:#16a34a;margin-top:2px">paid ${sym}${fmt(paid)}</div>` : ''}
+        </div>
+      </div>`;
+    }).join('');
+  } catch {
+    list.innerHTML = '<div style="font-size:0.75rem;color:var(--negative)">Failed to load deals.</div>';
+  }
 }
 
 function viewEventDeals(eventId, eventName) {
@@ -4091,14 +4256,17 @@ function dealPassesFilter(d) {
     const evtId = String(_dealEventFilter);
     if (!Array.isArray(d.events) || !d.events.some(ev => String(ev.event_id) === evtId)) return false;
   }
-  const date = d.invoice_date ? new Date(d.invoice_date) : null;
+  // Q and year filters are based strictly on invoice_date (the date on the actual invoice)
+  const invDateStr = d.invoice_date ? String(d.invoice_date).slice(0, 10) : null;
+  const invYear  = invDateStr ? parseInt(invDateStr.slice(0, 4), 10) : null;
+  const invMonth = invDateStr ? parseInt(invDateStr.slice(5, 7), 10) : null;
   if (yr !== 'all') {
-    if (!date || String(date.getFullYear()) !== yr) return false;
+    if (!invYear || String(invYear) !== yr) return false;
   }
   if (q !== 'all') {
     const months = DEAL_VAT_QUARTERS[q];
-    if (!date) return false;
-    if (!months.includes(date.getMonth() + 1)) return false;
+    if (!invMonth) return false;
+    if (!months.includes(invMonth)) return false;
   }
   return true;
 }
@@ -4122,7 +4290,7 @@ function renderDealsTable() {
     const sym = symMap[d.currency] || '£';
     const invMonth = d.invoice_date ? (() => {
       const dt = new Date(d.invoice_date);
-      return `${String(dt.getFullYear()).slice(2)}-${dt.toLocaleDateString('en-GB',{month:'short'})}`;
+      return `${dt.toLocaleDateString('en-GB',{month:'short'})} '${String(dt.getFullYear()).slice(2)}`;
     })() : '';
     const invDateStr = d.invoice_date ? new Date(d.invoice_date).toLocaleDateString('en-GB',{day:'2-digit',month:'2-digit',year:'2-digit'}) : '';
 
@@ -4160,14 +4328,17 @@ function renderDealsTable() {
     const finalRowClass = isFlagged ? 'deal-row-flagged' : rowClass;
     return `<tr id="deal-row-${d.id}" class="${finalRowClass}">
       <td style="text-align:center;padding:0 2px"><button onclick="event.stopPropagation();dealToggleFlag(${d.id})" title="Flag row" style="background:none;border:none;cursor:pointer;font-size:15px;color:${isFlagged?'#f59e0b':'var(--border)'};padding:4px;line-height:1">⚑</button></td>
-      ${ec('invoice_date','date',d.invoice_date||'', `<span class="deal-month-disp">${invMonth||'<span style="color:var(--muted)">—</span>'}</span>`)}
-      <td class="deal-cell-company${coHl?' deal-cell-orange':''}" data-id="${d.id}" data-hlkey="${coHlKey}" onclick="dealCompanyClick(event,${d.id},this)" title="Click to open deal · Shift+click to highlight"><strong class="deal-co-link">${esc(d.company||d.title)}</strong>${d.initials?` <span class="deal-initials-badge">${esc(d.initials)}</span>`:''}</td>
-      ${ec('paid_inc_vat','number',d.paid_inc_vat??'', paidDisplay, `class="deal-num dt-r"${isPartial?' style="background:rgba(234,88,12,.28)"':''}`)}
+      <td><span class="deal-month-disp">${invMonth||'<span style="color:var(--muted)">—</span>'}</span></td>
+      <td class="deal-cell-company${coHl?' deal-cell-orange':''}" data-id="${d.id}" data-hlkey="${coHlKey}" onclick="dealCompanyClick(event,${d.id},this)" title="Click to open deal · Shift+click to highlight"><strong class="deal-co-link">${esc(d.company||d.title)}</strong></td>
+      ${ec('paid_inc_vat','number',d.paid_inc_vat??'', paidDisplay, `class="deal-num dt-r" oncontextmenu="dealCellContextMenu(event,this)"${isPartial?' style="background:rgba(234,88,12,.28)"':''}`)}
       ${ec('amount','number',d.amount||0, `${sym}${fmt(dealAmt)}`, 'class="deal-num dt-r"')}
       ${ec('tax_vat','number',d.tax_vat??'', d.tax_vat ? `${sym}${fmt(parseFloat(d.tax_vat))}` : '<span style="color:var(--muted)">—</span>', 'class="deal-num dt-r"')}
       ${ec('invoice_date','date',d.invoice_date||'', `${invDateStr||'<span style="color:var(--muted)">—</span>'}`)}
       ${ec('bank','select-bank',d.bank||'', `${esc(d.bank||'')||'<span style="color:var(--muted)">—</span>'}`)}
-      ${ec('invoice_number','text',d.invoice_number||'', `<span style="font-family:monospace;font-size:0.72rem">${esc(d.invoice_number||'')}</span>${inv1}${inv2}`)}
+      <td class="deal-cell-inv" data-id="${d.id}" onclick="openDealInvoicePanel(${d.id})" title="Click to upload / view invoices" style="cursor:pointer">
+        <span style="font-family:monospace;font-size:0.72rem;color:${d.invoice_number?'var(--text)':'var(--muted)'}">${d.invoice_number ? esc(d.invoice_number) : '—'}</span>
+        ${(d.invoice1_name||d.invoice2_name) ? `<span style="margin-left:4px;font-size:11px" title="${[d.invoice1_name,d.invoice2_name].filter(Boolean).join(', ')}">📎</span>` : ''}
+      </td>
       <td class="deal-cell-toggle" onclick="dealToggleBool(${d.id},'signature_received',${!!d.signature_received})" style="text-align:center;cursor:pointer" title="Click to toggle">${d.signature_received ? '✅' : '<span style="color:var(--muted)">—</span>'}</td>
       ${ec('initials','text',d.initials||'', d.initials ? `<span class="deal-initials-badge">${esc(d.initials)}</span>` : '<span style="color:var(--muted)">—</span>', 'style="text-align:center"')}
       ${ec('notes','textarea',d.notes||'', notesDisplay)}
@@ -4179,6 +4350,32 @@ function renderDealsTable() {
 
   renderDealTotals(filtered, tfoot);
   renderDealsByInitials(filtered);
+}
+
+let _dealCellMenuTd = null;
+function dealCellContextMenu(evt, td) {
+  evt.preventDefault();
+  _dealCellMenuTd = td;
+  const menu = document.getElementById('dealCellMenu');
+  const isHl = td.classList.contains('deal-cell-orange');
+  document.getElementById('dealCellMenuHL').style.display = isHl ? 'none' : 'block';
+  document.getElementById('dealCellMenuClear').style.display = isHl ? 'block' : 'none';
+  menu.style.display = 'block';
+  const x = Math.min(evt.clientX, window.innerWidth - 200);
+  const y = Math.min(evt.clientY, window.innerHeight - 80);
+  menu.style.left = x + 'px';
+  menu.style.top  = y + 'px';
+  const close = () => { menu.style.display = 'none'; document.removeEventListener('click', close); document.removeEventListener('contextmenu', close); };
+  setTimeout(() => { document.addEventListener('click', close); document.addEventListener('contextmenu', close); }, 0);
+}
+function dealCellMenuAction(action) {
+  const td = _dealCellMenuTd;
+  if (!td) return;
+  const hlKey = td.dataset.hlkey;
+  if (!hlKey) return;
+  if (action === 'hl') { localStorage.setItem(hlKey, '1'); td.classList.add('deal-cell-orange'); }
+  else { localStorage.removeItem(hlKey); td.classList.remove('deal-cell-orange'); }
+  document.getElementById('dealCellMenu').style.display = 'none';
 }
 
 function dealCompanyClick(evt, id, td) {
@@ -4284,6 +4481,73 @@ function dealCellClick(td) {
   });
 }
 
+function openDealInvoicePanel(dealId) {
+  const deal = dealsData.find(d => d.id === dealId);
+  if (!deal) return;
+  const body = document.getElementById('dealInvoicePanelBody');
+
+  function slotHtml(n) {
+    const name = n === 1 ? deal.invoice1_name : deal.invoice2_name;
+    const label = n === 1 ? 'Invoice 1' : 'Invoice 2';
+    return `<div id="dealInvSlot${n}" style="border:1px solid var(--border);border-radius:10px;padding:14px 16px">
+      <div style="font:700 12px/1 var(--font-mono);text-transform:uppercase;letter-spacing:0.5px;color:var(--muted);margin-bottom:10px">${label}</div>
+      ${name
+        ? `<div style="display:flex;align-items:center;gap:10px">
+            <a href="/api/deals/${dealId}/invoice/${n}" target="_blank" style="font-size:13px;font-weight:600;color:var(--primary);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(name)}">📄 ${esc(name)}</a>
+            <button class="btn btn-ghost btn-sm" style="color:var(--negative);flex-shrink:0" onclick="dealInvoiceDelete(${dealId},${n})">Remove</button>
+          </div>`
+        : `<label style="display:flex;align-items:center;gap:10px;cursor:pointer">
+            <span style="font-size:13px;color:var(--muted)">No file uploaded</span>
+            <input type="file" accept=".pdf,.doc,.docx" style="display:none" onchange="dealInvoiceUpload(event,${dealId},${n})">
+            <button class="btn btn-ghost btn-sm" onclick="this.previousElementSibling.click()">Upload PDF / Word</button>
+          </label>`
+      }
+    </div>`;
+  }
+
+  body.innerHTML = slotHtml(1) + slotHtml(2);
+  openModal('dealInvoicePanel');
+}
+
+async function dealInvoiceUpload(evt, dealId, n) {
+  const file = evt.target.files[0];
+  if (!file) return;
+  const allowed = ['application/pdf','application/msword','application/vnd.openxmlformats-officedocument.wordprocessingml.document'];
+  if (!allowed.includes(file.type)) { showToast('Only PDF or Word files allowed', 'error'); return; }
+  const reader = new FileReader();
+  reader.onload = async e => {
+    const base64 = e.target.result.split(',')[1];
+    const res = await fetch(`/api/deals/${dealId}/invoice/${n}`, {
+      method: 'POST', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ invoice_name: file.name, invoice_data: base64 })
+    });
+    if (!res.ok) { showToast('Upload failed', 'error'); return; }
+    showToast('Invoice uploaded', 'success');
+    const idx = dealsData.findIndex(d => d.id === dealId);
+    if (idx !== -1) {
+      if (n === 1) { dealsData[idx].invoice1_name = file.name; dealsData[idx].invoice1_data = base64; }
+      else         { dealsData[idx].invoice2_name = file.name; dealsData[idx].invoice2_data = base64; }
+    }
+    openDealInvoicePanel(dealId);
+    renderDealsTable();
+  };
+  reader.readAsDataURL(file);
+}
+
+async function dealInvoiceDelete(dealId, n) {
+  if (!confirm(`Remove invoice ${n}?`)) return;
+  const res = await fetch(`/api/deals/${dealId}/invoice/${n}`, { method: 'DELETE' });
+  if (!res.ok) { showToast('Remove failed', 'error'); return; }
+  showToast('Invoice removed', 'success');
+  const idx = dealsData.findIndex(d => d.id === dealId);
+  if (idx !== -1) {
+    if (n === 1) { dealsData[idx].invoice1_name = null; dealsData[idx].invoice1_data = null; }
+    else         { dealsData[idx].invoice2_name = null; dealsData[idx].invoice2_data = null; }
+  }
+  openDealInvoicePanel(dealId);
+  renderDealsTable();
+}
+
 async function dealToggleFlag(id) {
   const idx = dealsData.findIndex(d => d.id === id);
   if (idx === -1) return;
@@ -4355,7 +4619,6 @@ function renderDealTotals(filtered, tfoot) {
   const totalDeal = filtered.reduce((a,d) => a + (parseFloat(d.amount)||0), 0);
   const totalTax = filtered.reduce((a,d) => a + (parseFloat(d.tax_vat)||0), 0);
   const remaining = totalDeal - totalPaid;
-  // Columns: Month | Company | Title | Paid | Deal | Tax | InvDate | Bank | Inv# | Signed | By | Notes | Del = 13
   tfoot.innerHTML = `<tr class="deal-totals-row">
     <td colspan="3" style="font-weight:700;font-size:0.82rem">Totals (${filtered.length} deals)</td>
     <td style="text-align:right;font-weight:700">£${fmt(totalPaid)}</td>
@@ -4366,6 +4629,10 @@ function renderDealTotals(filtered, tfoot) {
       ${_dealQFilter !== 'all' ? `&nbsp;·&nbsp; VAT: <strong>£${fmt(totalTax)}</strong>` : ''}
     </td>
   </tr>`;
+
+  // Store filtered for VAT breakdown
+  window._dealTotalsFiltered = filtered;
+
   document.getElementById('dealTotals').innerHTML = `
     <div class="deal-stat-cards">
       <div class="deal-stat-card">
@@ -4380,11 +4647,46 @@ function renderDealTotals(filtered, tfoot) {
         <div class="deal-stat-label">Outstanding</div>
         <div class="deal-stat-value">£${fmt(Math.max(0,remaining))}</div>
       </div>
-      <div class="deal-stat-card ds--indigo">
-        <div class="deal-stat-label">VAT${_dealQFilter !== 'all' ? ' '+_dealQFilter : ' Total'}</div>
+      <div class="deal-stat-card ds--indigo" onclick="openVatBreakdown()" style="cursor:pointer" title="Click to see VAT breakdown by company">
+        <div class="deal-stat-label">VAT${_dealQFilter !== 'all' ? ' '+_dealQFilter : ' Total'} <span style="font-size:9px;opacity:0.7">▼ breakdown</span></div>
         <div class="deal-stat-value">£${fmt(totalTax)}</div>
       </div>
     </div>`;
+}
+
+function openVatBreakdown() {
+  const filtered = window._dealTotalsFiltered || [];
+  const withVat = filtered.filter(d => parseFloat(d.tax_vat) > 0)
+    .sort((a,b) => {
+      const da = a.invoice_date || '';
+      const db = b.invoice_date || '';
+      return da < db ? -1 : da > db ? 1 : 0;
+    });
+  const totalTax = filtered.reduce((a,d) => a + (parseFloat(d.tax_vat)||0), 0);
+
+  const rows = withVat.map(d => {
+    const vat = parseFloat(d.tax_vat);
+    const pct = totalTax > 0 ? ((vat / totalTax) * 100).toFixed(1) : 0;
+    const invDate = d.invoice_date ? new Date(d.invoice_date).toLocaleDateString('en-GB',{month:'short',year:'2-digit'}) : '—';
+    return `<div style="display:flex;align-items:center;justify-content:space-between;padding:9px 0;border-bottom:1px solid var(--border)">
+      <div>
+        <div style="font:600 13px/1.3 var(--font-sans);color:var(--text)">${esc(d.company||d.title)}</div>
+        <div style="font:500 11px/1 var(--font-mono);color:var(--muted);margin-top:3px">${invDate}${d.invoice_number ? ' · ' + esc(d.invoice_number) : ''}</div>
+      </div>
+      <div style="text-align:right;flex-shrink:0;margin-left:16px">
+        <div style="font:700 14px/1 var(--font-sans);color:var(--accent)">£${fmt(vat)}</div>
+        <div style="font:500 10px/1 var(--font-mono);color:var(--muted);margin-top:3px">${pct}%</div>
+      </div>
+    </div>`;
+  }).join('');
+
+  const label = _dealQFilter !== 'all' ? `VAT ${_dealQFilter}` : 'VAT Total';
+  document.getElementById('vatBreakdownTitle').textContent = `${label} — Company Breakdown`;
+  document.getElementById('vatBreakdownBody').innerHTML = rows +
+    `<div style="display:flex;justify-content:space-between;padding:12px 0 0;font:700 14px/1 var(--font-sans)">
+      <span>Total</span><span style="color:var(--accent)">£${fmt(totalTax)}</span>
+    </div>`;
+  openModal('vatBreakdownModal');
 }
 
 // ─── EMPLOYEE PORTAL ──────────────────────────────────────────────────────────

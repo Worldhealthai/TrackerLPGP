@@ -421,11 +421,17 @@ app.put('/api/admins/:id/password', requireAuth, async (req, res) => {
 
 app.get('/api/employees', requireAuth, async (req, res) => {
   const { rows } = await q('SELECT * FROM employees WHERE active = 1 ORDER BY name');
+  if (req.user.role !== 'admin') {
+    return res.json(rows.map(({ annual_salary, daily_rate, pension_rate, ...rest }) => rest));
+  }
   res.json(rows);
 });
 
 app.get('/api/employees/all', requireAuth, async (req, res) => {
   const { rows } = await q('SELECT * FROM employees ORDER BY name');
+  if (req.user.role !== 'admin') {
+    return res.json(rows.map(({ annual_salary, daily_rate, pension_rate, ...rest }) => rest));
+  }
   res.json(rows);
 });
 
@@ -1544,7 +1550,7 @@ app.get('/api/portfolio-events', requireAuth, requireAdminOrManager, async (req,
   try {
     const { rows } = await q(`
       SELECT pe.*,
-        COALESCE(SUM(CASE WHEN d.stage='Won' THEN de.allocated_amount ELSE 0 END),0) AS total_won,
+        COALESCE(SUM(COALESCE(d.paid_inc_vat, 0)),0) AS total_won,
         COALESCE(SUM(de.allocated_amount),0) AS total_pipeline,
         COUNT(DISTINCT de.deal_id) AS deal_count,
         string_agg(DISTINCT NULLIF(COALESCE(NULLIF(d.company,''), d.title),''), ', ') AS companies
@@ -1555,6 +1561,21 @@ app.get('/api/portfolio-events', requireAuth, requireAdminOrManager, async (req,
     res.json(rows);
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
+// GET /api/portfolio-events/:id/deals — deals linked to an event with paid status
+app.get('/api/portfolio-events/:id/deals', requireAuth, requireAdminOrManager, async (req, res) => {
+  try {
+    const { rows } = await q(`
+      SELECT d.id, COALESCE(NULLIF(d.company,''),d.title) AS company,
+        de.allocated_amount AS amount, d.currency,
+        d.paid_inc_vat, d.stage
+      FROM deal_events de
+      JOIN deals d ON d.id=de.deal_id
+      WHERE de.event_id=?
+      ORDER BY d.company`, [req.params.id]);
+    res.json(rows);
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 app.post('/api/portfolio-events', requireAuth, requireAdminOrManager, async (req, res) => {
   try {
     const { name, event_date, location, notes } = req.body;
@@ -1745,6 +1766,30 @@ app.get('/api/deals/:id/invoice/:n', requireAuth, requireAdminOrManager, async (
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+// POST /api/deals/:id/invoice/:n — upload invoice file (base64)
+app.post('/api/deals/:id/invoice/:n', requireAuth, requireAdminOrManager, async (req, res) => {
+  try {
+    const n = req.params.n === '2' ? 2 : 1;
+    const { invoice_name, invoice_data } = req.body;
+    if (!invoice_name || !invoice_data) return res.status(400).json({ error: 'invoice_name and invoice_data required' });
+    const { rows } = await q(
+      `UPDATE deals SET invoice${n}_name=?, invoice${n}_data=? WHERE id=? RETURNING id`,
+      [invoice_name, invoice_data, req.params.id]
+    );
+    if (!rows.length) return res.status(404).json({ error: 'Not found' });
+    res.json({ ok: true });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// DELETE /api/deals/:id/invoice/:n — remove invoice file
+app.delete('/api/deals/:id/invoice/:n', requireAuth, requireAdminOrManager, async (req, res) => {
+  try {
+    const n = req.params.n === '2' ? 2 : 1;
+    await q(`UPDATE deals SET invoice${n}_name=NULL, invoice${n}_data=NULL WHERE id=?`, [req.params.id]);
+    res.json({ ok: true });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 // PATCH /api/deals/:id/row-status — set row color status
 app.patch('/api/deals/:id/row-status', requireAuth, requireAdminOrManager, async (req, res) => {
   try {
@@ -1761,7 +1806,7 @@ app.patch('/api/deals/:id/row-status', requireAuth, requireAdminOrManager, async
 app.patch('/api/deals/:id/field', requireAuth, requireAdminOrManager, async (req, res) => {
   const ALLOWED = ['title','company','initials','stage','amount','currency','paid_inc_vat',
     'tax_vat','invoice_number','invoice_date','paid_date','bank',
-    'invoice_agreement_sent','signature_received','notes','cancelled_reason'];
+    'invoice_agreement_sent','signature_received','notes','cancelled_reason','is_flagged'];
   try {
     const { field, value } = req.body;
     if (!ALLOWED.includes(field)) return res.status(400).json({ error: 'Field not allowed' });

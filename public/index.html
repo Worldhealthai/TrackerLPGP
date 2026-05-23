@@ -55,7 +55,7 @@
         <span class="icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="6" width="20" height="12" rx="2"/><circle cx="12" cy="12" r="2"/><path d="M6 12h.01M18 12h.01"/></svg></span>
         <span class="nav-label">Salary</span><span id="salaryNavBadge" class="nav-badge hidden"></span>
       </div>
-      <div class="nav-item" data-page="employees">
+      <div class="nav-item admin-only hidden" data-page="employees">
         <span class="icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg></span>
         <span class="nav-label">Employees</span>
       </div>
@@ -86,10 +86,6 @@
       </div>
     </div>
     <div class="sidebar-footer">
-      <button class="sidebar-collapse-btn" id="sidebarCollapseBtn" onclick="toggleSidebar()" title="Collapse sidebar">
-        <span class="sidebar-collapse-icon">◀</span>
-        <span class="sidebar-collapse-label">Collapse</span>
-      </button>
       <div class="sidebar-footer-info">
         Shift: 8 hrs · Break: 40 min<br>
         Payroll: 20 days/yr · Self-Emp: 5 days/yr
@@ -138,18 +134,7 @@
 
       <!-- ══ DASHBOARD ══ -->
       <div class="page active" id="page-dashboard">
-        <div class="page-head">
-          <div>
-            <h1>Dashboard <span class="tag" id="dashTag">May 2026</span></h1>
-            <div class="sub" id="dashSub">// Operations overview · live</div>
-          </div>
-          <div class="actions">
-            <button class="btn" onclick="exportPayrollCSV()"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg> Export</button>
-            <button class="btn btn-primary" onclick="openRecordModal()"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg> New record</button>
-          </div>
-        </div>
         <div id="dashStats"></div>
-        <div id="headcountPanel" style="margin-bottom:20px"></div>
         <div id="contractExpiryPanel" style="margin-bottom:20px"></div>
 
         <div class="card">
@@ -411,6 +396,9 @@
 
         <!-- Days-off summary strip -->
         <div id="calSummary" class="hidden" style="margin-top:18px"></div>
+
+        <!-- Upcoming panel -->
+        <div class="cal-upcoming" id="calUpcoming"></div>
       </div>
 
       <!-- ══ ADMINS ══ -->
@@ -491,8 +479,19 @@
 
       <!-- ══ SUBSCRIPTIONS ══ -->
       <div class="page" id="page-subscriptions">
-        <div class="filter-bar" style="align-items:center">
-          <button class="btn btn-primary" style="margin-left:auto" onclick="openSubModal()">+ Add Subscription</button>
+        <div class="deal-filter-card deal-filter-actions" style="margin-bottom:16px">
+          <div class="deal-q-filters" id="subCycleFilters">
+            <button class="deal-q-btn active" data-cycle="all" onclick="setSubFilter('all')">All</button>
+            <button class="deal-q-btn" data-cycle="monthly" onclick="setSubFilter('monthly')">Monthly</button>
+            <button class="deal-q-btn" data-cycle="quarterly" onclick="setSubFilter('quarterly')">Quarterly</button>
+            <button class="deal-q-btn" data-cycle="annually" onclick="setSubFilter('annually')">Annually</button>
+            <button class="deal-q-btn" data-cycle="one_off" onclick="setSubFilter('one_off')">One-Off</button>
+          </div>
+          <div class="deal-q-sep"></div>
+          <label style="display:flex;align-items:center;gap:6px;font-size:13px;color:var(--muted);cursor:pointer">
+            <input type="checkbox" id="subActiveOnly" onchange="renderSubTable()" checked> Active only
+          </label>
+          <button class="btn btn-primary deal-add-btn" onclick="openSubModal()">+ Add Subscription</button>
         </div>
         <div id="subTotals" style="margin-bottom:20px"></div>
         <div class="card" style="padding:0;overflow:hidden">
@@ -575,8 +574,8 @@
     <table id="dealsTable">
       <colgroup>
         <col style="width:32px">   <!-- Flag -->
-        <col style="width:66px">   <!-- Month -->
-        <col style="width:176px">  <!-- Company -->
+        <col style="width:72px">   <!-- Month -->
+        <col style="width:170px">  <!-- Company -->
         <col style="width:108px">  <!-- Paid inc VAT -->
         <col style="width:104px">  <!-- Deal Value -->
         <col style="width:96px">   <!-- Tax/VAT -->
@@ -1304,7 +1303,7 @@
   <div class="bottom-nav-item" data-page="tracking"><span class="bottom-nav-icon">⏱️</span><span class="bottom-nav-label">Tracking</span></div>
   <div class="bottom-nav-item" data-page="calendar"><span class="bottom-nav-icon">📅</span><span class="bottom-nav-label">Calendar</span></div>
   <div class="bottom-nav-item admin-only hidden" data-page="salary" style="position:relative"><span class="bottom-nav-icon">💰</span><span class="bottom-nav-label">Salary</span><span id="salaryBottomBadge" class="nav-badge nav-badge-bottom hidden"></span></div>
-  <div class="bottom-nav-item" data-page="employees"><span class="bottom-nav-icon">👥</span><span class="bottom-nav-label">Staff</span></div>
+  <div class="bottom-nav-item admin-only hidden" data-page="employees"><span class="bottom-nav-icon">👥</span><span class="bottom-nav-label">Staff</span></div>
 </nav>
 
 <!-- Toast container -->
@@ -1349,6 +1348,40 @@
     <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:20px">
       <button class="btn btn-ghost" onclick="closeModal('subModal')">Cancel</button>
       <button class="btn btn-primary" onclick="saveSub()">Save</button>
+    </div>
+  </div>
+</div>
+
+<!-- ══ Cell context menu ══ -->
+<div id="dealCellMenu" style="display:none;position:fixed;z-index:9999;background:var(--surface);border:1px solid var(--border);border-radius:8px;box-shadow:0 4px 20px rgba(0,0,0,.15);padding:4px;min-width:180px">
+  <button id="dealCellMenuHL" onclick="dealCellMenuAction('hl')" style="display:block;width:100%;text-align:left;padding:8px 12px;background:none;border:none;cursor:pointer;border-radius:6px;font-size:13px;color:var(--text)">🟠 Highlight orange</button>
+  <button id="dealCellMenuClear" onclick="dealCellMenuAction('clear')" style="display:block;width:100%;text-align:left;padding:8px 12px;background:none;border:none;cursor:pointer;border-radius:6px;font-size:13px;color:var(--muted)">✕ Clear highlight</button>
+</div>
+
+<!-- ══ PANEL: Deal Invoice Upload ══ -->
+<!-- ══ MODAL: VAT Breakdown ══ -->
+<div class="modal-overlay" id="vatBreakdownModal">
+  <div class="modal" style="max-width:500px">
+    <div class="modal-header">
+      <h2 id="vatBreakdownTitle">VAT Breakdown</h2>
+      <button class="modal-close" onclick="closeModal('vatBreakdownModal')">✕</button>
+    </div>
+    <div id="vatBreakdownBody" style="max-height:60vh;overflow-y:auto;padding-top:4px"></div>
+    <div class="modal-footer" style="margin-top:16px">
+      <button class="btn btn-ghost" onclick="closeModal('vatBreakdownModal')">Close</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="dealInvoicePanel">
+  <div class="modal" style="max-width:480px">
+    <div class="modal-header">
+      <h2>Invoice Files</h2>
+      <button class="modal-close" onclick="closeModal('dealInvoicePanel')">✕</button>
+    </div>
+    <div id="dealInvoicePanelBody" style="display:flex;flex-direction:column;gap:16px;padding-top:8px"></div>
+    <div class="modal-footer" style="margin-top:16px">
+      <button class="btn btn-ghost" onclick="closeModal('dealInvoicePanel')">Close</button>
     </div>
   </div>
 </div>
