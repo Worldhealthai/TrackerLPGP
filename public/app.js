@@ -3416,13 +3416,20 @@ function renderHotelSummary() {
   }
 
   const byCur = {};
+  function ensureCur(c) { byCur[c] = byCur[c] || { paid: 0, av: 0, cost: 0 }; }
   yearData.forEach(r => {
-    const c = r.currency || r.paid_currency || 'USD';
-    byCur[c] = byCur[c] || { paid: 0, av: 0, cost: 0 };
-    if (r.paid_amount != null) byCur[c].paid += parseFloat(r.paid_amount) || 0;
-    if (r.av_amount != null && r.av_billing !== 'included') byCur[c].av += parseFloat(r.av_amount) || 0;
+    const paidCur = r.paid_currency || r.currency || 'USD';
+    const avCur   = r.av_currency   || r.currency || 'USD';
+    const costCur = r.paid_currency || r.currency || 'USD';
+    ensureCur(paidCur);
+    if (r.paid_amount != null) byCur[paidCur].paid += parseFloat(r.paid_amount) || 0;
+    if (r.av_amount != null && r.av_billing !== 'included') {
+      ensureCur(avCur);
+      byCur[avCur].av += parseFloat(r.av_amount) || 0;
+    }
     const costNum = parseCost(r.cost);
-    if (costNum > 0) byCur[c].cost += costNum;
+    ensureCur(costCur);
+    if (costNum > 0) byCur[costCur].cost += costNum;
   });
 
   const total  = yearData.length;
