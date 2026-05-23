@@ -421,11 +421,17 @@ app.put('/api/admins/:id/password', requireAuth, async (req, res) => {
 
 app.get('/api/employees', requireAuth, async (req, res) => {
   const { rows } = await q('SELECT * FROM employees WHERE active = 1 ORDER BY name');
+  if (req.user.role !== 'admin') {
+    return res.json(rows.map(({ annual_salary, daily_rate, pension_rate, ...rest }) => rest));
+  }
   res.json(rows);
 });
 
 app.get('/api/employees/all', requireAuth, async (req, res) => {
   const { rows } = await q('SELECT * FROM employees ORDER BY name');
+  if (req.user.role !== 'admin') {
+    return res.json(rows.map(({ annual_salary, daily_rate, pension_rate, ...rest }) => rest));
+  }
   res.json(rows);
 });
 

@@ -78,11 +78,6 @@ document.addEventListener('DOMContentLoaded', async () => {
     await initEmployeePortal(currentUser);
     return;
   }
-  if (currentUser.role === 'accounts') {
-    await initAccountsPortal(currentUser);
-    return;
-  }
-
   const initials = currentUser.username.slice(0,2).toUpperCase();
   document.getElementById('userLabel').innerHTML = `<div class="sidebar-user-pill"><div class="sidebar-user-avatar">${esc(initials)}</div><span class="sidebar-user-name">${esc(currentUser.username)}</span><span class="sidebar-user-role">${esc(currentUser.role)}</span></div>`;
   document.getElementById('todayDate').textContent = formatDate(today());
@@ -90,7 +85,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   if (currentUser.role === 'admin') {
     document.querySelectorAll('.admin-only').forEach(el => el.classList.remove('hidden'));
   }
-  if (currentUser.role === 'admin' || currentUser.role === 'manager') {
+  if (currentUser.role === 'admin' || currentUser.role === 'manager' || currentUser.role === 'accounts') {
     document.querySelectorAll('.admin-manager-only').forEach(el => el.classList.remove('hidden'));
   }
 
@@ -164,8 +159,8 @@ function initSidebarCollapse() {
 
 // ─── NAVIGATION ──────────────────────────────────────────────────────────────
 function navigate(page) {
-  // Salary section is admin-only
-  if (page === 'salary' && currentUser?.role !== 'admin') return;
+  // Salary and Employees sections are admin-only
+  if ((page === 'salary' || page === 'employees') && currentUser?.role !== 'admin') return;
   document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
   document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
   document.querySelectorAll('.bottom-nav-item').forEach(n => n.classList.remove('active'));
