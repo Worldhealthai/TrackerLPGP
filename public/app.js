@@ -4165,6 +4165,8 @@ let _dealInv2 = null;
 let _dealQFilter = 'all';
 let _dealYearFilter = 'all';
 let _dealEventFilter = '';
+let _dealRangeFrom = '';  // YYYY-MM
+let _dealRangeTo   = '';  // YYYY-MM
 let _lastInvoiceId = null;
 let _nextInvoiceNum = null;
 let _importRows = [];
@@ -4251,6 +4253,31 @@ function setDealQ(btn, q) {
   renderDealsTable();
 }
 
+function setDealRange() {
+  _dealRangeFrom = document.getElementById('dealRangeFrom')?.value || '';
+  _dealRangeTo   = document.getElementById('dealRangeTo')?.value   || '';
+  const active = _dealRangeFrom || _dealRangeTo;
+  document.getElementById('dealRangeClear')?.classList.toggle('hidden', !active);
+  // When a range is active, clear Q/year filters so they don't conflict
+  if (active) {
+    _dealQFilter = 'all';
+    _dealYearFilter = 'all';
+    document.querySelectorAll('[data-q]').forEach(b => b.classList.toggle('active', b.dataset.q === 'all'));
+    document.querySelectorAll('[data-yr]').forEach(b => b.classList.toggle('active', b.dataset.yr === 'all'));
+  }
+  renderDealsTable();
+}
+
+function clearDealRange() {
+  _dealRangeFrom = ''; _dealRangeTo = '';
+  const from = document.getElementById('dealRangeFrom');
+  const to   = document.getElementById('dealRangeTo');
+  if (from) from.value = '';
+  if (to)   to.value   = '';
+  document.getElementById('dealRangeClear')?.classList.add('hidden');
+  renderDealsTable();
+}
+
 function setDealEvent(eventId) {
   _dealEventFilter = eventId;
   renderDealsTable();
@@ -4267,10 +4294,18 @@ function dealPassesFilter(d) {
     const evtId = String(_dealEventFilter);
     if (!Array.isArray(d.events) || !d.events.some(ev => String(ev.event_id) === evtId)) return false;
   }
-  // Q and year filters are based strictly on invoice_date (the date on the actual invoice)
-  const invDateStr = d.invoice_date ? String(d.invoice_date).slice(0, 10) : null;
+  // All date filters use invoice_date exclusively
+  const invDateStr  = d.invoice_date ? String(d.invoice_date).slice(0, 10) : null;
+  const invYearMonth = invDateStr ? invDateStr.slice(0, 7) : null; // YYYY-MM
   const invYear  = invDateStr ? parseInt(invDateStr.slice(0, 4), 10) : null;
   const invMonth = invDateStr ? parseInt(invDateStr.slice(5, 7), 10) : null;
+  // Date range filter (takes priority over Q/year when active)
+  if (_dealRangeFrom || _dealRangeTo) {
+    if (!invYearMonth) return false;
+    if (_dealRangeFrom && invYearMonth < _dealRangeFrom) return false;
+    if (_dealRangeTo   && invYearMonth > _dealRangeTo)   return false;
+    return true;
+  }
   if (yr !== 'all') {
     if (!invYear || String(invYear) !== yr) return false;
   }
