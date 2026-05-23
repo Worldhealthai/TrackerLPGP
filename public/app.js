@@ -4167,6 +4167,7 @@ let _dealYearFilter = 'all';
 let _dealEventFilter = '';
 let _dealRangeFrom = '';  // YYYY-MM
 let _dealRangeTo   = '';  // YYYY-MM
+let _selectedDealIds = new Set();
 let _lastInvoiceId = null;
 let _nextInvoiceNum = null;
 let _importRows = [];
@@ -4371,9 +4372,13 @@ function renderDealsTable() {
     const coHl = localStorage.getItem(coHlKey) === '1';
 
     const isFlagged = d.is_flagged || false;
-    const finalRowClass = isFlagged ? 'deal-row-flagged' : rowClass;
+    const isSelected = _selectedDealIds.has(d.id);
+    const finalRowClass = (isFlagged ? 'deal-row-flagged' : rowClass) + (isSelected ? ' deal-row-selected' : '');
     return `<tr id="deal-row-${d.id}" class="${finalRowClass}">
-      <td style="text-align:center;padding:0 2px"><button onclick="event.stopPropagation();dealToggleFlag(${d.id})" title="Flag row" style="background:none;border:none;cursor:pointer;font-size:15px;color:${isFlagged?'#f59e0b':'var(--border)'};padding:4px;line-height:1">⚑</button></td>
+      <td style="text-align:center;padding:0 2px">
+        <input type="checkbox" class="deal-select-cb" ${isSelected?'checked':''} onclick="event.stopPropagation();toggleDealSelect(${d.id})" style="cursor:pointer;width:14px;height:14px">
+        <button onclick="event.stopPropagation();dealToggleFlag(${d.id})" title="Flag row" style="background:none;border:none;cursor:pointer;font-size:15px;color:${isFlagged?'#f59e0b':'var(--border)'};padding:4px;line-height:1">⚑</button>
+      </td>
       <td><span class="deal-month-disp">${invMonth||'<span style="color:var(--muted)">—</span>'}</span></td>
       <td class="deal-cell-company${coHl?' deal-cell-orange':''}" data-id="${d.id}" data-hlkey="${coHlKey}" onclick="dealCompanyClick(event,${d.id},this)" title="Click to open deal · Shift+click to highlight"><strong class="deal-co-link">${esc(d.company||d.title)}</strong></td>
       ${ec('paid_inc_vat','number',d.paid_inc_vat??'', paidDisplay, `class="deal-num dt-r" oncontextmenu="dealCellContextMenu(event,this)"${isPartial?' style="background:rgba(234,88,12,.28)"':''}`)}
@@ -4394,8 +4399,10 @@ function renderDealsTable() {
     </tr>`;
   }).join('');
 
+  window._dealCurrentFiltered = filtered;
   renderDealTotals(filtered, tfoot);
   renderDealsByInitials(filtered);
+  updateDealSelectionUI();
 }
 
 let _dealCellMenuTd = null;
@@ -6315,18 +6322,16 @@ async function openDealModal(id, defaultStage) {
   if (id) {
     const d = dealsData.find(x => x.id === id);
     if (!d) return;
-    document.getElementById('dealTitle').value = d.title;
+    document.getElementById('dealTitle').value = d.title || d.company || '';
     document.getElementById('dealCompany').value = d.company || '';
     document.getElementById('dealInitials').value = d.initials || '';
-    document.getElementById('dealStage').value = d.stage;
+    document.getElementById('dealStage').value = d.stage || 'Prospect';
     document.getElementById('dealCurrency').value = d.currency || 'GBP';
     document.getElementById('dealAmount').value = d.amount;
     document.getElementById('dealPaidIncVat').value = d.paid_inc_vat || '';
     document.getElementById('dealTaxVat').value = d.tax_vat || '';
     document.getElementById('dealInvoiceNumber').value = d.invoice_number || '';
     document.getElementById('dealInvoiceDate').value = d.invoice_date ? d.invoice_date.split('T')[0] : '';
-    document.getElementById('dealPaidDate').value = d.paid_date ? d.paid_date.split('T')[0] : '';
-    document.getElementById('dealBank').value = d.bank || '';
     document.getElementById('dealInvSent').value = d.invoice_agreement_sent ? 'true' : 'false';
     document.getElementById('dealSigReceived').value = d.signature_received ? 'true' : 'false';
     document.getElementById('dealNotes').value = d.notes || '';
@@ -6334,6 +6339,7 @@ async function openDealModal(id, defaultStage) {
     Array.from(sel.options).forEach(o => { o.selected = evIds.includes(parseInt(o.value)); });
     if (d.invoice1_name) document.getElementById('dealInv1Preview').textContent = `Current: ${d.invoice1_name}`;
     if (d.invoice2_name) document.getElementById('dealInv2Preview').textContent = `Current: ${d.invoice2_name}`;
+    selectDealPayment(d.bank === 'Stripe' ? 'Stripe' : 'Bank');
   } else {
     document.getElementById('dealTitle').value = '';
     document.getElementById('dealCompany').value = '';
@@ -6345,15 +6351,20 @@ async function openDealModal(id, defaultStage) {
     document.getElementById('dealTaxVat').value = '';
     document.getElementById('dealInvoiceNumber').value = '';
     document.getElementById('dealInvoiceDate').value = '';
-    document.getElementById('dealPaidDate').value = '';
-    document.getElementById('dealBank').value = '';
     document.getElementById('dealInvSent').value = 'false';
     document.getElementById('dealSigReceived').value = 'false';
     document.getElementById('dealNotes').value = '';
     Array.from(sel.options).forEach(o => o.selected = false);
+    selectDealPayment('Bank');
   }
   updateDealSplitPreview();
   openModal('dealModal');
+}
+
+function selectDealPayment(method) {
+  document.getElementById('dealBank').value = method;
+  document.getElementById('dealPayBank')?.classList.toggle('active', method === 'Bank');
+  document.getElementById('dealPayStripe')?.classList.toggle('active', method === 'Stripe');
 }
 
 function fillNextInvoiceNumber() {
@@ -6395,24 +6406,27 @@ function dealFilePreview(n, input) {
 
 async function saveDeal() {
   const id = document.getElementById('dealEditId').value;
-  const title = document.getElementById('dealTitle').value.trim();
-  if (!title) { showToast('Deal title is required', 'error'); return; }
+  const company = document.getElementById('dealCompany').value.trim();
+  if (!company) { showToast('Company name is required', 'error'); return; }
   const amount = parseFloat(document.getElementById('dealAmount').value);
-  if (isNaN(amount) || amount < 0) { showToast('Enter a valid amount', 'error'); return; }
+  if (isNaN(amount) || amount < 0) { showToast('Enter a valid deal value', 'error'); return; }
   const sel = document.getElementById('dealEvents');
   const event_ids = Array.from(sel.selectedOptions).map(o => parseInt(o.value)).filter(Boolean);
   const paidIncVat = document.getElementById('dealPaidIncVat').value;
   const taxVat = document.getElementById('dealTaxVat').value;
+  // Use company as title if no explicit title stored
+  const existingTitle = document.getElementById('dealTitle').value.trim();
   const body = {
-    title, company: document.getElementById('dealCompany').value.trim(),
+    title: existingTitle || company,
+    company,
     contact_name: '', initials: document.getElementById('dealInitials').value.trim().toUpperCase(),
     currency: document.getElementById('dealCurrency').value,
-    amount, stage: document.getElementById('dealStage').value,
+    amount, stage: document.getElementById('dealStage').value || 'Prospect',
     paid_inc_vat: paidIncVat ? parseFloat(paidIncVat) : null,
     tax_vat: taxVat ? parseFloat(taxVat) : null,
     invoice_number: document.getElementById('dealInvoiceNumber').value.trim(),
     invoice_date: document.getElementById('dealInvoiceDate').value || null,
-    paid_date: document.getElementById('dealPaidDate').value || null,
+    paid_date: null,
     bank: document.getElementById('dealBank').value,
     invoice_agreement_sent: document.getElementById('dealInvSent').value === 'true',
     signature_received: document.getElementById('dealSigReceived').value === 'true',
@@ -6436,7 +6450,53 @@ async function deleteDeal(id) {
   if (!confirm('Delete this deal?')) return;
   const res = await fetch(`/api/deals/${id}`, { method: 'DELETE' });
   if (!res.ok) { showToast('Delete failed', 'error'); return; }
+  _selectedDealIds.delete(id);
   showToast('Deal deleted', 'success');
+  loadDeals();
+  loadPortfolio();
+}
+
+function toggleDealSelect(id) {
+  if (_selectedDealIds.has(id)) _selectedDealIds.delete(id);
+  else _selectedDealIds.add(id);
+  updateDealSelectionUI();
+  renderDealsTable();
+}
+
+function selectAllDeals() {
+  const filtered = window._dealCurrentFiltered || [];
+  const allSelected = filtered.every(d => _selectedDealIds.has(d.id));
+  if (allSelected) filtered.forEach(d => _selectedDealIds.delete(d.id));
+  else filtered.forEach(d => _selectedDealIds.add(d.id));
+  updateDealSelectionUI();
+  renderDealsTable();
+}
+
+function updateDealSelectionUI() {
+  const n = _selectedDealIds.size;
+  const btn = document.getElementById('deleteSelectedDealsBtn');
+  if (!btn) return;
+  if (n > 0) {
+    btn.textContent = `🗑 Delete Selected (${n})`;
+    btn.style.display = 'inline-flex';
+  } else {
+    btn.style.display = 'none';
+  }
+}
+
+async function deleteSelectedDeals() {
+  const ids = [..._selectedDealIds];
+  if (!ids.length) return;
+  if (!confirm(`Delete ${ids.length} selected deal${ids.length > 1 ? 's' : ''}? This cannot be undone.`)) return;
+  const res = await fetch('/api/deals/bulk', {
+    method: 'DELETE',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ ids })
+  });
+  if (!res.ok) { showToast('Bulk delete failed', 'error'); return; }
+  _selectedDealIds.clear();
+  updateDealSelectionUI();
+  showToast(`${ids.length} deal${ids.length > 1 ? 's' : ''} deleted`, 'success');
   loadDeals();
   loadPortfolio();
 }
