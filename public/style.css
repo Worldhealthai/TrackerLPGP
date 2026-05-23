@@ -2179,7 +2179,7 @@ tbody tr:last-child td { border-bottom: none; }
 
 .dash-mini-grid {
   display: grid;
-  grid-template-rows: 1fr 1fr 1fr;
+  grid-template-rows: 1fr 1fr;
   gap: 12px;
 }
 

@@ -484,6 +484,13 @@ async function loadDashboard() {
           <span class="dash-hero-pill dash-hero-pill--blue">${payrollCount} Payroll</span>
           <span class="dash-hero-pill dash-hero-pill--amber">${seCount} Self-Emp</span>
         </div>
+        <div style="margin-top:auto;padding-top:12px;border-top:1px solid rgba(255,255,255,0.08);cursor:pointer" onclick="navigate('salary')">
+          <div style="font:600 9px/1 var(--font-mono);text-transform:uppercase;letter-spacing:1px;color:var(--muted);margin-bottom:6px">Unpaid This Month</div>
+          <div style="display:flex;align-items:center;gap:8px">
+            <span style="font:700 24px/1 var(--font-mono);color:${unpaidCount > 0 ? 'var(--warning)' : 'var(--positive)'}">${unpaidCount}</span>
+            <span style="font:500 11px/1.3 var(--font-mono);color:var(--muted)">${unpaidCount > 0 ? 'Action required →' : 'All paid up'}</span>
+          </div>
+        </div>
         <div class="dash-hero-footer">Total workforce · ${year}</div>
       </div>
       <div id="headcountPanel"></div>
@@ -502,14 +509,6 @@ async function loadDashboard() {
             <div class="dash-mini-label">Hotel Fees Remaining</div>
             <div class="dash-mini-value">${hotelUnpaidCount} event${hotelUnpaidCount !== 1 ? 's' : ''}</div>
             <div class="dash-mini-sub">${hotelUnpaidCount > 0 ? `${hotelUnpaidCount} unpaid / partial →` : 'All settled'}</div>
-          </div>
-        </div>
-        <div class="dash-mini-card ${unpaidCount > 0 ? 'dash-mini--alert' : 'dash-mini--green'}" style="cursor:pointer" onclick="navigate('salary')" title="Go to salary page">
-          <div class="dash-mini-icon">${unpaidCount > 0 ? '🔔' : '✅'}</div>
-          <div class="dash-mini-body">
-            <div class="dash-mini-label">Unpaid This Month</div>
-            <div class="dash-mini-value">${unpaidCount}</div>
-            <div class="dash-mini-sub">${unpaidCount > 0 ? 'Action required →' : 'All paid up'}</div>
           </div>
         </div>
       </div>
