@@ -1745,6 +1745,30 @@ app.get('/api/deals/:id/invoice/:n', requireAuth, requireAdminOrManager, async (
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+// POST /api/deals/:id/invoice/:n — upload invoice file (base64)
+app.post('/api/deals/:id/invoice/:n', requireAuth, requireAdminOrManager, async (req, res) => {
+  try {
+    const n = req.params.n === '2' ? 2 : 1;
+    const { invoice_name, invoice_data } = req.body;
+    if (!invoice_name || !invoice_data) return res.status(400).json({ error: 'invoice_name and invoice_data required' });
+    const { rows } = await q(
+      `UPDATE deals SET invoice${n}_name=?, invoice${n}_data=? WHERE id=? RETURNING id`,
+      [invoice_name, invoice_data, req.params.id]
+    );
+    if (!rows.length) return res.status(404).json({ error: 'Not found' });
+    res.json({ ok: true });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// DELETE /api/deals/:id/invoice/:n — remove invoice file
+app.delete('/api/deals/:id/invoice/:n', requireAuth, requireAdminOrManager, async (req, res) => {
+  try {
+    const n = req.params.n === '2' ? 2 : 1;
+    await q(`UPDATE deals SET invoice${n}_name=NULL, invoice${n}_data=NULL WHERE id=?`, [req.params.id]);
+    res.json({ ok: true });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 // PATCH /api/deals/:id/row-status — set row color status
 app.patch('/api/deals/:id/row-status', requireAuth, requireAdminOrManager, async (req, res) => {
   try {
@@ -1761,7 +1785,7 @@ app.patch('/api/deals/:id/row-status', requireAuth, requireAdminOrManager, async
 app.patch('/api/deals/:id/field', requireAuth, requireAdminOrManager, async (req, res) => {
   const ALLOWED = ['title','company','initials','stage','amount','currency','paid_inc_vat',
     'tax_vat','invoice_number','invoice_date','paid_date','bank',
-    'invoice_agreement_sent','signature_received','notes','cancelled_reason'];
+    'invoice_agreement_sent','signature_received','notes','cancelled_reason','is_flagged'];
   try {
     const { field, value } = req.body;
     if (!ALLOWED.includes(field)) return res.status(400).json({ error: 'Field not allowed' });

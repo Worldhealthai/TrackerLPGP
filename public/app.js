@@ -3874,6 +3874,7 @@ function renderPortfolioGrid() {
     const dateStr = ev.event_date ? new Date(ev.event_date).toLocaleDateString('en-GB',{day:'numeric',month:'short',year:'numeric'}) : 'TBD';
     const won = parseFloat(ev.total_won) || 0;
     const pipeline = parseFloat(ev.total_pipeline) || 0;
+    const outstanding = Math.max(0, pipeline - won);
     const dealCount = parseInt(ev.deal_count) || 0;
     return `<div class="port-card">
       <div class="port-card-header">
@@ -3889,12 +3890,12 @@ function renderPortfolioGrid() {
       </div>
       <div class="port-card-stats">
         <div class="port-stat">
-          <div class="port-stat-label">Won Revenue</div>
+          <div class="port-stat-label">Revenue Made</div>
           <div class="port-stat-val port-stat--green">£${fmt(won)}</div>
         </div>
         <div class="port-stat">
-          <div class="port-stat-label">Pipeline</div>
-          <div class="port-stat-val">£${fmt(pipeline)}</div>
+          <div class="port-stat-label">Outstanding</div>
+          <div class="port-stat-val ${outstanding > 0 ? 'port-stat--amber' : ''}">£${fmt(outstanding)}</div>
         </div>
       </div>
       ${ev.companies ? `<div class="port-card-companies"><span style="font-size:0.72rem;color:var(--muted)">Companies: </span>${esc(ev.companies)}</div>` : ''}
@@ -4122,7 +4123,7 @@ function renderDealsTable() {
     const sym = symMap[d.currency] || '£';
     const invMonth = d.invoice_date ? (() => {
       const dt = new Date(d.invoice_date);
-      return `${String(dt.getFullYear()).slice(2)}-${dt.toLocaleDateString('en-GB',{month:'short'})}`;
+      return dt.toLocaleDateString('en-GB',{month:'short'});
     })() : '';
     const invDateStr = d.invoice_date ? new Date(d.invoice_date).toLocaleDateString('en-GB',{day:'2-digit',month:'2-digit',year:'2-digit'}) : '';
 
@@ -4161,13 +4162,16 @@ function renderDealsTable() {
     return `<tr id="deal-row-${d.id}" class="${finalRowClass}">
       <td style="text-align:center;padding:0 2px"><button onclick="event.stopPropagation();dealToggleFlag(${d.id})" title="Flag row" style="background:none;border:none;cursor:pointer;font-size:15px;color:${isFlagged?'#f59e0b':'var(--border)'};padding:4px;line-height:1">⚑</button></td>
       ${ec('invoice_date','date',d.invoice_date||'', `<span class="deal-month-disp">${invMonth||'<span style="color:var(--muted)">—</span>'}</span>`)}
-      <td class="deal-cell-company${coHl?' deal-cell-orange':''}" data-id="${d.id}" data-hlkey="${coHlKey}" onclick="dealCompanyClick(event,${d.id},this)" title="Click to open deal · Shift+click to highlight"><strong class="deal-co-link">${esc(d.company||d.title)}</strong>${d.initials?` <span class="deal-initials-badge">${esc(d.initials)}</span>`:''}</td>
+      <td class="deal-cell-company${coHl?' deal-cell-orange':''}" data-id="${d.id}" data-hlkey="${coHlKey}" onclick="dealCompanyClick(event,${d.id},this)" title="Click to open deal · Shift+click to highlight"><strong class="deal-co-link">${esc(d.company||d.title)}</strong></td>
       ${ec('paid_inc_vat','number',d.paid_inc_vat??'', paidDisplay, `class="deal-num dt-r"${isPartial?' style="background:rgba(234,88,12,.28)"':''}`)}
       ${ec('amount','number',d.amount||0, `${sym}${fmt(dealAmt)}`, 'class="deal-num dt-r"')}
       ${ec('tax_vat','number',d.tax_vat??'', d.tax_vat ? `${sym}${fmt(parseFloat(d.tax_vat))}` : '<span style="color:var(--muted)">—</span>', 'class="deal-num dt-r"')}
       ${ec('invoice_date','date',d.invoice_date||'', `${invDateStr||'<span style="color:var(--muted)">—</span>'}`)}
       ${ec('bank','select-bank',d.bank||'', `${esc(d.bank||'')||'<span style="color:var(--muted)">—</span>'}`)}
-      ${ec('invoice_number','text',d.invoice_number||'', `<span style="font-family:monospace;font-size:0.72rem">${esc(d.invoice_number||'')}</span>${inv1}${inv2}`)}
+      <td class="deal-cell-inv" data-id="${d.id}" onclick="openDealInvoicePanel(${d.id})" title="Click to upload / view invoices" style="cursor:pointer">
+        <span style="font-family:monospace;font-size:0.72rem;color:${d.invoice_number?'var(--text)':'var(--muted)'}">${d.invoice_number ? esc(d.invoice_number) : '—'}</span>
+        ${(d.invoice1_name||d.invoice2_name) ? `<span style="margin-left:4px;font-size:11px" title="${[d.invoice1_name,d.invoice2_name].filter(Boolean).join(', ')}">📎</span>` : ''}
+      </td>
       <td class="deal-cell-toggle" onclick="dealToggleBool(${d.id},'signature_received',${!!d.signature_received})" style="text-align:center;cursor:pointer" title="Click to toggle">${d.signature_received ? '✅' : '<span style="color:var(--muted)">—</span>'}</td>
       ${ec('initials','text',d.initials||'', d.initials ? `<span class="deal-initials-badge">${esc(d.initials)}</span>` : '<span style="color:var(--muted)">—</span>', 'style="text-align:center"')}
       ${ec('notes','textarea',d.notes||'', notesDisplay)}
@@ -4282,6 +4286,73 @@ function dealCellClick(td) {
     if (e.key === 'Enter' && (type !== 'textarea' || e.ctrlKey || e.metaKey)) { e.preventDefault(); input.blur(); }
     if (e.key === 'Escape') { input.removeEventListener('blur', commit); cancel(); }
   });
+}
+
+function openDealInvoicePanel(dealId) {
+  const deal = dealsData.find(d => d.id === dealId);
+  if (!deal) return;
+  const body = document.getElementById('dealInvoicePanelBody');
+
+  function slotHtml(n) {
+    const name = n === 1 ? deal.invoice1_name : deal.invoice2_name;
+    const label = n === 1 ? 'Invoice 1' : 'Invoice 2';
+    return `<div id="dealInvSlot${n}" style="border:1px solid var(--border);border-radius:10px;padding:14px 16px">
+      <div style="font:700 12px/1 var(--font-mono);text-transform:uppercase;letter-spacing:0.5px;color:var(--muted);margin-bottom:10px">${label}</div>
+      ${name
+        ? `<div style="display:flex;align-items:center;gap:10px">
+            <a href="/api/deals/${dealId}/invoice/${n}" target="_blank" style="font-size:13px;font-weight:600;color:var(--primary);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(name)}">📄 ${esc(name)}</a>
+            <button class="btn btn-ghost btn-sm" style="color:var(--negative);flex-shrink:0" onclick="dealInvoiceDelete(${dealId},${n})">Remove</button>
+          </div>`
+        : `<label style="display:flex;align-items:center;gap:10px;cursor:pointer">
+            <span style="font-size:13px;color:var(--muted)">No file uploaded</span>
+            <input type="file" accept=".pdf,.doc,.docx" style="display:none" onchange="dealInvoiceUpload(event,${dealId},${n})">
+            <button class="btn btn-ghost btn-sm" onclick="this.previousElementSibling.click()">Upload PDF / Word</button>
+          </label>`
+      }
+    </div>`;
+  }
+
+  body.innerHTML = slotHtml(1) + slotHtml(2);
+  openModal('dealInvoicePanel');
+}
+
+async function dealInvoiceUpload(evt, dealId, n) {
+  const file = evt.target.files[0];
+  if (!file) return;
+  const allowed = ['application/pdf','application/msword','application/vnd.openxmlformats-officedocument.wordprocessingml.document'];
+  if (!allowed.includes(file.type)) { showToast('Only PDF or Word files allowed', 'error'); return; }
+  const reader = new FileReader();
+  reader.onload = async e => {
+    const base64 = e.target.result.split(',')[1];
+    const res = await fetch(`/api/deals/${dealId}/invoice/${n}`, {
+      method: 'POST', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ invoice_name: file.name, invoice_data: base64 })
+    });
+    if (!res.ok) { showToast('Upload failed', 'error'); return; }
+    showToast('Invoice uploaded', 'success');
+    const idx = dealsData.findIndex(d => d.id === dealId);
+    if (idx !== -1) {
+      if (n === 1) { dealsData[idx].invoice1_name = file.name; dealsData[idx].invoice1_data = base64; }
+      else         { dealsData[idx].invoice2_name = file.name; dealsData[idx].invoice2_data = base64; }
+    }
+    openDealInvoicePanel(dealId);
+    renderDealsTable();
+  };
+  reader.readAsDataURL(file);
+}
+
+async function dealInvoiceDelete(dealId, n) {
+  if (!confirm(`Remove invoice ${n}?`)) return;
+  const res = await fetch(`/api/deals/${dealId}/invoice/${n}`, { method: 'DELETE' });
+  if (!res.ok) { showToast('Remove failed', 'error'); return; }
+  showToast('Invoice removed', 'success');
+  const idx = dealsData.findIndex(d => d.id === dealId);
+  if (idx !== -1) {
+    if (n === 1) { dealsData[idx].invoice1_name = null; dealsData[idx].invoice1_data = null; }
+    else         { dealsData[idx].invoice2_name = null; dealsData[idx].invoice2_data = null; }
+  }
+  openDealInvoicePanel(dealId);
+  renderDealsTable();
 }
 
 async function dealToggleFlag(id) {

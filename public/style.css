@@ -3545,6 +3545,7 @@ tbody tr:last-child td { border-bottom: none; }
 .port-stat-label { font-size: 0.72rem; color: var(--muted); margin-bottom: 4px; }
 .port-stat-val { font-size: 1.1rem; font-weight: 700; color: var(--text); }
 .port-stat--green { color: var(--success) !important; }
+.port-stat--amber { color: var(--warning) !important; }
 .port-card-notes { font-size: 0.8rem; color: var(--muted); border-top: 1px solid var(--border); padding-top: 8px; }
 
 /* ── Deal Tracker ──────────────────────────────────────────────────────────── */
