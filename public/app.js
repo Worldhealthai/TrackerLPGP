@@ -2815,6 +2815,7 @@ async function renderCalSummary(byDate, empFilter) {
 
   const dates = Object.keys(byDate).sort();
   let daysHtml = '';
+  let fullDaysTotal = 0, halfDaysTotal = 0;
   dates.forEach(date => {
     const entries = byDate[date].filter(r => !empFilter || String(r.employee_id) === empFilter);
     if (!entries.length) return;
