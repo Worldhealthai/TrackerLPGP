@@ -572,26 +572,40 @@
 
   <!-- Deals table -->
   <div class="card deal-table-card">
-    <div class="table-wrap">
-      <table id="dealsTable">
-        <thead><tr>
-          <th class="deal-th-month">Month</th>
-          <th class="deal-th-company">Company</th>
-          <th class="deal-th-num">Paid inc VAT</th>
-          <th class="deal-th-num">Deal Value</th>
-          <th class="deal-th-num">Tax/VAT</th>
-          <th class="deal-th-date">Invoice Date</th>
-          <th class="deal-th-bank">Bank</th>
-          <th class="deal-th-inv">Invoice #</th>
-          <th class="deal-th-sm">Signed</th>
-          <th class="deal-th-sm">By</th>
-          <th>Notes</th>
-          <th class="deal-th-del"></th>
-        </tr></thead>
-        <tbody id="dealsTableBody"></tbody>
-        <tfoot id="dealsTfoot"></tfoot>
-      </table>
-    </div>
+    <table id="dealsTable">
+      <colgroup>
+        <col style="width:32px">   <!-- Flag -->
+        <col style="width:66px">   <!-- Month -->
+        <col style="width:176px">  <!-- Company -->
+        <col style="width:108px">  <!-- Paid inc VAT -->
+        <col style="width:104px">  <!-- Deal Value -->
+        <col style="width:96px">   <!-- Tax/VAT -->
+        <col style="width:88px">   <!-- Invoice Date -->
+        <col style="width:72px">   <!-- Bank -->
+        <col style="width:160px">  <!-- Invoice # -->
+        <col style="width:58px">   <!-- Signed -->
+        <col style="width:46px">   <!-- By -->
+        <col>                      <!-- Notes (fills remaining) -->
+        <col style="width:36px">   <!-- Delete -->
+      </colgroup>
+      <thead><tr>
+        <th></th>
+        <th>Month</th>
+        <th>Company</th>
+        <th class="dt-r">Paid inc VAT</th>
+        <th class="dt-r">Deal Value</th>
+        <th class="dt-r">Tax/VAT</th>
+        <th>Invoice Date</th>
+        <th>Bank</th>
+        <th>Invoice #</th>
+        <th class="dt-c">Signed</th>
+        <th class="dt-c">By</th>
+        <th>Notes</th>
+        <th></th>
+      </tr></thead>
+      <tbody id="dealsTableBody"></tbody>
+      <tfoot id="dealsTfoot"></tfoot>
+    </table>
     <div id="dealsEmpty" class="empty-state hidden"><div class="icon">🤝</div><div>No deals yet.</div></div>
   </div>
 

@@ -180,8 +180,8 @@ function navigate(page) {
   if (page === 'salary') { loadSalaryPage(); renderSalaryReminderPanel(); }
   if (page === 'hotels') loadHotelExpenses();
   if (page === 'subscriptions') loadSubscriptions();
-  if (page === 'portfolio') { loadPortfolio(); loadAdminPortfolio(); }
-  if (page === 'deals') { loadDeals(); loadDealTracker(); }
+  if (page === 'portfolio') { loadPortfolio(); }
+  if (page === 'deals') { loadDeals(); }
 }
 
 // ─── EMPLOYEES ───────────────────────────────────────────────────────────────
@@ -4156,14 +4156,17 @@ function renderDealsTable() {
     const coHlKey = `dhl:${d.id}-company`;
     const coHl = localStorage.getItem(coHlKey) === '1';
 
-    return `<tr id="deal-row-${d.id}" class="${rowClass}">
+    const isFlagged = d.is_flagged || false;
+    const finalRowClass = isFlagged ? 'deal-row-flagged' : rowClass;
+    return `<tr id="deal-row-${d.id}" class="${finalRowClass}">
+      <td style="text-align:center;padding:0 2px"><button onclick="event.stopPropagation();dealToggleFlag(${d.id})" title="Flag row" style="background:none;border:none;cursor:pointer;font-size:15px;color:${isFlagged?'#f59e0b':'var(--border)'};padding:4px;line-height:1">⚑</button></td>
       ${ec('invoice_date','date',d.invoice_date||'', `<span class="deal-month-disp">${invMonth||'<span style="color:var(--muted)">—</span>'}</span>`)}
       <td class="deal-cell-company${coHl?' deal-cell-orange':''}" data-id="${d.id}" data-hlkey="${coHlKey}" onclick="dealCompanyClick(event,${d.id},this)" title="Click to open deal · Shift+click to highlight"><strong class="deal-co-link">${esc(d.company||d.title)}</strong>${d.initials?` <span class="deal-initials-badge">${esc(d.initials)}</span>`:''}</td>
-      ${ec('paid_inc_vat','number',d.paid_inc_vat??'', paidDisplay, paidExtra)}
-      ${ec('amount','number',d.amount||0, `${sym}${fmt(dealAmt)}`, 'class="deal-num" style="text-align:right"')}
-      ${ec('tax_vat','number',d.tax_vat??'', d.tax_vat ? `${sym}${fmt(parseFloat(d.tax_vat))}` : '<span style="color:var(--muted)">—</span>', 'class="deal-num" style="text-align:right"')}
-      ${ec('invoice_date','date',d.invoice_date||'', `<span style="font-size:0.78rem">${invDateStr||'<span style="color:var(--muted)">—</span>'}</span>`)}
-      ${ec('bank','select-bank',d.bank||'', `<span style="font-size:0.78rem">${esc(d.bank||'')||'<span style="color:var(--muted)">—</span>'}</span>`)}
+      ${ec('paid_inc_vat','number',d.paid_inc_vat??'', paidDisplay, `class="deal-num dt-r"${isPartial?' style="background:rgba(234,88,12,.28)"':''}`)}
+      ${ec('amount','number',d.amount||0, `${sym}${fmt(dealAmt)}`, 'class="deal-num dt-r"')}
+      ${ec('tax_vat','number',d.tax_vat??'', d.tax_vat ? `${sym}${fmt(parseFloat(d.tax_vat))}` : '<span style="color:var(--muted)">—</span>', 'class="deal-num dt-r"')}
+      ${ec('invoice_date','date',d.invoice_date||'', `${invDateStr||'<span style="color:var(--muted)">—</span>'}`)}
+      ${ec('bank','select-bank',d.bank||'', `${esc(d.bank||'')||'<span style="color:var(--muted)">—</span>'}`)}
       ${ec('invoice_number','text',d.invoice_number||'', `<span style="font-family:monospace;font-size:0.72rem">${esc(d.invoice_number||'')}</span>${inv1}${inv2}`)}
       <td class="deal-cell-toggle" onclick="dealToggleBool(${d.id},'signature_received',${!!d.signature_received})" style="text-align:center;cursor:pointer" title="Click to toggle">${d.signature_received ? '✅' : '<span style="color:var(--muted)">—</span>'}</td>
       ${ec('initials','text',d.initials||'', d.initials ? `<span class="deal-initials-badge">${esc(d.initials)}</span>` : '<span style="color:var(--muted)">—</span>', 'style="text-align:center"')}
@@ -4261,6 +4264,14 @@ function dealCellClick(td) {
     if (ok) {
       const idx = dealsData.findIndex(d => d.id === id);
       if (idx !== -1) dealsData[idx][field] = newVal;
+      // Instantly update row green/white when paid amount changes
+      if (field === 'paid_inc_vat') {
+        const row = document.getElementById(`deal-row-${id}`);
+        if (row) {
+          const paid = parseFloat(newVal) || 0;
+          row.classList.toggle('deal-row-paid', paid > 0);
+        }
+      }
       renderDealsTable();
     }
   };
@@ -4271,6 +4282,24 @@ function dealCellClick(td) {
     if (e.key === 'Enter' && (type !== 'textarea' || e.ctrlKey || e.metaKey)) { e.preventDefault(); input.blur(); }
     if (e.key === 'Escape') { input.removeEventListener('blur', commit); cancel(); }
   });
+}
+
+async function dealToggleFlag(id) {
+  const idx = dealsData.findIndex(d => d.id === id);
+  if (idx === -1) return;
+  const newVal = !dealsData[idx].is_flagged;
+  const ok = await dealPatchField(id, 'is_flagged', newVal);
+  if (ok) {
+    dealsData[idx].is_flagged = newVal;
+    const row = document.getElementById(`deal-row-${id}`);
+    if (row) {
+      const paid = parseFloat(dealsData[idx].paid_inc_vat) || 0;
+      row.className = newVal ? 'deal-row-flagged' : (paid > 0 ? 'deal-row-paid' : '');
+    }
+    // Update flag button color immediately
+    const btn = row?.querySelector('button[title="Flag row"]');
+    if (btn) btn.style.color = newVal ? '#f59e0b' : 'var(--border)';
+  }
 }
 
 async function dealToggleBool(id, field, currentVal) {
@@ -6335,7 +6364,7 @@ function renderPortfolioPage() {
         <div style="font:500 11px/1.5 var(--font-mono);color:var(--muted);margin-top:4px">${dateStr}${byAdmin?' · <span style="color:#f59e0b">allocated by admin</span>':''}</div>
         ${r.notes ? `<div style="font:500 11px/1.4 var(--font-mono);color:var(--text-2);margin-top:6px;border-top:1px solid var(--border);padding-top:6px">${esc(r.notes)}</div>` : ''}
       </div>
-      ${!byAdmin ? `<button class="btn btn-ghost btn-sm" onclick="deletePortfolioEvent(${r.id})" style="color:var(--danger);flex-shrink:0">×</button>` : ''}
+      ${!byAdmin ? `<button class="btn btn-ghost btn-sm" onclick="deleteEmployeePortfolioEvent(${r.id})" style="color:var(--danger);flex-shrink:0">×</button>` : ''}
     </div>`;
   };
 
@@ -6415,7 +6444,7 @@ async function savePortfolioEvent() {
   }
 }
 
-async function deletePortfolioEvent(id) {
+async function deleteEmployeePortfolioEvent(id) {
   if (!confirm('Remove this event from your portfolio?')) return;
   const res = await fetch('/api/employee/portfolio/' + id, { method: 'DELETE' });
   if (res.ok) await loadEmployeePortfolio();
