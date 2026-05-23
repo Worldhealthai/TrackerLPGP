@@ -1627,6 +1627,7 @@ app.get('/api/deals/revenue-by-event', requireAuth, requireAdminOrManager, async
         COUNT(DISTINCT d.id) AS deal_count,
         COALESCE(SUM(d.amount), 0) AS total_amount,
         COALESCE(SUM(d.paid_inc_vat), 0) AS total_paid,
+        COALESCE(SUM(CASE WHEN COALESCE(d.paid_inc_vat,0) > 0 THEN COALESCE(d.tax_vat,0) ELSE 0 END), 0) AS total_vat_collected,
         COUNT(DISTINCT CASE WHEN COALESCE(d.paid_inc_vat,0) > 0 THEN d.id END) AS paid_count,
         json_agg(
           json_build_object(

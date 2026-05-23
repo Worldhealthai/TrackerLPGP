@@ -558,11 +558,11 @@ function renderRevenueIntelPanel(deals, expiring, evtRevData) {
   if (!el) return;
 
   // Overall metrics from all deals
-  const totalRev   = deals.reduce((a,d) => a + (parseFloat(d.amount)||0), 0);
-  const totalPaid  = deals.reduce((a,d) => a + (parseFloat(d.paid_inc_vat)||0), 0);
-  const totalOut   = Math.max(0, totalRev - totalPaid);
-  const totalVAT = deals.reduce((a,d) => (parseFloat(d.paid_inc_vat)||0) > 0 ? a + (parseFloat(d.tax_vat)||0) : a, 0);
-  const totalPaidExVat = Math.max(0, totalPaid - totalVAT);
+  const totalRev        = deals.reduce((a,d) => a + (parseFloat(d.amount)||0), 0);
+  const totalPaid       = deals.reduce((a,d) => a + (parseFloat(d.paid_inc_vat)||0), 0);
+  const totalVAT        = deals.reduce((a,d) => (parseFloat(d.paid_inc_vat)||0) > 0 ? a + (parseFloat(d.tax_vat)||0) : a, 0);
+  const totalPaidExVat  = Math.max(0, totalPaid - totalVAT);
+  const totalOut        = Math.max(0, totalRev - totalPaidExVat);
   const paidDeals  = deals.filter(d => (parseFloat(d.paid_inc_vat)||0) > 0).length;
   const collRate   = deals.length > 0 ? Math.round(paidDeals / deals.length * 100) : 0;
 
@@ -594,10 +594,12 @@ function renderRevenueIntelPanel(deals, expiring, evtRevData) {
 
   // Per-event cards
   const eventsHtml = (evtRevData||[]).filter(ev => Number(ev.deal_count) > 0).map(ev => {
-    const amt    = parseFloat(ev.total_amount) || 0;
-    const paid   = parseFloat(ev.total_paid) || 0;
-    const out    = Math.max(0, amt - paid);
-    const pct    = amt > 0 ? Math.min(100, Math.round(paid / amt * 100)) : 0;
+    const amt        = parseFloat(ev.total_amount) || 0;
+    const paid       = parseFloat(ev.total_paid) || 0;
+    const vatColl    = parseFloat(ev.total_vat_collected) || 0;
+    const paidExVat  = Math.max(0, paid - vatColl);
+    const out        = Math.max(0, amt - paidExVat);
+    const pct        = amt > 0 ? Math.min(100, Math.round(paidExVat / amt * 100)) : 0;
     const clients= Array.isArray(ev.clients) ? ev.clients : [];
     const paidC  = clients.filter(c => (parseFloat(c.paid_inc_vat)||0) >= (parseFloat(c.amount)||0) && (parseFloat(c.amount)||0) > 0).length;
     const partC  = clients.filter(c => { const p=parseFloat(c.paid_inc_vat)||0; const a=parseFloat(c.amount)||0; return p>0 && p<a; }).length;
@@ -613,23 +615,32 @@ function renderRevenueIntelPanel(deals, expiring, evtRevData) {
       return `<span title="${esc(co)}: ${status}" style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${dotCol};margin:1px"></span>`;
     }).join('') + (clients.length > 12 ? `<span style="font-size:0.7rem;color:rgba(255,255,255,0.4)">+${clients.length-12}</span>` : '');
 
-    return `<div class="ri-evt-card" onclick="riFilterEvent(${ev.event_id},'${esc(ev.event_name).replace(/'/g,"\\'")}')">
+    return `<div class="ri-evt-card" onclick="navigate('portfolio')" title="View in Portfolio" style="cursor:pointer">
       <div class="ri-evt-hd">
         <span class="ri-evt-name">${esc(ev.event_name)}</span>
         ${evtDate ? `<span class="ri-evt-date">${evtDate}</span>` : ''}
       </div>
       <div class="ri-evt-stats">
-        <span class="ri-evt-stat"><span style="color:rgba(255,255,255,0.45);font-size:0.7rem">Total</span><br><strong>£${fmtK(amt)}</strong></span>
-        <span class="ri-evt-stat"><span style="color:#22c55e;font-size:0.7rem">Collected</span><br><strong style="color:#22c55e">£${fmtK(paid)}</strong></span>
-        <span class="ri-evt-stat"><span style="color:#f59e0b;font-size:0.7rem">Outstanding</span><br><strong style="color:#f59e0b">£${fmtK(out)}</strong></span>
+        <span class="ri-evt-stat">
+          <span class="ri-evt-stat-label">Total</span>
+          <strong>£${fmtK(amt)}</strong>
+        </span>
+        <span class="ri-evt-stat">
+          <span class="ri-evt-stat-label" style="color:#22c55e">Collected</span>
+          <strong style="color:#22c55e">£${fmtK(paidExVat)}</strong>
+        </span>
+        <span class="ri-evt-stat">
+          <span class="ri-evt-stat-label" style="color:#f59e0b">Outstanding</span>
+          <strong style="color:#f59e0b">£${fmtK(out)}</strong>
+        </span>
       </div>
       <div class="ri-evt-bar-wrap"><div class="ri-evt-bar" style="width:0%" data-pct="${pct}"></div></div>
       <div class="ri-evt-foot">
         <span class="ri-evt-dots">${dotHtml}</span>
-        <span class="ri-evt-counts">
-          <span style="color:#22c55e">${paidC}✓</span>
-          ${partC > 0 ? `<span style="color:#f59e0b"> ${partC}~</span>` : ''}
-          <span style="color:#6b7280"> ${unpC}✗</span>
+        <span class="ri-evt-counts ri-evt-foot-label">
+          <span style="color:#22c55e;font-weight:700">${paidC}✓</span>
+          ${partC > 0 ? `<span style="color:#f59e0b;font-weight:700"> ${partC}◑</span>` : ''}
+          <span style="color:#9ca3af;font-weight:700"> ${unpC}✗</span>
         </span>
       </div>
     </div>`;
@@ -677,7 +688,7 @@ function renderRevenueIntelPanel(deals, expiring, evtRevData) {
             <div style="font-size:0.65rem;color:rgba(255,255,255,0.4);margin-top:2px">£${fmtK(totalPaidExVat)} ex VAT</div>
           </div>
           <div class="ri-metric">
-            <div class="ri-metric-label">Outstanding</div>
+            <div class="ri-metric-label">Outstanding (ex VAT)</div>
             <div class="ri-metric-val" style="color:#f59e0b">£${fmtK(totalOut)}</div>
           </div>
           <div class="ri-metric ri-metric--wide">
@@ -4154,6 +4165,8 @@ let _dealInv2 = null;
 let _dealQFilter = 'all';
 let _dealYearFilter = 'all';
 let _dealEventFilter = '';
+let _dealRangeFrom = '';  // YYYY-MM
+let _dealRangeTo   = '';  // YYYY-MM
 let _lastInvoiceId = null;
 let _nextInvoiceNum = null;
 let _importRows = [];
@@ -4240,6 +4253,31 @@ function setDealQ(btn, q) {
   renderDealsTable();
 }
 
+function setDealRange() {
+  _dealRangeFrom = document.getElementById('dealRangeFrom')?.value || '';
+  _dealRangeTo   = document.getElementById('dealRangeTo')?.value   || '';
+  const active = _dealRangeFrom || _dealRangeTo;
+  document.getElementById('dealRangeClear')?.classList.toggle('hidden', !active);
+  // When a range is active, clear Q/year filters so they don't conflict
+  if (active) {
+    _dealQFilter = 'all';
+    _dealYearFilter = 'all';
+    document.querySelectorAll('[data-q]').forEach(b => b.classList.toggle('active', b.dataset.q === 'all'));
+    document.querySelectorAll('[data-yr]').forEach(b => b.classList.toggle('active', b.dataset.yr === 'all'));
+  }
+  renderDealsTable();
+}
+
+function clearDealRange() {
+  _dealRangeFrom = ''; _dealRangeTo = '';
+  const from = document.getElementById('dealRangeFrom');
+  const to   = document.getElementById('dealRangeTo');
+  if (from) from.value = '';
+  if (to)   to.value   = '';
+  document.getElementById('dealRangeClear')?.classList.add('hidden');
+  renderDealsTable();
+}
+
 function setDealEvent(eventId) {
   _dealEventFilter = eventId;
   renderDealsTable();
@@ -4256,10 +4294,18 @@ function dealPassesFilter(d) {
     const evtId = String(_dealEventFilter);
     if (!Array.isArray(d.events) || !d.events.some(ev => String(ev.event_id) === evtId)) return false;
   }
-  // Q and year filters are based strictly on invoice_date (the date on the actual invoice)
-  const invDateStr = d.invoice_date ? String(d.invoice_date).slice(0, 10) : null;
+  // All date filters use invoice_date exclusively
+  const invDateStr  = d.invoice_date ? String(d.invoice_date).slice(0, 10) : null;
+  const invYearMonth = invDateStr ? invDateStr.slice(0, 7) : null; // YYYY-MM
   const invYear  = invDateStr ? parseInt(invDateStr.slice(0, 4), 10) : null;
   const invMonth = invDateStr ? parseInt(invDateStr.slice(5, 7), 10) : null;
+  // Date range filter (takes priority over Q/year when active)
+  if (_dealRangeFrom || _dealRangeTo) {
+    if (!invYearMonth) return false;
+    if (_dealRangeFrom && invYearMonth < _dealRangeFrom) return false;
+    if (_dealRangeTo   && invYearMonth > _dealRangeTo)   return false;
+    return true;
+  }
   if (yr !== 'all') {
     if (!invYear || String(invYear) !== yr) return false;
   }

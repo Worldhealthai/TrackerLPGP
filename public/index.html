@@ -549,6 +549,14 @@
       <button class="deal-q-btn" data-q="Q3" onclick="setDealQ(this,'Q3')" title="May · Jun · Jul">Q3</button>
       <button class="deal-q-btn" data-q="Q4" onclick="setDealQ(this,'Q4')" title="Aug · Sep · Oct">Q4</button>
     </div>
+    <div class="deal-q-sep"></div>
+    <div class="deal-range-wrap">
+      <span class="deal-range-label">Range</span>
+      <input type="month" id="dealRangeFrom" class="deal-range-input" title="From (invoice date)" onchange="setDealRange()" />
+      <span class="deal-range-to">→</span>
+      <input type="month" id="dealRangeTo" class="deal-range-input" title="To (invoice date)" onchange="setDealRange()" />
+      <button class="deal-range-clear hidden" id="dealRangeClear" onclick="clearDealRange()" title="Clear range">✕</button>
+    </div>
   </div>
 
   <!-- Search + Actions filter row -->
