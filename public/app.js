@@ -475,17 +475,18 @@ async function loadDashboard() {
   const hotelPaidTotal   = hotelData.reduce((a, h) => a + (parseFloat(h.paid_amount) || 0), 0);
 
   document.getElementById('dashStats').innerHTML = `
-    <div class="dash-bento">
-      <div class="dash-hero-card">
+    <div class="dash-bento dash-bento--3col">
+      <div class="dash-hero-card dash-hero-card--compact">
         <div class="dash-hero-glow"></div>
         <div class="dash-hero-label">Active Headcount</div>
-        <div class="dash-hero-value">${totalHeadcount}</div>
+        <div class="dash-hero-value dash-hero-value--sm">${totalHeadcount}</div>
         <div class="dash-hero-pills">
           <span class="dash-hero-pill dash-hero-pill--blue">${payrollCount} Payroll</span>
           <span class="dash-hero-pill dash-hero-pill--amber">${seCount} Self-Emp</span>
         </div>
         <div class="dash-hero-footer">Total workforce · ${year}</div>
       </div>
+      <div id="headcountPanel"></div>
       <div class="dash-mini-grid">
         <div class="dash-mini-card dash-mini--indigo" style="cursor:pointer" onclick="navigate('salary')" title="Go to salary page">
           <div class="dash-mini-icon">💷</div>
@@ -518,7 +519,7 @@ async function loadDashboard() {
   // Revenue Intelligence + contract expiry panel
   renderRevenueIntelPanel(dashDeals, expiring, evtRevData);
 
-  // Headcount by department
+  // Headcount by department (now renders into #headcountPanel inside the bento)
   renderHeadcountPanel(activeEmps, payrollCount, seCount, totalHeadcount, year);
 
   // Upcoming reminders panel (calendar reminders + day offs)

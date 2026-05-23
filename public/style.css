@@ -651,13 +651,15 @@ body.sidebar-collapsed .nav-section-label,
 body.sidebar-collapsed .nav-item .nav-label,
 body.sidebar-collapsed .sidebar-footer-info,
 body.sidebar-collapsed #logoutBtn .nav-label,
-body.sidebar-collapsed .sidebar-collapse-label { display: none; }
+body.sidebar-collapsed .sidebar-collapse-label,
+.sidebar.collapsed .sidebar-collapse-label { display: none; }
 body.sidebar-collapsed .sidebar-logo { padding: 16px 10px; }
 body.sidebar-collapsed .sidebar-logo-row { justify-content: center; }
 body.sidebar-collapsed .nav-item { justify-content: center; padding: 10px; }
 body.sidebar-collapsed .nav-item .icon { width: auto; }
 body.sidebar-collapsed .sidebar-collapse-btn { padding: 8px; justify-content: center; }
 body.sidebar-collapsed .main { margin-left: 60px; }
+.sidebar.collapsed ~ .main { margin-left: var(--sidebar-collapsed-w); }
 body.sidebar-collapsed .sidebar-footer { padding: 10px; }
 
 /* ── MAIN ── */
@@ -1634,7 +1636,8 @@ tbody tr:last-child td { border-bottom: none; }
 .pb-pin-btn:hover { border-color: var(--primary); color: var(--primary); background: var(--primary-light); }
 
 /* ── Headcount panel with expandable departments ── */
-.hc-panel .dash-panel-body { padding: 0; }
+.hc-panel { height: 100%; display: flex; flex-direction: column; }
+.hc-panel .dash-panel-body { padding: 0; flex: 1; overflow-y: auto; }
 .hc-dept {
   border-bottom: 1px solid var(--border-light); cursor: pointer;
   transition: background 0.12s;
@@ -2170,6 +2173,9 @@ tbody tr:last-child td { border-bottom: none; }
   gap: 16px;
   margin-bottom: var(--gap);
 }
+.dash-bento--3col {
+  grid-template-columns: 200px 1fr 220px;
+}
 
 .dash-mini-grid {
   display: grid;
@@ -2212,6 +2218,8 @@ tbody tr:last-child td { border-bottom: none; }
   color: var(--text);
   letter-spacing: -2px;
 }
+.dash-hero-card--compact { padding: 20px 18px; gap: 10px; }
+.dash-hero-value--sm { font-size: 44px; letter-spacing: -1.5px; }
 
 .dash-hero-pills { display: flex; gap: 8px; }
 
