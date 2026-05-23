@@ -621,17 +621,26 @@ function renderRevenueIntelPanel(deals, expiring, evtRevData) {
         ${evtDate ? `<span class="ri-evt-date">${evtDate}</span>` : ''}
       </div>
       <div class="ri-evt-stats">
-        <span class="ri-evt-stat"><span style="color:rgba(255,255,255,0.45);font-size:0.7rem">Total</span><br><strong>£${fmtK(amt)}</strong></span>
-        <span class="ri-evt-stat"><span style="color:#22c55e;font-size:0.7rem">Collected</span><br><strong style="color:#22c55e">£${fmtK(paidExVat)}</strong></span>
-        <span class="ri-evt-stat"><span style="color:#f59e0b;font-size:0.7rem">Outstanding</span><br><strong style="color:#f59e0b">£${fmtK(out)}</strong></span>
+        <span class="ri-evt-stat">
+          <span class="ri-evt-stat-label">Total</span>
+          <strong>£${fmtK(amt)}</strong>
+        </span>
+        <span class="ri-evt-stat">
+          <span class="ri-evt-stat-label" style="color:#22c55e">Collected</span>
+          <strong style="color:#22c55e">£${fmtK(paidExVat)}</strong>
+        </span>
+        <span class="ri-evt-stat">
+          <span class="ri-evt-stat-label" style="color:#f59e0b">Outstanding</span>
+          <strong style="color:#f59e0b">£${fmtK(out)}</strong>
+        </span>
       </div>
       <div class="ri-evt-bar-wrap"><div class="ri-evt-bar" style="width:0%" data-pct="${pct}"></div></div>
       <div class="ri-evt-foot">
         <span class="ri-evt-dots">${dotHtml}</span>
-        <span class="ri-evt-counts">
-          <span style="color:#22c55e">${paidC}✓</span>
-          ${partC > 0 ? `<span style="color:#f59e0b"> ${partC}~</span>` : ''}
-          <span style="color:#6b7280"> ${unpC}✗</span>
+        <span class="ri-evt-counts ri-evt-foot-label">
+          <span style="color:#22c55e;font-weight:700">${paidC}✓</span>
+          ${partC > 0 ? `<span style="color:#f59e0b;font-weight:700"> ${partC}◑</span>` : ''}
+          <span style="color:#9ca3af;font-weight:700"> ${unpC}✗</span>
         </span>
       </div>
     </div>`;
