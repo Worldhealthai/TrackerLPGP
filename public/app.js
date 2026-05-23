@@ -2846,14 +2846,79 @@ async function renderCalSummary(byDate, empFilter) {
     </div>`;
   });
 
-  if (!daysHtml && !remHtml) { summary.classList.add('hidden'); return; }
+  if (!daysHtml && !remHtml) { summary.classList.add('hidden'); } else {
+    let html = '';
+    if (daysHtml) html += `<div class="cal-sum-section"><div class="cal-sum-section-title">🏖 Days Off This Month</div>${daysHtml}</div>`;
+    if (remHtml)  html += `<div class="cal-sum-section"><div class="cal-sum-section-title">🔔 Upcoming Reminders</div>${remHtml}</div>`;
+    summary.innerHTML = html;
+    summary.classList.remove('hidden');
+  }
 
-  let html = '';
-  if (daysHtml) html += `<div class="cal-sum-section"><div class="cal-sum-section-title">🏖 Days Off This Month</div>${daysHtml}</div>`;
-  if (remHtml)  html += `<div class="cal-sum-section"><div class="cal-sum-section-title">🔔 Upcoming Reminders</div>${remHtml}</div>`;
+  // ── Upcoming panel (next 60 days) ──
+  const upcoming = document.getElementById('calUpcoming');
+  if (!upcoming) return;
 
-  summary.innerHTML = html;
-  summary.classList.remove('hidden');
+  const MONS_SHORT = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  const todayD = new Date(); todayD.setHours(0,0,0,0);
+  const in60 = new Date(todayD); in60.setDate(in60.getDate() + 60);
+
+  // Future day-offs (all employees, next 60 days)
+  let upcomingDayOffs = [];
+  try {
+    const r = await fetch(`/api/calendar?year=${todayD.getFullYear()}&month=${todayD.getMonth()+1}`);
+    const d2r = await fetch(`/api/calendar?year=${in60.getFullYear()}&month=${in60.getMonth()+1}`);
+    const d1 = r.ok ? await r.json() : [];
+    const d2 = d2r.ok ? await d2r.json() : [];
+    upcomingDayOffs = [...d1, ...d2].filter(r => {
+      const d = new Date(r.record_date); d.setHours(0,0,0,0);
+      return d >= todayD && d <= in60;
+    }).sort((a,b) => a.record_date.localeCompare(b.record_date));
+  } catch {}
+
+  const dayOffItems = upcomingDayOffs.slice(0,10).map(r => {
+    const d = new Date(r.record_date);
+    const typeLabel = parseFloat(r.is_day_off) === 1 ? 'Full day' : 'Half day';
+    const cls = parseFloat(r.is_day_off) === 1 ? 'chip-full' : 'chip-half';
+    return `<div class="cal-upcoming-item">
+      <div class="cal-upcoming-badge">
+        <div class="cal-upcoming-badge-day">${d.getUTCDate()}</div>
+        <div class="cal-upcoming-badge-mon">${MONS_SHORT[d.getUTCMonth()]}</div>
+      </div>
+      <div style="flex:1;min-width:0">
+        <div class="cal-upcoming-name">${esc(r.employee_name)}</div>
+        <div class="cal-upcoming-sub"><span class="cal-chip ${cls}" style="font-size:9px;padding:1px 5px">${typeLabel}</span></div>
+      </div>
+    </div>`;
+  }).join('') || '<div class="cal-upcoming-empty">No days off in the next 60 days</div>';
+
+  const remItems = reminders.slice(0,10).map(r => {
+    const d = new Date(r.virtual_date);
+    const sym = r.currency === 'AED' ? 'AED ' : r.currency === 'EUR' ? '€' : '£';
+    const amt = r.amount ? `<div class="cal-upcoming-amt">${sym}${parseFloat(r.amount).toLocaleString('en-GB',{minimumFractionDigits:2})}</div>` : '';
+    const daysUntil = Math.round((d - todayD) / 86400000);
+    const urgency = daysUntil <= 7 ? 'color:var(--negative);font-weight:700' : daysUntil <= 14 ? 'color:var(--warning);font-weight:600' : 'color:var(--muted)';
+    return `<div class="cal-upcoming-item">
+      <div class="cal-upcoming-badge">
+        <div class="cal-upcoming-badge-day">${d.getUTCDate()}</div>
+        <div class="cal-upcoming-badge-mon">${MONS_SHORT[d.getUTCMonth()]}</div>
+      </div>
+      <div style="flex:1;min-width:0">
+        <div class="cal-upcoming-name">${esc(r.title)}</div>
+        <div class="cal-upcoming-sub" style="${urgency}">${daysUntil === 0 ? 'Today' : daysUntil === 1 ? 'Tomorrow' : `in ${daysUntil} days`}</div>
+      </div>
+      ${amt}
+    </div>`;
+  }).join('') || '<div class="cal-upcoming-empty">No upcoming expense reminders</div>';
+
+  upcoming.innerHTML = `
+    <div class="cal-upcoming-section">
+      <div class="cal-upcoming-head"><span class="cal-upcoming-icon">🏖</span> Upcoming Days Off</div>
+      ${dayOffItems}
+    </div>
+    <div class="cal-upcoming-section">
+      <div class="cal-upcoming-head"><span class="cal-upcoming-icon">🔔</span> Upcoming Expenses</div>
+      ${remItems}
+    </div>`;
 }
 
 function renderDayOffRequestsBanner(pending) {
@@ -3390,9 +3455,29 @@ function renderHotelSummary() {
       </div>`;
   }).join('');
 
+  // GBP conversion rates (approximate)
+  const TO_GBP = { GBP:1, USD:0.787, EUR:0.855, CHF:0.885, AED:0.2141, PHP:0.0138 };
+  let gbpPaid = 0, gbpAv = 0, gbpCost = 0;
+  Object.entries(byCur).forEach(([cur, sums]) => {
+    const rate = TO_GBP[cur] || 0.787;
+    gbpPaid += sums.paid * rate;
+    gbpAv   += sums.av   * rate;
+    gbpCost += sums.cost * rate;
+  });
+  const gbpTotal = gbpPaid + gbpAv;
+  const gbpOutstanding = gbpCost > 0 ? Math.max(0, gbpCost - gbpPaid) : null;
+  const gbpCard = `<div class="hotel-fin-card hotel-fin-card--gbp">
+    <div class="hotel-fin-currency" style="color:var(--accent)">≈ GBP TOTAL <span style="font-size:9px;font-weight:400;opacity:0.7">estimated</span></div>
+    <div class="hotel-fin-row"><span class="hotel-fin-lbl">Venue / Hotel</span><span class="hotel-fin-val hotel-fin-green">£${fmtN(gbpPaid)}</span></div>
+    <div class="hotel-fin-row"><span class="hotel-fin-lbl">AV Charges</span><span class="hotel-fin-val hotel-fin-blue">£${fmtN(gbpAv)}</span></div>
+    <div class="hotel-fin-row hotel-fin-total-row"><span class="hotel-fin-lbl">Total Spent</span><span class="hotel-fin-val">£${fmtN(gbpTotal)}</span></div>
+    ${gbpOutstanding !== null ? `<div class="hotel-fin-row" style="margin-top:6px;border-top:1px solid var(--border);padding-top:6px"><span class="hotel-fin-lbl">Outstanding</span><span class="hotel-fin-val ${gbpOutstanding > 0 ? 'hotel-fin-red' : 'hotel-fin-green'}">${gbpOutstanding > 0 ? '£'+fmtN(gbpOutstanding) : '✓ Settled'}</span></div>` : ''}
+    <div style="margin-top:8px;padding-top:6px;border-top:1px dashed var(--border);font:500 9px/1.5 var(--font-mono);color:var(--muted)">USD×0.787 · EUR×0.855<br>CHF×0.885 · AED×0.214</div>
+  </div>`;
+
   document.getElementById('hotelSummary').innerHTML = `
     <div class="hotel-fin-strip">
-      ${currencyCards}
+      ${currencyCards}${gbpCard}
       <div class="hotel-fin-card hotel-fin-card--status">
         <div class="hotel-fin-currency">STATUS${_hotelYearFilter !== 'all' ? ` · ${_hotelYearFilter}` : ''}</div>
         <div class="hotel-fin-row"><span class="hotel-fin-lbl">Total Events</span><span class="hotel-fin-val">${total}</span></div>
@@ -4535,7 +4620,6 @@ function renderDealTotals(filtered, tfoot) {
   const totalDeal = filtered.reduce((a,d) => a + (parseFloat(d.amount)||0), 0);
   const totalTax = filtered.reduce((a,d) => a + (parseFloat(d.tax_vat)||0), 0);
   const remaining = totalDeal - totalPaid;
-  // Columns: Month | Company | Title | Paid | Deal | Tax | InvDate | Bank | Inv# | Signed | By | Notes | Del = 13
   tfoot.innerHTML = `<tr class="deal-totals-row">
     <td colspan="3" style="font-weight:700;font-size:0.82rem">Totals (${filtered.length} deals)</td>
     <td style="text-align:right;font-weight:700">£${fmt(totalPaid)}</td>
@@ -4546,6 +4630,10 @@ function renderDealTotals(filtered, tfoot) {
       ${_dealQFilter !== 'all' ? `&nbsp;·&nbsp; VAT: <strong>£${fmt(totalTax)}</strong>` : ''}
     </td>
   </tr>`;
+
+  // Store filtered for VAT breakdown
+  window._dealTotalsFiltered = filtered;
+
   document.getElementById('dealTotals').innerHTML = `
     <div class="deal-stat-cards">
       <div class="deal-stat-card">
@@ -4560,11 +4648,42 @@ function renderDealTotals(filtered, tfoot) {
         <div class="deal-stat-label">Outstanding</div>
         <div class="deal-stat-value">£${fmt(Math.max(0,remaining))}</div>
       </div>
-      <div class="deal-stat-card ds--indigo">
-        <div class="deal-stat-label">VAT${_dealQFilter !== 'all' ? ' '+_dealQFilter : ' Total'}</div>
+      <div class="deal-stat-card ds--indigo" onclick="openVatBreakdown()" style="cursor:pointer" title="Click to see VAT breakdown by company">
+        <div class="deal-stat-label">VAT${_dealQFilter !== 'all' ? ' '+_dealQFilter : ' Total'} <span style="font-size:9px;opacity:0.7">▼ breakdown</span></div>
         <div class="deal-stat-value">£${fmt(totalTax)}</div>
       </div>
     </div>`;
+}
+
+function openVatBreakdown() {
+  const filtered = window._dealTotalsFiltered || [];
+  const withVat = filtered.filter(d => parseFloat(d.tax_vat) > 0)
+    .sort((a,b) => parseFloat(b.tax_vat) - parseFloat(a.tax_vat));
+  const totalTax = filtered.reduce((a,d) => a + (parseFloat(d.tax_vat)||0), 0);
+
+  const rows = withVat.map(d => {
+    const vat = parseFloat(d.tax_vat);
+    const pct = totalTax > 0 ? ((vat / totalTax) * 100).toFixed(1) : 0;
+    const invDate = d.invoice_date ? new Date(d.invoice_date).toLocaleDateString('en-GB',{month:'short',year:'2-digit'}) : '—';
+    return `<div style="display:flex;align-items:center;justify-content:space-between;padding:9px 0;border-bottom:1px solid var(--border)">
+      <div>
+        <div style="font:600 13px/1.3 var(--font-sans);color:var(--text)">${esc(d.company||d.title)}</div>
+        <div style="font:500 11px/1 var(--font-mono);color:var(--muted);margin-top:3px">${invDate}${d.invoice_number ? ' · ' + esc(d.invoice_number) : ''}</div>
+      </div>
+      <div style="text-align:right;flex-shrink:0;margin-left:16px">
+        <div style="font:700 14px/1 var(--font-sans);color:var(--accent)">£${fmt(vat)}</div>
+        <div style="font:500 10px/1 var(--font-mono);color:var(--muted);margin-top:3px">${pct}%</div>
+      </div>
+    </div>`;
+  }).join('');
+
+  const label = _dealQFilter !== 'all' ? `VAT ${_dealQFilter}` : 'VAT Total';
+  document.getElementById('vatBreakdownTitle').textContent = `${label} — Company Breakdown`;
+  document.getElementById('vatBreakdownBody').innerHTML = rows +
+    `<div style="display:flex;justify-content:space-between;padding:12px 0 0;font:700 14px/1 var(--font-sans)">
+      <span>Total</span><span style="color:var(--accent)">£${fmt(totalTax)}</span>
+    </div>`;
+  openModal('vatBreakdownModal');
 }
 
 // ─── EMPLOYEE PORTAL ──────────────────────────────────────────────────────────

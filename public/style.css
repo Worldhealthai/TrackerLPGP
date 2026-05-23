@@ -1277,20 +1277,54 @@ tbody tr:last-child td { border-bottom: none; }
 .cal-cell.other-month { background: var(--bg); }
 .cal-cell.other-month .cal-date { color: var(--dim); }
 .cal-cell.weekend { background: var(--surface); }
-.cal-cell.has-offs { background: var(--negative-soft); }
-.cal-cell.has-offs:hover { background: var(--negative-soft); opacity: 0.85; }
+.cal-cell.has-offs { background: rgba(220,38,38,.06); }
+.cal-cell.has-offs:hover { background: rgba(220,38,38,.10); }
 .cal-date {
-  font-size: 0.8rem; font-weight: 700; margin-bottom: 5px; color: var(--text-2);
-  width: 24px; height: 24px; display: flex; align-items: center; justify-content: center;
+  font-size: 0.82rem; font-weight: 800; margin-bottom: 5px; color: var(--text);
+  width: 26px; height: 26px; display: flex; align-items: center; justify-content: center;
+  font-family: var(--font-mono);
 }
 .cal-chips { display: flex; flex-direction: column; gap: 3px; }
 .cal-chip {
   display: inline-block; font-size: 0.67rem; padding: 2px 7px; border-radius: 10px;
-  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; font-weight: 600;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; font-weight: 700;
+  letter-spacing: 0.3px;
 }
-.chip-full { background: var(--negative-soft); color: var(--negative); }
-.chip-half { background: var(--warning-soft); color: var(--warning); }
-.cal-more { font-size: 0.65rem; color: var(--muted-light); margin-top: 3px; font-weight: 600; }
+/* Light mode: solid chips for better readability */
+.chip-full { background: #dc2626; color: #fff; }
+.chip-half { background: #d97706; color: #fff; }
+[data-theme="dark"] .chip-full { background: rgba(220,38,38,.25); color: #fca5a5; }
+[data-theme="dark"] .chip-half { background: rgba(217,119,6,.25); color: #fcd34d; }
+.cal-more { font-size: 0.65rem; color: var(--muted); margin-top: 3px; font-weight: 600; }
+
+/* ── Upcoming panel below calendar ── */
+.cal-upcoming {
+  margin-top: 20px; display: grid; grid-template-columns: 1fr 1fr; gap: 16px;
+}
+@media (max-width: 700px) { .cal-upcoming { grid-template-columns: 1fr; } }
+.cal-upcoming-section { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; }
+.cal-upcoming-head {
+  display: flex; align-items: center; gap: 8px; padding: 12px 16px;
+  background: var(--bg-2); border-bottom: 1px solid var(--border);
+  font: 700 11px/1 var(--font-mono); text-transform: uppercase; letter-spacing: 0.6px; color: var(--muted);
+}
+.cal-upcoming-head .cal-upcoming-icon { font-size: 14px; }
+.cal-upcoming-item {
+  display: flex; align-items: center; gap: 12px; padding: 10px 16px;
+  border-bottom: 1px solid var(--border); transition: background .12s;
+}
+.cal-upcoming-item:last-child { border-bottom: none; }
+.cal-upcoming-item:hover { background: var(--bg-2); }
+.cal-upcoming-badge {
+  flex-shrink: 0; width: 38px; text-align: center; background: var(--bg);
+  border: 1px solid var(--border); border-radius: 6px; padding: 4px 0;
+}
+.cal-upcoming-badge-day { font: 800 14px/1 var(--font-mono); color: var(--text); }
+.cal-upcoming-badge-mon { font: 600 9px/1 var(--font-mono); color: var(--muted); text-transform: uppercase; margin-top: 2px; }
+.cal-upcoming-name { font: 600 13px/1.3 var(--font-sans); color: var(--text); }
+.cal-upcoming-sub { font: 500 11px/1 var(--font-mono); color: var(--muted); margin-top: 3px; }
+.cal-upcoming-amt { font: 700 13px/1 var(--font-sans); color: var(--accent); flex-shrink: 0; }
+.cal-upcoming-empty { padding: 24px 16px; text-align: center; font-size: 13px; color: var(--muted); }
 
 .cal-summary-card {
   background: var(--card); border-radius: 10px; border: 1px solid var(--border);
@@ -1463,6 +1497,7 @@ tbody tr:last-child td { border-bottom: none; }
 .hotel-fin-total-row .hotel-fin-val { font-size: 1.05rem; }
 
 [data-theme="dark"] .hotel-fin-card { background: var(--card); border-color: var(--border); }
+.hotel-fin-card--gbp { border-left: 3px solid var(--accent); }
 
 /* ══════════════════════════════════════════
    CALENDAR SUMMARY SIDEBAR

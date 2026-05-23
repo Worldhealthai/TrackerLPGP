@@ -411,6 +411,9 @@
 
         <!-- Days-off summary strip -->
         <div id="calSummary" class="hidden" style="margin-top:18px"></div>
+
+        <!-- Upcoming panel -->
+        <div class="cal-upcoming" id="calUpcoming"></div>
       </div>
 
       <!-- ══ ADMINS ══ -->
@@ -1371,6 +1374,20 @@
 </div>
 
 <!-- ══ PANEL: Deal Invoice Upload ══ -->
+<!-- ══ MODAL: VAT Breakdown ══ -->
+<div class="modal-overlay" id="vatBreakdownModal">
+  <div class="modal" style="max-width:500px">
+    <div class="modal-header">
+      <h2 id="vatBreakdownTitle">VAT Breakdown</h2>
+      <button class="modal-close" onclick="closeModal('vatBreakdownModal')">✕</button>
+    </div>
+    <div id="vatBreakdownBody" style="max-height:60vh;overflow-y:auto;padding-top:4px"></div>
+    <div class="modal-footer" style="margin-top:16px">
+      <button class="btn btn-ghost" onclick="closeModal('vatBreakdownModal')">Close</button>
+    </div>
+  </div>
+</div>
+
 <div class="modal-overlay" id="dealInvoicePanel">
   <div class="modal" style="max-width:480px">
     <div class="modal-header">
