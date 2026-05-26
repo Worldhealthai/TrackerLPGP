@@ -569,6 +569,7 @@
       <option value="">All Events</option>
     </select>
     <button class="btn btn-ghost" onclick="selectAllDeals()">☑ Select All</button>
+    <button id="moveYearDealsBtn" class="btn btn-ghost" onclick="moveDealsToYear()" style="display:none">📅 Move to Year</button>
     <button id="deleteSelectedDealsBtn" class="btn btn-danger" onclick="deleteSelectedDeals()" style="display:none">🗑 Delete Selected</button>
     <button class="btn btn-ghost" onclick="openDealImport()">⬆ Import CSV</button>
     <button class="btn btn-primary deal-add-btn" onclick="openDealModal()">+ Add Deal</button>
@@ -1554,6 +1555,17 @@
       <em>Title, Stage, Amount, Currency, Paid inc VAT, Tax VAT, Invoice Number, Invoice Date, Paid Date, Bank, Sent, Signed, Initials, Notes</em>.
       First row must be headers.
     </p>
+    <div class="form-group">
+      <label>Which fiscal year are you importing for?</label>
+      <select id="dealImportYear" style="width:100%">
+        <option value="">— Select year —</option>
+        <option value="2024">2024</option>
+        <option value="2025">2025</option>
+        <option value="2026" selected>2026</option>
+        <option value="2027">2027</option>
+        <option value="2028">2028</option>
+      </select>
+    </div>
     <div class="form-group">
       <label>CSV File</label>
       <input type="file" id="dealImportFile" accept=".csv" onchange="previewDealImport(this)">

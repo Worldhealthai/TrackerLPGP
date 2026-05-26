@@ -68,6 +68,7 @@ async function runLateMigrations() {
     `ALTER TABLE deal_tracker ADD COLUMN IF NOT EXISTS status TEXT DEFAULT 'active'`,
     `ALTER TABLE deal_tracker ADD COLUMN IF NOT EXISTS is_flagged BOOLEAN DEFAULT FALSE`,
     `ALTER TABLE deals ADD COLUMN IF NOT EXISTS deal_month TEXT DEFAULT ''`,
+    `ALTER TABLE deals ADD COLUMN IF NOT EXISTS fiscal_year INT`,
     `CREATE TABLE IF NOT EXISTS deal_invoices (
       id SERIAL PRIMARY KEY,
       deal_id INT NOT NULL,
@@ -1682,13 +1683,13 @@ app.post('/api/deals', requireAuth, requireAdminOrManager, async (req, res) => {
     const { title, company, contact_name, amount, currency, stage, event_ids, notes,
             invoice1_name, invoice1_data, invoice2_name, invoice2_data,
             paid_inc_vat, tax_vat, invoice_date, paid_date, bank, invoice_number,
-            invoice_agreement_sent, signature_received, initials, deal_month } = req.body;
+            invoice_agreement_sent, signature_received, initials, deal_month, fiscal_year } = req.body;
     const { rows } = await q(
       `INSERT INTO deals (title, company, contact_name, amount, currency, stage, notes,
         invoice1_name, invoice1_data, invoice2_name, invoice2_data, created_by,
         paid_inc_vat, tax_vat, invoice_date, paid_date, bank, invoice_number,
-        invoice_agreement_sent, signature_received, initials, deal_month)
-       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) RETURNING *`,
+        invoice_agreement_sent, signature_received, initials, deal_month, fiscal_year)
+       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) RETURNING *`,
       [title, company||'', contact_name||'', parseFloat(amount)||0, currency||'GBP',
        stage||'Prospect', notes||'', invoice1_name||null, invoice1_data||null,
        invoice2_name||null, invoice2_data||null, req.admin.id,
@@ -1696,7 +1697,7 @@ app.post('/api/deals', requireAuth, requireAdminOrManager, async (req, res) => {
        tax_vat != null ? parseFloat(tax_vat) : null,
        invoice_date||null, paid_date||null, bank||'', invoice_number||'',
        invoice_agreement_sent ? true : false, signature_received ? true : false, initials||'',
-       deal_month||'']
+       deal_month||'', fiscal_year ? parseInt(fiscal_year) : null]
     );
     const deal = rows[0];
     if (Array.isArray(event_ids) && event_ids.length > 0) {
@@ -1761,6 +1762,17 @@ app.delete('/api/deals/bulk', requireAuth, requireAdminOrManager, async (req, re
     res.json({ ok: true, deleted: safe.length });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
+app.patch('/api/deals/bulk-year', requireAuth, requireAdminOrManager, async (req, res) => {
+  try {
+    const { ids, fiscal_year } = req.body;
+    if (!Array.isArray(ids) || !ids.length) return res.status(400).json({ error: 'ids required' });
+    const yr = fiscal_year ? parseInt(fiscal_year) : null;
+    const safe = ids.map(Number).filter(n => Number.isInteger(n) && n > 0);
+    if (!safe.length) return res.status(400).json({ error: 'No valid ids' });
+    await q(`UPDATE deals SET fiscal_year=? WHERE id IN (${safe.join(',')})`, [yr]);
+    res.json({ ok: true, updated: safe.length });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
 app.delete('/api/deals/:id', requireAuth, requireAdminOrManager, async (req, res) => {
   try { await q('DELETE FROM deals WHERE id=?', [req.params.id]); res.json({ ok: true }); }
   catch (e) { res.status(500).json({ error: e.message }); }
@@ -1818,7 +1830,7 @@ app.patch('/api/deals/:id/row-status', requireAuth, requireAdminOrManager, async
 // PATCH /api/deals/:id/field — inline cell edit (single field update)
 app.patch('/api/deals/:id/field', requireAuth, requireAdminOrManager, async (req, res) => {
   const ALLOWED = ['title','company','initials','stage','amount','currency','paid_inc_vat',
-    'tax_vat','invoice_number','invoice_date','paid_date','bank','deal_month',
+    'tax_vat','invoice_number','invoice_date','paid_date','bank','deal_month','fiscal_year',
     'invoice_agreement_sent','signature_received','notes','cancelled_reason','is_flagged'];
   try {
     const { field, value } = req.body;

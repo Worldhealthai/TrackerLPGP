@@ -4325,7 +4325,9 @@ function dealPassesFilter(d) {
     return true;
   }
   if (yr !== 'all') {
-    if (!invYear || String(invYear) !== yr) return false;
+    // fiscal_year takes priority; fall back to invoice_date calendar year
+    const dealYear = d.fiscal_year ? String(d.fiscal_year) : (invYear ? String(invYear) : null);
+    if (!dealYear || dealYear !== yr) return false;
   }
   if (q !== 'all') {
     const months = DEAL_VAT_QUARTERS[q];
@@ -4505,7 +4507,7 @@ function dealCellClick(td) {
   } else if (type === 'select-bank') {
     input = document.createElement('select');
     input.className = 'deal-inline-select';
-    ['','HSBC','Stripe','Barclays','Other'].forEach(s => {
+    ['','HSBC','Stripe'].forEach(s => {
       const opt = document.createElement('option');
       opt.value = s; opt.textContent = s || '—';
       if (s === val) opt.selected = true;
@@ -6516,14 +6518,32 @@ function selectAllDeals() {
 
 function updateDealSelectionUI() {
   const n = _selectedDealIds.size;
-  const btn = document.getElementById('deleteSelectedDealsBtn');
-  if (!btn) return;
+  const delBtn = document.getElementById('deleteSelectedDealsBtn');
+  const moveBtn = document.getElementById('moveYearDealsBtn');
   if (n > 0) {
-    btn.textContent = `🗑 Delete Selected (${n})`;
-    btn.style.display = 'inline-flex';
+    if (delBtn)  { delBtn.textContent = `🗑 Delete Selected (${n})`; delBtn.style.display = 'inline-flex'; }
+    if (moveBtn) { moveBtn.textContent = `📅 Move to Year (${n})`;  moveBtn.style.display = 'inline-flex'; }
   } else {
-    btn.style.display = 'none';
+    if (delBtn)  delBtn.style.display = 'none';
+    if (moveBtn) moveBtn.style.display = 'none';
   }
+}
+
+async function moveDealsToYear() {
+  const ids = [..._selectedDealIds];
+  if (!ids.length) return;
+  const yr = prompt('Move selected deals to which fiscal year? (e.g. 2026)');
+  if (!yr || !/^\d{4}$/.test(yr.trim())) return;
+  const res = await fetch('/api/deals/bulk-year', {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ ids, fiscal_year: parseInt(yr) })
+  });
+  if (!res.ok) { showToast('Move failed', 'error'); return; }
+  _selectedDealIds.clear();
+  updateDealSelectionUI();
+  showToast(`${ids.length} deal${ids.length > 1 ? 's' : ''} moved to ${yr}`, 'success');
+  loadDeals();
 }
 
 async function deleteSelectedDeals() {
@@ -6679,6 +6699,8 @@ function parseDealCSV(text) {
 
 async function runDealImport() {
   if (!_importRows.length) return;
+  const importYear = document.getElementById('dealImportYear')?.value;
+  if (!importYear) { showToast('Please select a fiscal year first', 'error'); return; }
   const btn = document.getElementById('dealImportBtn');
   btn.disabled = true;
   btn.textContent = 'Importing…';
@@ -6690,6 +6712,7 @@ async function runDealImport() {
       contact_name: '',
       initials: row.initials || '',
       stage: 'Prospect',
+      fiscal_year: parseInt(importYear),
       currency: row.currency || 'GBP',
       amount: parseFloat(row.amount) || 0,
       paid_inc_vat: row.paid_inc_vat ? parseFloat(row.paid_inc_vat) : null,
