@@ -67,6 +67,7 @@ async function runLateMigrations() {
     )`,
     `ALTER TABLE deal_tracker ADD COLUMN IF NOT EXISTS status TEXT DEFAULT 'active'`,
     `ALTER TABLE deal_tracker ADD COLUMN IF NOT EXISTS is_flagged BOOLEAN DEFAULT FALSE`,
+    `ALTER TABLE deals ADD COLUMN IF NOT EXISTS deal_month TEXT DEFAULT ''`,
     `CREATE TABLE IF NOT EXISTS deal_invoices (
       id SERIAL PRIMARY KEY,
       deal_id INT NOT NULL,
@@ -1681,20 +1682,21 @@ app.post('/api/deals', requireAuth, requireAdminOrManager, async (req, res) => {
     const { title, company, contact_name, amount, currency, stage, event_ids, notes,
             invoice1_name, invoice1_data, invoice2_name, invoice2_data,
             paid_inc_vat, tax_vat, invoice_date, paid_date, bank, invoice_number,
-            invoice_agreement_sent, signature_received, initials } = req.body;
+            invoice_agreement_sent, signature_received, initials, deal_month } = req.body;
     const { rows } = await q(
       `INSERT INTO deals (title, company, contact_name, amount, currency, stage, notes,
         invoice1_name, invoice1_data, invoice2_name, invoice2_data, created_by,
         paid_inc_vat, tax_vat, invoice_date, paid_date, bank, invoice_number,
-        invoice_agreement_sent, signature_received, initials)
-       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) RETURNING *`,
+        invoice_agreement_sent, signature_received, initials, deal_month)
+       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) RETURNING *`,
       [title, company||'', contact_name||'', parseFloat(amount)||0, currency||'GBP',
        stage||'Prospect', notes||'', invoice1_name||null, invoice1_data||null,
        invoice2_name||null, invoice2_data||null, req.admin.id,
        paid_inc_vat != null ? parseFloat(paid_inc_vat) : null,
        tax_vat != null ? parseFloat(tax_vat) : null,
        invoice_date||null, paid_date||null, bank||'', invoice_number||'',
-       invoice_agreement_sent ? true : false, signature_received ? true : false, initials||'']
+       invoice_agreement_sent ? true : false, signature_received ? true : false, initials||'',
+       deal_month||'']
     );
     const deal = rows[0];
     if (Array.isArray(event_ids) && event_ids.length > 0) {
@@ -1712,13 +1714,13 @@ app.put('/api/deals/:id', requireAuth, requireAdminOrManager, async (req, res) =
     const { title, company, contact_name, amount, currency, stage, event_ids, notes,
             invoice1_name, invoice1_data, invoice2_name, invoice2_data,
             paid_inc_vat, tax_vat, invoice_date, paid_date, bank, invoice_number,
-            invoice_agreement_sent, signature_received, initials } = req.body;
+            invoice_agreement_sent, signature_received, initials, deal_month } = req.body;
     const { rows } = await q(
       `UPDATE deals SET title=?, company=?, contact_name=?, amount=?, currency=?, stage=?, notes=?,
         invoice1_name=COALESCE(?,invoice1_name), invoice1_data=COALESCE(?,invoice1_data),
         invoice2_name=COALESCE(?,invoice2_name), invoice2_data=COALESCE(?,invoice2_data),
         paid_inc_vat=?, tax_vat=?, invoice_date=?, paid_date=?, bank=?, invoice_number=?,
-        invoice_agreement_sent=?, signature_received=?, initials=?
+        invoice_agreement_sent=?, signature_received=?, initials=?, deal_month=?
        WHERE id=? RETURNING *`,
       [title, company||'', contact_name||'', parseFloat(amount)||0, currency||'GBP',
        stage||'Prospect', notes||'',
@@ -1727,7 +1729,7 @@ app.put('/api/deals/:id', requireAuth, requireAdminOrManager, async (req, res) =
        tax_vat != null ? parseFloat(tax_vat) : null,
        invoice_date||null, paid_date||null, bank||'', invoice_number||'',
        invoice_agreement_sent ? true : false, signature_received ? true : false, initials||'',
-       req.params.id]
+       deal_month||'', req.params.id]
     );
     if (!rows.length) return res.status(404).json({ error: 'Not found' });
     if (Array.isArray(event_ids)) {
@@ -1816,7 +1818,7 @@ app.patch('/api/deals/:id/row-status', requireAuth, requireAdminOrManager, async
 // PATCH /api/deals/:id/field — inline cell edit (single field update)
 app.patch('/api/deals/:id/field', requireAuth, requireAdminOrManager, async (req, res) => {
   const ALLOWED = ['title','company','initials','stage','amount','currency','paid_inc_vat',
-    'tax_vat','invoice_number','invoice_date','paid_date','bank',
+    'tax_vat','invoice_number','invoice_date','paid_date','bank','deal_month',
     'invoice_agreement_sent','signature_received','notes','cancelled_reason','is_flagged'];
   try {
     const { field, value } = req.body;

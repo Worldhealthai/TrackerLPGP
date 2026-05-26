@@ -4288,23 +4288,40 @@ function dealPassesFilter(d) {
   const q = _dealQFilter;
   const yr = _dealYearFilter;
   const search = (document.getElementById('dealSearch')?.value || '').trim().toLowerCase();
-  const stageFilter = document.getElementById('dealStageFilter')?.value || '';
+  const byFilter = document.getElementById('dealByFilter')?.value || '';
   if (search && ![(d.company||''),(d.title||''),(d.contact_name||''),(d.invoice_number||'')].some(s => s.toLowerCase().includes(search))) return false;
-  if (stageFilter && d.stage !== stageFilter) return false;
+  if (byFilter && (d.initials||'').toUpperCase() !== byFilter.toUpperCase()) return false;
   if (_dealEventFilter) {
     const evtId = String(_dealEventFilter);
     if (!Array.isArray(d.events) || !d.events.some(ev => String(ev.event_id) === evtId)) return false;
   }
-  // All date filters use invoice_date exclusively
-  const invDateStr  = d.invoice_date ? String(d.invoice_date).slice(0, 10) : null;
-  const invYearMonth = invDateStr ? invDateStr.slice(0, 7) : null; // YYYY-MM
-  const invYear  = invDateStr ? parseInt(invDateStr.slice(0, 4), 10) : null;
-  const invMonth = invDateStr ? parseInt(invDateStr.slice(5, 7), 10) : null;
-  // Date range filter (takes priority over Q/year when active)
+  // Q1/Q2/Q3/Q4 and Year tabs → invoice_date (tax purposes)
+  const invDateStr   = d.invoice_date ? String(d.invoice_date).slice(0, 10) : null;
+  const invYear      = invDateStr ? parseInt(invDateStr.slice(0, 4), 10) : null;
+  const invMonthNum  = invDateStr ? parseInt(invDateStr.slice(5, 7), 10) : null;
+  // Range filter → deal_month field (business month, independent of invoice date)
+  // deal_month stored as "YY - Mon" text; convert to YYYY-MM for comparison
+  const MONTHS_SHORT_F = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  const dealMonthStr = (() => {
+    const raw = (d.deal_month || '').trim();
+    if (!raw) {
+      // fall back to invoice_date
+      if (!invDateStr) return null;
+      return invDateStr.slice(0, 7); // YYYY-MM
+    }
+    // parse "YY - Mon" → YYYY-MM
+    const m = raw.match(/^(\d{2})\s*[-–]\s*([A-Za-z]{3})/);
+    if (!m) return null;
+    const yr2 = parseInt(m[1], 10);
+    const fullYr = yr2 >= 0 && yr2 <= 99 ? (yr2 >= 50 ? 1900 + yr2 : 2000 + yr2) : yr2;
+    const mo = MONTHS_SHORT_F.findIndex(mn => mn.toLowerCase() === m[2].toLowerCase()) + 1;
+    if (!mo) return null;
+    return `${fullYr}-${String(mo).padStart(2,'0')}`;
+  })();
   if (_dealRangeFrom || _dealRangeTo) {
-    if (!invYearMonth) return false;
-    if (_dealRangeFrom && invYearMonth < _dealRangeFrom) return false;
-    if (_dealRangeTo   && invYearMonth > _dealRangeTo)   return false;
+    if (!dealMonthStr) return false;
+    if (_dealRangeFrom && dealMonthStr < _dealRangeFrom) return false;
+    if (_dealRangeTo   && dealMonthStr > _dealRangeTo)   return false;
     return true;
   }
   if (yr !== 'all') {
@@ -4312,8 +4329,8 @@ function dealPassesFilter(d) {
   }
   if (q !== 'all') {
     const months = DEAL_VAT_QUARTERS[q];
-    if (!invMonth) return false;
-    if (!months.includes(invMonth)) return false;
+    if (!invMonthNum) return false;
+    if (!months.includes(invMonthNum)) return false;
   }
   return true;
 }
@@ -4332,13 +4349,25 @@ function renderDealsTable() {
   }
   empty.classList.add('hidden');
 
+  // Populate "By" dropdown with unique initials from all deals
+  const byEl = document.getElementById('dealByFilter');
+  if (byEl) {
+    const currentBy = byEl.value;
+    const allInitials = [...new Set(dealsData.map(d => (d.initials||'').toUpperCase()).filter(Boolean))].sort();
+    byEl.innerHTML = '<option value="">All Reps</option>' +
+      allInitials.map(i => `<option value="${esc(i)}"${i === currentBy ? ' selected' : ''}>${esc(i)}</option>`).join('');
+  }
+
   const symMap = { GBP:'£', USD:'$', AED:'AED ', PHP:'₱', EUR:'€' };
+  const MONTHS_SHORT = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
   tbody.innerHTML = filtered.map(d => {
     const sym = symMap[d.currency] || '£';
-    const invMonth = d.invoice_date ? (() => {
-      const dt = new Date(d.invoice_date);
-      return `${dt.toLocaleDateString('en-GB',{month:'short'})} '${String(dt.getFullYear()).slice(2)}`;
-    })() : '';
+    // deal_month is the business month (editable). Fall back to invoice_date if blank.
+    const dealMonthVal = d.deal_month || (d.invoice_date ? (() => {
+      const yy = d.invoice_date.slice(2, 4);
+      const mo = parseInt(d.invoice_date.slice(5, 7), 10) - 1;
+      return `${yy} - ${MONTHS_SHORT[mo]}`;
+    })() : '');
     const invDateStr = d.invoice_date ? new Date(d.invoice_date).toLocaleDateString('en-GB',{day:'2-digit',month:'2-digit',year:'2-digit'}) : '';
 
     // Auto-colour logic based on payment
@@ -4379,7 +4408,7 @@ function renderDealsTable() {
         <input type="checkbox" class="deal-select-cb" ${isSelected?'checked':''} onclick="event.stopPropagation();toggleDealSelect(${d.id})" style="cursor:pointer;width:14px;height:14px">
         <button onclick="event.stopPropagation();dealToggleFlag(${d.id})" title="Flag row" style="background:none;border:none;cursor:pointer;font-size:15px;color:${isFlagged?'#f59e0b':'var(--border)'};padding:4px;line-height:1">⚑</button>
       </td>
-      <td><span class="deal-month-disp">${invMonth||'<span style="color:var(--muted)">—</span>'}</span></td>
+      ${ec('deal_month','text',d.deal_month||'', dealMonthVal ? `<span class="deal-month-disp">${esc(dealMonthVal)}</span>` : '<span style="color:var(--muted)">—</span>', 'style="text-align:center"')}
       <td class="deal-cell-company${coHl?' deal-cell-orange':''}" data-id="${d.id}" data-hlkey="${coHlKey}" onclick="dealCompanyClick(event,${d.id},this)" title="Click to open deal · Shift+click to highlight"><strong class="deal-co-link">${esc(d.company||d.title)}</strong></td>
       ${ec('paid_inc_vat','number',d.paid_inc_vat??'', paidDisplay, `class="deal-num dt-r" oncontextmenu="dealCellContextMenu(event,this)"${isPartial?' style="background:rgba(234,88,12,.28)"':''}`)}
       ${ec('amount','number',d.amount||0, `${sym}${fmt(dealAmt)}`, 'class="deal-num dt-r"')}
@@ -6332,6 +6361,7 @@ async function openDealModal(id, defaultStage) {
     document.getElementById('dealTaxVat').value = d.tax_vat || '';
     document.getElementById('dealInvoiceNumber').value = d.invoice_number || '';
     document.getElementById('dealInvoiceDate').value = d.invoice_date ? d.invoice_date.split('T')[0] : '';
+    document.getElementById('dealMonth').value = d.deal_month || '';
     document.getElementById('dealInvSent').value = d.invoice_agreement_sent ? 'true' : 'false';
     document.getElementById('dealSigReceived').value = d.signature_received ? 'true' : 'false';
     document.getElementById('dealNotes').value = d.notes || '';
@@ -6351,6 +6381,7 @@ async function openDealModal(id, defaultStage) {
     document.getElementById('dealTaxVat').value = '';
     document.getElementById('dealInvoiceNumber').value = '';
     document.getElementById('dealInvoiceDate').value = '';
+    document.getElementById('dealMonth').value = '';
     document.getElementById('dealInvSent').value = 'false';
     document.getElementById('dealSigReceived').value = 'false';
     document.getElementById('dealNotes').value = '';
@@ -6359,6 +6390,16 @@ async function openDealModal(id, defaultStage) {
   }
   updateDealSplitPreview();
   openModal('dealModal');
+}
+
+function autofillDealMonth() {
+  const dateVal = document.getElementById('dealInvoiceDate').value;
+  const monthEl = document.getElementById('dealMonth');
+  if (!dateVal || monthEl.value.trim()) return; // don't overwrite if already set
+  const MONS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  const yy = dateVal.slice(2, 4);
+  const mo = parseInt(dateVal.slice(5, 7), 10) - 1;
+  monthEl.value = `${yy} - ${MONS[mo]}`;
 }
 
 function selectDealPayment(method) {
@@ -6426,6 +6467,7 @@ async function saveDeal() {
     tax_vat: taxVat ? parseFloat(taxVat) : null,
     invoice_number: document.getElementById('dealInvoiceNumber').value.trim(),
     invoice_date: document.getElementById('dealInvoiceDate').value || null,
+    deal_month: document.getElementById('dealMonth').value.trim(),
     paid_date: null,
     bank: document.getElementById('dealBank').value,
     invoice_agreement_sent: document.getElementById('dealInvSent').value === 'true',
@@ -6528,15 +6570,15 @@ function previewDealImport(input) {
     preview.innerHTML = `<div style="color:var(--success);margin-bottom:8px">✓ Found <strong>${_importRows.length}</strong> deals to import.</div>
       <div style="max-height:160px;overflow-y:auto;border:1px solid var(--border);border-radius:8px;font-size:0.75rem">
         <table style="width:100%"><thead><tr style="background:var(--bg-2)">
-          <th style="padding:4px 8px">Company</th><th style="padding:4px 8px">Title</th>
-          <th style="padding:4px 8px">Amount</th><th style="padding:4px 8px">Stage</th><th style="padding:4px 8px">Invoice #</th>
+          <th style="padding:4px 8px">Company</th><th style="padding:4px 8px">Amount</th>
+          <th style="padding:4px 8px">Invoice #</th><th style="padding:4px 8px">Invoice Date</th><th style="padding:4px 8px">By</th>
         </tr></thead><tbody>
           ${_importRows.slice(0,20).map(r=>`<tr>
             <td style="padding:3px 8px">${esc(r.company||'')}</td>
-            <td style="padding:3px 8px">${esc(r.title||'')}</td>
             <td style="padding:3px 8px">${r.amount||'—'}</td>
-            <td style="padding:3px 8px">${r.stage||'Prospect'}</td>
             <td style="padding:3px 8px;font-size:0.7rem;font-family:monospace">${esc(r.invoice_number||'')}</td>
+            <td style="padding:3px 8px">${r.invoice_date||'—'}</td>
+            <td style="padding:3px 8px">${esc(r.initials||'')}</td>
           </tr>`).join('')}
           ${_importRows.length > 20 ? `<tr><td colspan="5" style="padding:4px 8px;color:var(--muted)">...and ${_importRows.length-20} more</td></tr>` : ''}
         </tbody></table>
@@ -6566,7 +6608,6 @@ function parseDealCSV(text) {
   const colMap = {
     company: ['company','company_name','client','client_name'],
     title: ['title','deal_title','deal','name','description'],
-    stage: ['stage','status','deal_stage'],
     amount: ['amount','deal_value','value','deal_amount','contract_value'],
     currency: ['currency','ccy'],
     paid_inc_vat: ['paid_inc_vat','paid','paid_amount','payment','paid_inc_vat_'],
@@ -6578,6 +6619,7 @@ function parseDealCSV(text) {
     invoice_agreement_sent: ['invoice_agreement_sent','sent','agreement_sent','inv_sent'],
     signature_received: ['signature_received','signed','signature','sig'],
     initials: ['initials','by','sales','rep'],
+    deal_month: ['month','deal_month','business_month','month_label'],
     notes: ['notes','note','comments','comment']
   };
   const findCol = (aliases) => {
@@ -6595,7 +6637,6 @@ function parseDealCSV(text) {
   const idxMap = {};
   for (const [field, aliases] of Object.entries(colMap)) idxMap[field] = findCol(aliases);
 
-  const VALID_STAGES = new Set(['Prospect','Qualified','Proposal','Negotiation','Won','Lost']);
   const results = [];
   for (let i = 1; i < lines.length; i++) {
     const cols = parseRow(lines[i]);
@@ -6603,15 +6644,6 @@ function parseDealCSV(text) {
     const company = get('company');
     const title = get('title') || company;
     if (!company && !title) continue;
-    const stageRaw = get('stage');
-    // Normalize stage
-    const stage = VALID_STAGES.has(stageRaw) ? stageRaw
-      : stageRaw.toLowerCase().includes('won') ? 'Won'
-      : stageRaw.toLowerCase().includes('lost') ? 'Lost'
-      : stageRaw.toLowerCase().includes('prop') ? 'Proposal'
-      : stageRaw.toLowerCase().includes('neg') ? 'Negotiation'
-      : stageRaw.toLowerCase().includes('qual') ? 'Qualified'
-      : 'Prospect';
     const parseDate = s => {
       if (!s) return null;
       // Try DD/MM/YYYY or DD/MM/YY
@@ -6626,7 +6658,7 @@ function parseDealCSV(text) {
     };
     const parseBool = s => ['yes','true','1','y','✓','✅'].includes((s||'').toLowerCase());
     results.push({
-      company, title, stage,
+      company, title,
       amount: get('amount').replace(/[£$€,\s]/g,'') || '0',
       currency: get('currency').toUpperCase() || 'GBP',
       paid_inc_vat: get('paid_inc_vat').replace(/[£$€,\s]/g,'') || null,
@@ -6638,6 +6670,7 @@ function parseDealCSV(text) {
       invoice_agreement_sent: parseBool(get('invoice_agreement_sent')),
       signature_received: parseBool(get('signature_received')),
       initials: get('initials').toUpperCase(),
+      deal_month: get('deal_month'),
       notes: get('notes')
     });
   }
@@ -6656,7 +6689,7 @@ async function runDealImport() {
       company: row.company,
       contact_name: '',
       initials: row.initials || '',
-      stage: row.stage || 'Prospect',
+      stage: 'Prospect',
       currency: row.currency || 'GBP',
       amount: parseFloat(row.amount) || 0,
       paid_inc_vat: row.paid_inc_vat ? parseFloat(row.paid_inc_vat) : null,
@@ -6667,11 +6700,10 @@ async function runDealImport() {
       bank: row.bank || '',
       invoice_agreement_sent: !!row.invoice_agreement_sent,
       signature_received: !!row.signature_received,
+      deal_month: row.deal_month || '',
       notes: row.notes || '',
       event_ids: []
     };
-    // Auto-set row_status for Won deals
-    if (row.stage === 'Won' && row.paid_inc_vat) body.row_status = 'paid';
     try {
       const res = await fetch('/api/deals', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(body) });
       if (res.ok) ok++; else fail++;
