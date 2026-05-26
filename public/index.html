@@ -562,10 +562,8 @@
   <!-- Search + Actions filter row -->
   <div class="deal-filter-card deal-filter-actions">
     <input type="search" id="dealSearch" class="deal-search-input" placeholder="Search company, title, inv…" oninput="renderDealsTable()" />
-    <select id="dealStageFilter" class="deal-select" onchange="renderDealsTable()">
-      <option value="">All Stages</option>
-      <option>Prospect</option><option>Qualified</option><option>Proposal</option>
-      <option>Negotiation</option><option>Won</option><option>Lost</option>
+    <select id="dealByFilter" class="deal-select" onchange="renderDealsTable()">
+      <option value="">All Reps</option>
     </select>
     <select id="dealEventFilter" class="deal-select" onchange="setDealEvent(this.value)">
       <option value="">All Events</option>
