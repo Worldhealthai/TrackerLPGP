@@ -68,6 +68,15 @@ async function runLateMigrations() {
     `ALTER TABLE deal_tracker ADD COLUMN IF NOT EXISTS status TEXT DEFAULT 'active'`,
     `ALTER TABLE deal_tracker ADD COLUMN IF NOT EXISTS is_flagged BOOLEAN DEFAULT FALSE`,
     `ALTER TABLE monthly_payments ADD COLUMN IF NOT EXISTS currency TEXT DEFAULT 'GBP'`,
+    `CREATE TABLE IF NOT EXISTS agenda_notifications (
+      id SERIAL PRIMARY KEY,
+      event_id INT NOT NULL,
+      event_name TEXT NOT NULL DEFAULT '',
+      employee_id INT,
+      employee_name TEXT NOT NULL DEFAULT '',
+      uploaded_at TIMESTAMPTZ DEFAULT NOW(),
+      is_read BOOLEAN DEFAULT FALSE
+    )`,
     `ALTER TABLE deals ADD COLUMN IF NOT EXISTS deal_month TEXT DEFAULT ''`,
     `ALTER TABLE deals ADD COLUMN IF NOT EXISTS fiscal_year INT`,
     `CREATE TABLE IF NOT EXISTS event_kits (
@@ -556,6 +565,13 @@ app.post('/api/employees/:id/reactivate', requireAuth, async (req, res) => {
 app.delete('/api/employees/:id', requireAuth, async (req, res) => {
   await q('UPDATE employees SET active = 0 WHERE id = ?', [req.params.id]);
   res.json({ success: true });
+});
+
+app.delete('/api/employees/:id/hard', requireAuth, requireAdmin, async (req, res) => {
+  try {
+    await q('DELETE FROM employees WHERE id = ?', [req.params.id]);
+    res.json({ success: true });
+  } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
 // Admin: set portal PIN for employee
@@ -1582,7 +1598,7 @@ app.delete('/api/subscriptions/:id', requireAuth, requireAdminOrManager, async (
 });
 
 // ─── PORTFOLIO EVENTS ─────────────────────────────────────────────────────────
-app.get('/api/portfolio-events', requireAuth, requireAdminOrManager, async (req, res) => {
+app.get('/api/portfolio-events', requireAuth, async (req, res) => {
   try {
     const { rows } = await q(`
       SELECT pe.*,
@@ -2404,18 +2420,10 @@ if (require.main === module) {
     } catch (e) { res.status(500).json({ error: e.message }); }
   });
 
-  // Employee agenda upload — only updates agenda_file + agenda_data
+  // Employee agenda upload — any authenticated user can upload for any event
   app.patch('/api/event-kits/:eventId/agenda', requireAuth, async (req, res) => {
     try {
       const eid = req.params.eventId;
-      // Employees can only upload agenda for kits they have access to
-      if (req.admin.role === 'employee') {
-        const { rows: kit } = await q('SELECT access_emails FROM event_kits WHERE event_id=?', [eid]);
-        if (!kit.length) return res.status(404).json({ error: 'Not found' });
-        const emails = safeJsonParse(kit[0].access_emails, []);
-        if (!emails.some(e => e.toLowerCase() === req.admin.email.toLowerCase()))
-          return res.status(403).json({ error: 'Access denied' });
-      }
       const { agenda_file, agenda_data } = req.body;
       const { rows: exist } = await q('SELECT id FROM event_kits WHERE event_id=?', [eid]);
       if (exist.length) {
@@ -2423,6 +2431,29 @@ if (require.main === module) {
       } else {
         await q('INSERT INTO event_kits (event_id, agenda_file, agenda_data, created_by) VALUES (?,?,?,?)', [eid, agenda_file||'', agenda_data||'', req.admin.id]);
       }
+      // Notify admins/managers if an employee uploaded (not clearing)
+      if (agenda_file && req.admin.role === 'employee') {
+        const { rows: ev } = await q('SELECT name FROM portfolio_events WHERE id=?', [eid]);
+        const evName = ev[0]?.name || `Event #${eid}`;
+        await q(
+          'INSERT INTO agenda_notifications (event_id, event_name, employee_id, employee_name) VALUES (?,?,?,?)',
+          [eid, evName, req.admin.id, req.admin.username || req.admin.name || 'Employee']
+        );
+      }
+      res.json({ ok: true });
+    } catch (e) { res.status(500).json({ error: e.message }); }
+  });
+
+  app.get('/api/agenda-notifications', requireAuth, async (req, res) => {
+    try {
+      const { rows } = await q('SELECT * FROM agenda_notifications WHERE is_read = FALSE ORDER BY uploaded_at DESC');
+      res.json(rows);
+    } catch (e) { res.status(500).json({ error: e.message }); }
+  });
+
+  app.put('/api/agenda-notifications/:id/read', requireAuth, async (req, res) => {
+    try {
+      await q('UPDATE agenda_notifications SET is_read = TRUE WHERE id = ?', [req.params.id]);
       res.json({ ok: true });
     } catch (e) { res.status(500).json({ error: e.message }); }
   });
