@@ -2404,6 +2404,29 @@ if (require.main === module) {
     } catch (e) { res.status(500).json({ error: e.message }); }
   });
 
+  // Employee agenda upload — only updates agenda_file + agenda_data
+  app.patch('/api/event-kits/:eventId/agenda', requireAuth, async (req, res) => {
+    try {
+      const eid = req.params.eventId;
+      // Employees can only upload agenda for kits they have access to
+      if (req.admin.role === 'employee') {
+        const { rows: kit } = await q('SELECT access_emails FROM event_kits WHERE event_id=?', [eid]);
+        if (!kit.length) return res.status(404).json({ error: 'Not found' });
+        const emails = safeJsonParse(kit[0].access_emails, []);
+        if (!emails.some(e => e.toLowerCase() === req.admin.email.toLowerCase()))
+          return res.status(403).json({ error: 'Access denied' });
+      }
+      const { agenda_file, agenda_data } = req.body;
+      const { rows: exist } = await q('SELECT id FROM event_kits WHERE event_id=?', [eid]);
+      if (exist.length) {
+        await q('UPDATE event_kits SET agenda_file=?, agenda_data=?, updated_at=NOW() WHERE event_id=?', [agenda_file||'', agenda_data||'', eid]);
+      } else {
+        await q('INSERT INTO event_kits (event_id, agenda_file, agenda_data, created_by) VALUES (?,?,?,?)', [eid, agenda_file||'', agenda_data||'', req.admin.id]);
+      }
+      res.json({ ok: true });
+    } catch (e) { res.status(500).json({ error: e.message }); }
+  });
+
   app.put('/api/event-kits/:eventId', requireAuth, requireAdminOrManager, async (req, res) => {
     try {
       const eid = req.params.eventId;

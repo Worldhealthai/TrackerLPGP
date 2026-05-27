@@ -4778,7 +4778,7 @@ async function initEmployeePortal(user) {
   });
 
   // Hide non-allowed nav items
-  const EMP_PAGES = ['dashboard', 'calendar', 'portfolio'];
+  const EMP_PAGES = ['dashboard', 'calendar', 'portfolio', 'eventkit'];
   document.querySelectorAll('.nav-item').forEach(el => {
     if (!EMP_PAGES.includes(el.dataset.page)) el.style.display = 'none';
   });
@@ -4801,6 +4801,7 @@ async function initEmployeePortal(user) {
     if (page === 'dashboard')  loadEmployeeDashboard(user);
     if (page === 'calendar')   loadEmployeeCalendar();
     if (page === 'portfolio')  loadEmployeePortfolio();
+    if (page === 'eventkit')   loadEmployeeKitPage();
   };
 
   // Attach click handlers since admin init was skipped
@@ -7411,6 +7412,12 @@ async function saveEventKit() {
   renderKitsList();
 }
 
+async function loadEmployeeKitPage() {
+  document.getElementById('ekAdminView').classList.add('hidden');
+  document.getElementById('ekEmployeeView').classList.remove('hidden');
+  await loadEmployeeKits();
+}
+
 async function loadEmployeeKits() {
   const el = document.getElementById('ekEmployeeKits');
   el.innerHTML = '<div style="color:var(--muted);font-size:0.85rem;padding:20px">Loading…</div>';
@@ -7418,11 +7425,11 @@ async function loadEmployeeKits() {
     const res = await fetch('/api/event-kits');
     const kits = await res.json();
     if (!kits.length) {
-      el.innerHTML = '<div style="color:var(--muted);font-size:0.85rem;text-align:center;padding:40px">No materials have been shared with you yet.</div>';
+      el.innerHTML = '<div style="color:var(--muted);font-size:0.85rem;text-align:center;padding:40px">No events have been shared with you yet.</div>';
       return;
     }
     el.innerHTML = kits.map(k => renderEmployeeKitCard(k)).join('');
-  } catch { el.innerHTML = '<div style="color:var(--danger)">Failed to load materials.</div>'; }
+  } catch { el.innerHTML = '<div style="color:var(--danger)">Failed to load events.</div>'; }
 }
 
 function renderEmployeeKitCard(k) {
@@ -7435,12 +7442,57 @@ function renderEmployeeKitCard(k) {
       ${file ? `<a class="btn btn-ghost btn-sm" href="/api/event-kits/${eid}/file/${m.key}" target="_blank">📄 ${esc(file)}</a>` : ''}
     </div></div>`;
   }).filter(Boolean).join('');
-  const agendaRow = k.agenda_file
-    ? `<div class="ek-emp-mat-row"><span class="ek-emp-mat-label">Agenda</span><a class="btn btn-ghost btn-sm" href="/api/event-kits/${eid}/file/agenda" target="_blank">📄 ${esc(k.agenda_file)}</a></div>`
-    : '';
+
+  const agendaSection = `<div class="card" style="padding:16px;margin-bottom:12px;background:var(--bg-2)">
+    <div style="font:700 11px/1 var(--font-sans);letter-spacing:.06em;text-transform:uppercase;color:var(--muted);margin-bottom:12px">📋 My Agenda</div>
+    <div class="ek-material-row">
+      <span class="ek-type-label">Agenda</span>
+      <span class="ek-file-area">
+        ${k.agenda_file
+          ? `<a class="btn btn-ghost btn-sm" href="/api/event-kits/${eid}/file/agenda" target="_blank">📄 ${esc(k.agenda_file)}</a>
+             <button class="btn btn-ghost btn-sm" onclick="ekEmpClearAgenda('${eid}')">✕ Remove</button>`
+          : `<span class="ek-file-name" id="ekEmpFile-${eid}">No file</span>
+             <input type="file" id="ekEmpFileInput-${eid}" accept=".pdf,.pptx,.ppt,.png,.jpg" onchange="ekEmpUploadAgenda('${eid}',this)" style="display:none">
+             <button class="btn btn-ghost btn-sm" onclick="document.getElementById('ekEmpFileInput-${eid}').click()">Upload PDF</button>`
+        }
+      </span>
+    </div>
+  </div>`;
+
   return `<div class="card" style="padding:20px;margin-bottom:16px">
     <div style="font:700 16px/1 var(--font-sans);margin-bottom:4px">${esc(k.event_name)}</div>
     <div style="font-size:0.75rem;color:var(--muted);margin-bottom:16px">${k.event_date?k.event_date.slice(0,10):''}</div>
-    ${agendaRow}${matRows||'<div style="color:var(--muted);font-size:0.83rem">No materials uploaded yet.</div>'}
+    ${agendaSection}
+    ${matRows ? `<div style="font:700 11px/1 var(--font-sans);letter-spacing:.06em;text-transform:uppercase;color:var(--muted);margin-bottom:10px;margin-top:4px">🎨 Materials</div>${matRows}` : ''}
   </div>`;
+}
+
+async function ekEmpUploadAgenda(eid, input) {
+  const file = input.files[0];
+  if (!file) return;
+  if (file.size > 10 * 1024 * 1024) { showToast('File too large (max 10MB)', 'error'); input.value = ''; return; }
+  const label = document.getElementById('ekEmpFile-' + eid);
+  if (label) label.textContent = 'Uploading…';
+  const reader = new FileReader();
+  reader.onload = async ev => {
+    const res = await fetch(`/api/event-kits/${eid}/agenda`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ agenda_file: file.name, agenda_data: ev.target.result })
+    });
+    if (res.ok) { showToast('Agenda uploaded', 'success'); await loadEmployeeKits(); }
+    else { showToast('Upload failed', 'error'); if (label) label.textContent = 'No file'; }
+  };
+  reader.readAsDataURL(file);
+}
+
+async function ekEmpClearAgenda(eid) {
+  if (!await showConfirm('Remove your agenda?')) return;
+  const res = await fetch(`/api/event-kits/${eid}/agenda`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ agenda_file: '', agenda_data: '' })
+  });
+  if (res.ok) { showToast('Agenda removed', 'success'); await loadEmployeeKits(); }
+  else showToast('Failed to remove', 'error');
 }
