@@ -271,7 +271,8 @@ function renderEmpTable() {
         ${!emp.portal_pin ? `<button class="btn btn-ghost btn-sm" style="color:#818cf8;border-color:#4f46e5" onclick="openAddPinModal(${emp.id},'${esc(emp.name)}')">Add PIN</button>` : ''}
         ${emp.active
           ? `<button class="btn btn-danger btn-sm" onclick="openTerminateModal(${emp.id},'${esc(emp.name)}')">Terminate</button>`
-          : `<button class="btn btn-ghost btn-sm" onclick="reactivateEmployee(${emp.id})">Reactivate</button>`}
+          : `<button class="btn btn-ghost btn-sm" onclick="reactivateEmployee(${emp.id})">Reactivate</button>
+             <button class="btn btn-danger btn-sm" onclick="hardDeleteEmployee(${emp.id},'${esc(emp.name)}')">Delete</button>`}
       </td>`;
     tbody.appendChild(tr);
   });
@@ -398,6 +399,15 @@ async function openAddPinModal(id, name) {
 async function reactivateEmployee(id) {
   if (!await showConfirm('Reactivate this employee? This clears the termination date.')) return;
   await fetch(`/api/employees/${id}/reactivate`, { method: 'POST' });
+  await loadEmployees();
+  loadEmpTable();
+}
+
+async function hardDeleteEmployee(id, name) {
+  if (!await showConfirm(`Permanently delete "${name}"? This cannot be undone.`)) return;
+  const res = await fetch(`/api/employees/${id}/hard`, { method: 'DELETE' });
+  if (!res.ok) { const e = await res.json(); showToast(e.error || 'Delete failed', 'error'); return; }
+  showToast('Employee deleted', 'success');
   await loadEmployees();
   loadEmpTable();
 }
@@ -3727,13 +3737,17 @@ async function htDeleteInvoice(id) {
 
 async function refreshNotifBadge() {
   try {
-    const res = await fetch('/api/holiday-requests/count');
-    if (!res.ok) return;
-    const { count } = await res.json();
+    const [hrRes, agRes] = await Promise.all([
+      fetch('/api/holiday-requests/count'),
+      fetch('/api/agenda-notifications')
+    ]);
+    const { count: hrCount } = hrRes.ok ? await hrRes.json() : { count: 0 };
+    const agItems = agRes.ok ? await agRes.json() : [];
+    const total = hrCount + agItems.length;
     const badge = document.getElementById('notifBadge');
-    badge.textContent = count;
-    badge.classList.toggle('hidden', count === 0);
-    document.getElementById('notifBellBtn').classList.toggle('notif-has-pending', count > 0);
+    badge.textContent = total;
+    badge.classList.toggle('hidden', total === 0);
+    document.getElementById('notifBellBtn').classList.toggle('notif-has-pending', total > 0);
   } catch {}
 }
 
@@ -3754,10 +3768,24 @@ async function loadNotifPanel() {
   const list = document.getElementById('notifList');
   list.innerHTML = '<div class="notif-empty">Loading…</div>';
   try {
-    const res = await fetch('/api/holiday-requests?status=pending');
-    const items = await res.json();
-    if (!items.length) { list.innerHTML = '<div class="notif-empty">No pending requests</div>'; return; }
-    list.innerHTML = items.map(r => {
+    const [hrRes, agRes] = await Promise.all([
+      fetch('/api/holiday-requests?status=pending'),
+      fetch('/api/agenda-notifications')
+    ]);
+    const hrItems = hrRes.ok ? await hrRes.json() : [];
+    const agItems = agRes.ok ? await agRes.json() : [];
+    if (!hrItems.length && !agItems.length) { list.innerHTML = '<div class="notif-empty">No pending notifications</div>'; return; }
+    const agendaHtml = agItems.map(a => {
+      const since = new Date(a.uploaded_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
+      return `<div class="notif-item" id="ag-notif-${a.id}">
+        <div class="notif-item-name">📋 Agenda uploaded</div>
+        <div class="notif-item-meta">${esc(a.employee_name)} · ${esc(a.event_name)} · ${since}</div>
+        <div class="notif-item-actions">
+          <button class="notif-approve-btn" onclick="dismissAgendaNotif(${a.id})">✓ Dismiss</button>
+        </div>
+      </div>`;
+    }).join('');
+    const hrHtml = hrItems.map(r => {
       const d = new Date(r.request_date);
       const dateStr = d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
       const typeStr = r.day_type === 'half' ? 'Half Day' : 'Full Day';
@@ -3772,7 +3800,16 @@ async function loadNotifPanel() {
         </div>
       </div>`;
     }).join('');
+    list.innerHTML = agendaHtml + hrHtml;
   } catch { list.innerHTML = '<div class="notif-empty">Failed to load</div>'; }
+}
+
+async function dismissAgendaNotif(id) {
+  await fetch(`/api/agenda-notifications/${id}/read`, { method: 'PUT' });
+  document.getElementById(`ag-notif-${id}`)?.remove();
+  const remaining = document.querySelectorAll('#notifList .notif-item').length;
+  if (!remaining) document.getElementById('notifList').innerHTML = '<div class="notif-empty">No pending notifications</div>';
+  refreshNotifBadge();
 }
 
 async function reviewHolidayRequest(id, action) {
@@ -7414,23 +7451,55 @@ async function saveEventKit() {
 
 async function loadEmployeeKitPage() {
   document.getElementById('ekAdminView').classList.add('hidden');
-  document.getElementById('ekEmployeeView').classList.remove('hidden');
-  await loadEmployeeKits();
-}
-
-async function loadEmployeeKits() {
-  const el = document.getElementById('ekEmployeeKits');
-  el.innerHTML = '<div style="color:var(--muted);font-size:0.85rem;padding:20px">Loading…</div>';
+  const empView = document.getElementById('ekEmployeeView');
+  empView.classList.remove('hidden');
+  empView.innerHTML = '<div style="color:var(--muted);font-size:0.85rem;padding:20px">Loading…</div>';
   try {
-    const res = await fetch('/api/event-kits');
-    const kits = await res.json();
-    if (!kits.length) {
-      el.innerHTML = '<div style="color:var(--muted);font-size:0.85rem;text-align:center;padding:40px">No events have been shared with you yet.</div>';
+    const res = await fetch('/api/portfolio-events');
+    const events = await res.json();
+    if (!events.length) {
+      empView.innerHTML = '<div style="color:var(--muted);font-size:0.85rem;text-align:center;padding:40px">No events found.</div>';
       return;
     }
-    el.innerHTML = kits.map(k => renderEmployeeKitCard(k)).join('');
-  } catch { el.innerHTML = '<div style="color:var(--danger)">Failed to load events.</div>'; }
+    empView.innerHTML = `
+      <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:20px">
+        <select id="ekEmpEventSel" class="deal-select" style="min-width:220px" onchange="loadEmployeeKitEditor()">
+          <option value="">— Select Event —</option>
+          ${events.map(e => `<option value="${e.id}">${esc(e.name)}${e.event_date?' ('+e.event_date.slice(0,10)+')':''}</option>`).join('')}
+        </select>
+      </div>
+      <div id="ekEmpEditor"></div>`;
+  } catch { empView.innerHTML = '<div style="color:var(--danger)">Failed to load events.</div>'; }
 }
+
+async function loadEmployeeKitEditor() {
+  const eid = document.getElementById('ekEmpEventSel').value;
+  const el = document.getElementById('ekEmpEditor');
+  if (!eid) { el.innerHTML = ''; return; }
+  el.innerHTML = '<div style="color:var(--muted);font-size:0.85rem;padding:12px 0">Loading…</div>';
+  try {
+    const res = await fetch(`/api/event-kits/${eid}`);
+    const kit = res.ok ? await res.json() : {};
+    const hasFile = !!(kit && kit.agenda_file);
+    el.innerHTML = `<div class="card" style="padding:24px">
+      <div style="font:700 13px/1 var(--font-sans);letter-spacing:.06em;text-transform:uppercase;color:var(--muted);margin-bottom:16px">📋 My Agenda</div>
+      <div class="ek-material-row">
+        <span class="ek-type-label">Agenda</span>
+        <span class="ek-file-area">
+          ${hasFile
+            ? `<a class="btn btn-ghost btn-sm" href="/api/event-kits/${eid}/file/agenda" target="_blank">📄 ${esc(kit.agenda_file)}</a>
+               <button class="btn btn-ghost btn-sm" onclick="ekEmpClearAgenda('${eid}')">✕ Remove</button>`
+            : `<span class="ek-file-name" id="ekEmpFile-${eid}">No file</span>
+               <input type="file" id="ekEmpFileInput-${eid}" accept=".pdf,.pptx,.ppt,.png,.jpg" onchange="ekEmpUploadAgenda('${eid}',this)" style="display:none">
+               <button class="btn btn-ghost btn-sm" onclick="document.getElementById('ekEmpFileInput-${eid}').click()">Upload PDF</button>`
+          }
+        </span>
+      </div>
+    </div>`;
+  } catch { el.innerHTML = '<div style="color:var(--danger)">Failed to load.</div>'; }
+}
+
+async function loadEmployeeKits() {}
 
 function renderEmployeeKitCard(k) {
   const eid = k.event_id;
@@ -7480,7 +7549,7 @@ async function ekEmpUploadAgenda(eid, input) {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ agenda_file: file.name, agenda_data: ev.target.result })
     });
-    if (res.ok) { showToast('Agenda uploaded', 'success'); await loadEmployeeKits(); }
+    if (res.ok) { showToast('Agenda uploaded — admins have been notified', 'success'); await loadEmployeeKitEditor(); }
     else { showToast('Upload failed', 'error'); if (label) label.textContent = 'No file'; }
   };
   reader.readAsDataURL(file);
@@ -7493,6 +7562,6 @@ async function ekEmpClearAgenda(eid) {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ agenda_file: '', agenda_data: '' })
   });
-  if (res.ok) { showToast('Agenda removed', 'success'); await loadEmployeeKits(); }
+  if (res.ok) { showToast('Agenda removed', 'success'); await loadEmployeeKitEditor(); }
   else showToast('Failed to remove', 'error');
 }
