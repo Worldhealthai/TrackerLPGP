@@ -16,7 +16,7 @@ const ALLOWED_BREAK = 40;
 const MONTHS = ['','January','February','March','April','May','June',
                 'July','August','September','October','November','December'];
 
-function currencySymbol(c) { return c === 'AED' ? 'AED ' : '£'; }
+function currencySymbol(c) { return c === 'AED' ? 'AED ' : c === 'PHP' ? '₱' : '£'; }
 function fmtMoney(amount, currency) { return currencySymbol(currency) + Number(amount || 0).toLocaleString('en-GB', {minimumFractionDigits:2}); }
 function fmt(n) { return Number(n||0).toLocaleString('en-GB', {minimumFractionDigits:2, maximumFractionDigits:2}); }
 
@@ -455,14 +455,14 @@ async function loadDashboard() {
   const payrollCount    = activeEmps.filter(e => e.employment_type === 'payroll').length;
   const seCount         = activeEmps.filter(e => e.employment_type === 'self_employed').length;
 
-  // Total salary remaining to pay this year — GBP + AED converted, max(0) per employee
-  const DASH_AED_TO_GBP = 1 / 4.67;
+  // Total salary remaining to pay this year — all currencies converted to GBP
+  const SALARY_FX = { GBP: 1, AED: 1/4.67, PHP: 0.0138 };
+  const salToGBP = (v, c) => v * (SALARY_FX[c] || 1);
   const totalGBPRemaining = salaryData
     .filter(e => !e.is_terminated)
     .reduce((a, e) => {
       const r = Math.max(0, parseFloat(e.net_remaining) || 0);
-      const c = e.currency || 'GBP';
-      return a + (c === 'AED' ? r * DASH_AED_TO_GBP : c === 'GBP' ? r : 0);
+      return a + salToGBP(r, e.currency || 'GBP');
     }, 0);
 
   // Hotel fees remaining (unpaid + partial rows: paid_amount vs cost where parseable)
@@ -1820,8 +1820,9 @@ async function loadSalaryPage() {
     });
     const TYPE_LABEL = { payroll: 'Payroll', self_employed: 'Self-Employed' };
     const TYPE_CLASS  = { payroll: 'payroll', self_employed: 'self-employed' };
-    // AED → GBP approximate rate (shown clearly to user)
-    const AED_TO_GBP = 1 / 4.67;
+    const SAL_FX = { GBP: 1, AED: 1/4.67, PHP: 0.0138 };
+    const salFxToGBP = (v, c) => v * (SAL_FX[c] || 1);
+    const AED_TO_GBP = SAL_FX.AED; // kept for legacy references below
 
     const groupCards = groups.map(g => {
       const s        = currencySymbol(g.currency);
@@ -1837,8 +1838,8 @@ async function loadSalaryPage() {
       const isPayroll = g.type === 'payroll';
       const accentClass = isPayroll ? 'payroll' : 'self-employed';
       const icon = isPayroll ? '💼' : '🧾';
-      const aedConversion = g.currency === 'AED' && tRemain > 0
-        ? `<div class="soc-conversion">≈ £${(tRemain * AED_TO_GBP).toLocaleString('en-GB',{maximumFractionDigits:0})} at 4.67 AED/GBP</div>`
+      const aedConversion = (g.currency === 'AED' || g.currency === 'PHP') && tRemain > 0
+        ? `<div class="soc-conversion">≈ £${salFxToGBP(tRemain, g.currency).toLocaleString('en-GB',{maximumFractionDigits:0})} GBP${g.currency === 'AED' ? ' at 4.67 AED/GBP' : ' at ₱1 = £0.0138'}</div>`
         : '';
       return `
         <div class="salary-overview-card ${accentClass}">
@@ -1878,35 +1879,16 @@ async function loadSalaryPage() {
 
     // Grand total card — all currencies converted to GBP, with full breakdown
     const allActive = activeRows; // alias for clarity
-    const gtTarget  = allActive.reduce((s, e) => {
-      const t = parseFloat(e.salary_target ?? e.annual_salary) || 0;
-      const c = e.currency || 'GBP';
-      return s + (c === 'AED' ? t * AED_TO_GBP : c === 'GBP' ? t : 0);
-    }, 0);
-    const gtPaid    = allActive.reduce((s, e) => {
-      const p = parseFloat(e.total_paid) || 0;
-      const c = e.currency || 'GBP';
-      return s + (c === 'AED' ? p * AED_TO_GBP : c === 'GBP' ? p : 0);
-    }, 0);
-    const gtDayOff  = allActive.reduce((s, e) => {
-      const d = parseFloat(e.excess_deduction) || 0;
-      const c = e.currency || 'GBP';
-      return s + (c === 'AED' ? d * AED_TO_GBP : c === 'GBP' ? d : 0);
-    }, 0);
-    const gtOffice  = allActive.reduce((s, e) => {
-      const d = parseFloat(e.total_office_deductions) || 0;
-      const c = e.currency || 'GBP';
-      return s + (c === 'AED' ? d * AED_TO_GBP : c === 'GBP' ? d : 0);
-    }, 0);
+    const gtTarget  = allActive.reduce((s, e) => s + salFxToGBP(parseFloat(e.salary_target ?? e.annual_salary) || 0, e.currency || 'GBP'), 0);
+    const gtPaid    = allActive.reduce((s, e) => s + salFxToGBP(parseFloat(e.total_paid)    || 0, e.currency || 'GBP'), 0);
+    const gtDayOff  = allActive.reduce((s, e) => s + salFxToGBP(parseFloat(e.excess_deduction) || 0, e.currency || 'GBP'), 0);
+    const gtOffice  = allActive.reduce((s, e) => s + salFxToGBP(parseFloat(e.total_office_deductions) || 0, e.currency || 'GBP'), 0);
     const gtDeduct  = gtDayOff + gtOffice;
     // Remaining = max(0) per employee so overpaid don't cancel owed amounts
-    const gtRemain  = allActive.reduce((s, e) => {
-      const r = parseFloat(e.net_remaining) || 0;
-      const c = e.currency || 'GBP';
-      const converted = c === 'AED' ? r * AED_TO_GBP : c === 'GBP' ? r : 0;
-      return s + Math.max(0, converted);
-    }, 0);
+    const gtRemain  = allActive.reduce((s, e) => s + Math.max(0, salFxToGBP(parseFloat(e.net_remaining) || 0, e.currency || 'GBP')), 0);
     const hasMultiCurrency = groups.some(g => g.currency !== 'GBP');
+    const phpGroups = groups.filter(g => g.currency === 'PHP');
+    const phpRemain = phpGroups.reduce((s, g) => s + g.rows.reduce((a, e) => a + Math.max(0, parseFloat(e.net_remaining) || 0), 0), 0);
     const gtPaidPct = gtTarget > 0 ? Math.min(100, Math.round(gtPaid / gtTarget * 100)) : 0;
     const gbpCard = `
       <div class="salary-overview-card soc-gbp-total">
@@ -1914,7 +1896,7 @@ async function loadSalaryPage() {
         <div class="soc-header">
           <span class="soc-icon">📊</span>
           <div class="soc-header-text">
-            <div class="soc-title">Total · GBP${hasMultiCurrency ? ' <span style="font-size:0.68rem;font-weight:500;opacity:0.6">AED @ 4.67</span>' : ''}</div>
+            <div class="soc-title">Total · GBP${hasMultiCurrency ? ` <span style="font-size:0.68rem;font-weight:500;opacity:0.6">${groups.some(g=>g.currency==='AED')?'AED @ 4.67':''}${groups.some(g=>g.currency==='AED')&&groups.some(g=>g.currency==='PHP')?' · ':''}${groups.some(g=>g.currency==='PHP')?'₱ @ 0.0138':''}</span>` : ''}</div>
             <div class="soc-subtitle">All groups combined</div>
           </div>
           <div class="soc-pct-badge soc-pct-badge--green">${gtPaidPct}%</div>
@@ -1941,7 +1923,8 @@ async function loadSalaryPage() {
             <span class="soc-footer-val soc-col-outstanding soc-col-outstanding--green">£${gtRemain.toLocaleString('en-GB',{minimumFractionDigits:2,maximumFractionDigits:2})}</span>
           </div>
         </div>
-        ${hasMultiCurrency ? `<div class="soc-conversion">Includes AED converted · ${year}</div>` : ''}
+        ${phpRemain > 0 ? `<div class="soc-conversion">PHP employees owe ₱${phpRemain.toLocaleString('en-GB',{maximumFractionDigits:0})} (≈ £${salFxToGBP(phpRemain,'PHP').toLocaleString('en-GB',{maximumFractionDigits:0})})</div>` : ''}
+        ${hasMultiCurrency ? `<div class="soc-conversion">All non-GBP converted · ${year}</div>` : ''}
       </div>`;
 
     document.getElementById('salaryTotals').innerHTML = (groupCards.join('') + gbpCard) || '';
@@ -2354,13 +2337,10 @@ function toggleSection(btn) {
 
 function showSalaryBreakdown(key) {
   const rows = window._salaryRows || [];
-  const AED_TO_GBP = window._salaryAedRate || (1/4.67);
+  const BD_FX = { GBP: 1, AED: window._salaryAedRate || (1/4.67), PHP: 0.0138 };
+  const toGBP = (v, cur) => v * (BD_FX[cur] || 1);
   const fmtGBP = v => '£' + Math.abs(v).toLocaleString('en-GB', {minimumFractionDigits:2, maximumFractionDigits:2});
-  const fmtCur = (v, cur) => {
-    const sym = cur === 'GBP' ? '£' : cur === 'USD' ? '$' : (cur + ' ');
-    return sym + Math.abs(v).toLocaleString('en-GB', {minimumFractionDigits:2, maximumFractionDigits:2});
-  };
-  const toGBP = (v, cur) => cur === 'AED' ? v * AED_TO_GBP : v;
+  const fmtCur = (v, cur) => currencySymbol(cur) + Math.abs(v).toLocaleString('en-GB', {minimumFractionDigits:2, maximumFractionDigits:2});
 
   const titles = { paid: 'Total Paid — Breakdown', due: 'Total Salaries — Breakdown', outstanding: 'Outstanding Balance — Breakdown', bonuses: 'Total Bonuses — Breakdown' };
   const notes  = { paid: 'Payments logged this year per employee', due: 'Net annual salary target incl. PAYE/NI deductions', outstanding: 'Remaining balance after payments & deductions (excl. bonuses)', bonuses: 'Bonus payments logged per employee' };
@@ -2429,7 +2409,7 @@ function showSalaryBreakdown(key) {
       '</div>' +
       '<div style="padding:0 20px 8px;flex-shrink:0">' +
         '<div style="font:500 11px/1 var(--font-mono);color:var(--muted)">' + notes[key] + '</div>' +
-        (key === 'outstanding' ? '<div style="font:500 11px/1 var(--font-mono);color:var(--muted);margin-top:4px">Excludes bonuses · AED converted at 1 AED = ' + AED_TO_GBP.toFixed(4) + ' GBP</div>' : '') +
+        (key === 'outstanding' ? '<div style="font:500 11px/1 var(--font-mono);color:var(--muted);margin-top:4px">Excludes bonuses · AED @ ' + BD_FX.AED.toFixed(4) + ' · PHP @ 0.0138 GBP</div>' : '') +
       '</div>' +
       '<div style="overflow-y:auto;padding:0 20px 8px;flex:1">' +
         (rowsHtml || '<div style="color:var(--muted);padding:20px 0;font:500 12px/1 var(--font-mono)">No data.</div>') +
