@@ -59,6 +59,10 @@
         <span class="icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg></span>
         <span class="nav-label">Employees</span>
       </div>
+      <div class="nav-item" data-page="eventkit">
+        <span class="icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg></span>
+        <span class="nav-label">Event Kit</span>
+      </div>
       <div class="nav-item" data-page="hotels">
         <span class="icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3 22V12a9 9 0 0 1 18 0v10"/><path d="M3 22h18"/><path d="M9 22v-4h6v4"/></svg></span>
         <span class="nav-label">Hotel Expenses</span>
@@ -639,6 +643,55 @@
 </div>
 
     </div>
+  </div>
+</div>
+
+<!-- ══ EVENT KIT PAGE ══ -->
+<div class="page" id="page-eventkit">
+  <div id="ekAdminView">
+    <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:20px">
+      <select id="ekEventSel" class="deal-select" style="min-width:220px" onchange="loadEventKit()">
+        <option value="">— Select Event —</option>
+      </select>
+      <span id="ekSaveStatus" style="font-size:0.8rem;color:var(--muted)"></span>
+    </div>
+    <div id="ekKitEditor" class="hidden">
+      <div class="card" style="padding:24px;margin-bottom:16px">
+        <div style="font:700 13px/1 var(--font-sans);letter-spacing:.06em;text-transform:uppercase;color:var(--muted);margin-bottom:16px">📋 Agenda</div>
+        <div class="ek-material-row" id="ekRow-agenda" data-type="agenda">
+          <span class="ek-type-label">Agenda</span>
+          <span class="ek-file-area">
+            <span id="ekFile-agenda" class="ek-file-name">No file</span>
+            <input type="file" id="ekFileInput-agenda" accept=".pdf,.pptx,.ppt,.png,.jpg" onchange="ekHandleFile('agenda',this)" style="display:none">
+            <button class="btn btn-ghost btn-sm" onclick="document.getElementById('ekFileInput-agenda').click()">Upload PDF</button>
+            <button class="btn btn-ghost btn-sm ek-clear-btn hidden" id="ekClear-agenda" onclick="ekClearFile('agenda')">✕ Remove</button>
+          </span>
+        </div>
+      </div>
+      <div class="card" style="padding:24px;margin-bottom:16px">
+        <div style="font:700 13px/1 var(--font-sans);letter-spacing:.06em;text-transform:uppercase;color:var(--muted);margin-bottom:16px">🎨 Marketing Materials</div>
+        <div id="ekMaterialsList"></div>
+      </div>
+      <div class="card" style="padding:24px;margin-bottom:16px">
+        <div style="font:700 13px/1 var(--font-sans);letter-spacing:.06em;text-transform:uppercase;color:var(--muted);margin-bottom:12px">👥 Who can see this?</div>
+        <div style="font-size:0.8rem;color:var(--muted);margin-bottom:10px">Select employees or type an email address and press Enter</div>
+        <div id="ekAccessTags" style="display:flex;flex-wrap:wrap;gap:6px;min-height:32px;margin-bottom:10px"></div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+          <input type="text" id="ekEmailInput" placeholder="name@example.com" style="flex:1;min-width:180px" onkeydown="ekEmailKeydown(event)">
+          <button class="btn btn-ghost btn-sm" onclick="ekAddEmailFromInput()">+ Add</button>
+          <select id="ekEmpPicker" style="flex:1;min-width:160px" onchange="ekPickEmployee(this)">
+            <option value="">Pick from staff…</option>
+          </select>
+        </div>
+      </div>
+      <div style="display:flex;gap:10px;justify-content:flex-end">
+        <button class="btn btn-primary" onclick="saveEventKit()">Save Kit</button>
+      </div>
+    </div>
+    <div id="ekKitsList" style="margin-top:8px"></div>
+  </div>
+  <div id="ekEmployeeView" class="hidden">
+    <div id="ekEmployeeKits"></div>
   </div>
 </div>
 
@@ -1314,6 +1367,7 @@
   <div class="bottom-nav-item" data-page="calendar"><span class="bottom-nav-icon">📅</span><span class="bottom-nav-label">Calendar</span></div>
   <div class="bottom-nav-item admin-only hidden" data-page="salary" style="position:relative"><span class="bottom-nav-icon">💰</span><span class="bottom-nav-label">Salary</span><span id="salaryBottomBadge" class="nav-badge nav-badge-bottom hidden"></span></div>
   <div class="bottom-nav-item admin-only hidden" data-page="employees"><span class="bottom-nav-icon">👥</span><span class="bottom-nav-label">Staff</span></div>
+  <div class="bottom-nav-item" data-page="eventkit"><span class="bottom-nav-icon">📦</span><span class="bottom-nav-label">Event Kit</span></div>
 </nav>
 
 <!-- Toast container -->
