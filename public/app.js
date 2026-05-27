@@ -385,10 +385,10 @@ async function openAddPinModal(id, name) {
   if (pin === null) return;
   const cleaned = pin.replace(/\D/g,'').slice(0,6);
   if (cleaned.length < 4) { showToast('PIN must be 4–6 digits', 'error'); return; }
-  const res = await fetch(`/api/employees/${id}`, {
-    method: 'PATCH',
+  const res = await fetch(`/api/employees/${id}/portal-pin`, {
+    method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ portal_pin: cleaned })
+    body: JSON.stringify({ pin: cleaned })
   });
   if (!res.ok) { showToast('Failed to set PIN', 'error'); return; }
   showToast(`PIN set for ${name}`, 'success');
@@ -7368,10 +7368,6 @@ async function loadEventKit() {
           document.getElementById(`ekClear-${m.key}`)?.classList.remove('hidden');
         }
       });
-      if (kit.agenda_file) {
-        document.getElementById('ekFile-agenda').textContent = kit.agenda_file;
-        document.getElementById('ekClear-agenda')?.classList.remove('hidden');
-      }
     }
   } catch {}
   renderEkAccessTags();
@@ -7431,7 +7427,7 @@ async function saveEventKit() {
   const eid = document.getElementById('ekEventSel').value;
   if (!eid) { showToast('Select an event first', 'error'); return; }
   const body = { access_emails: _ekEmails };
-  ['agenda', ...EK_MATERIAL_TYPES.map(m => m.key)].forEach(type => {
+  EK_MATERIAL_TYPES.map(m => m.key).forEach(type => {
     const urlEl = document.getElementById(`ekUrl-${type}`);
     body[type+'_url'] = urlEl ? urlEl.value.trim() : '';
     body[type+'_file'] = _ekKit[type+'_file'] || '';
