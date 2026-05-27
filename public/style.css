@@ -4548,3 +4548,20 @@ tbody tr:last-child td { border-bottom: none; }
 #cancelledTable tbody tr { opacity: 0.75; }
 #cancelledTable tbody tr:hover { opacity: 1; }
 .cancelled-reason-cell { color: var(--muted); font-style: italic; font-size: 0.82rem; }
+
+/* ── Event Kit ── */
+.ek-material-row { display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid var(--border);flex-wrap:wrap; }
+.ek-material-row:last-child { border-bottom:none; }
+.ek-type-label { font:600 13px/1 var(--font-sans);color:var(--text);width:130px;flex-shrink:0; }
+.ek-url-input { font-size:0.82rem;padding:6px 10px;border:1px solid var(--border);border-radius:6px;background:var(--bg-2);color:var(--text); }
+.ek-or { font-size:0.75rem;color:var(--muted);flex-shrink:0; }
+.ek-file-area { display:flex;align-items:center;gap:6px;flex-wrap:wrap; }
+.ek-file-name { font:500 11px/1 var(--font-mono);color:var(--muted);max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap; }
+.ek-tag { display:inline-flex;align-items:center;background:rgba(99,102,241,.12);color:var(--primary);border-radius:20px;padding:4px 10px;font:500 12px/1 var(--font-sans); }
+.ek-badge { display:inline-flex;align-items:center;gap:4px;padding:3px 9px;border-radius:20px;font:600 11px/1 var(--font-sans); }
+.ek-badge--agenda { background:rgba(16,185,129,.1);color:#059669; }
+.ek-badge--mat    { background:rgba(99,102,241,.1);color:#4f46e5; }
+.ek-badge--access { background:rgba(245,158,11,.1);color:#b45309; }
+.ek-emp-mat-row { display:flex;align-items:center;gap:12px;padding:10px 0;border-bottom:1px solid var(--border);flex-wrap:wrap; }
+.ek-emp-mat-row:last-child { border-bottom:none; }
+.ek-emp-mat-label { font:600 13px/1 var(--font-sans);color:var(--text);width:130px;flex-shrink:0; }

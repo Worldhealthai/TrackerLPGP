@@ -167,7 +167,7 @@ function navigate(page) {
   document.getElementById('page-' + page).classList.add('active');
   document.querySelector(`.nav-item[data-page="${page}"]`)?.classList.add('active');
   document.querySelector(`.bottom-nav-item[data-page="${page}"]`)?.classList.add('active');
-  const titles = { dashboard:'Dashboard', tracking:'Daily Tracking', salary:'Salary Tracker', employees:'Employees', reports:'Reports', calendar:'Calendar', admins:'Admin Users', hotels:'Hotel Expenses', subscriptions:'Subscriptions', portfolio:'Portfolio', deals:'Deal Tracker' };
+  const titles = { dashboard:'Dashboard', tracking:'Daily Tracking', salary:'Salary Tracker', employees:'Employees', reports:'Reports', calendar:'Calendar', admins:'Admin Users', hotels:'Hotel Expenses', subscriptions:'Subscriptions', portfolio:'Portfolio', deals:'Deal Tracker', eventkit:'Event Kit' };
   document.getElementById('pageTitle').textContent = titles[page] || page;
   if (page === 'employees') loadEmpTable();
   if (page === 'admins') loadAdmins();
@@ -177,6 +177,7 @@ function navigate(page) {
   if (page === 'subscriptions') loadSubscriptions();
   if (page === 'portfolio') { loadPortfolio(); }
   if (page === 'deals') { loadDeals(); }
+  if (page === 'eventkit') loadEventKitPage();
 }
 
 // ─── EMPLOYEES ───────────────────────────────────────────────────────────────
@@ -7227,4 +7228,216 @@ function openSetPinModal(empId, empName) {
     if (d.success) showToast('Portal PIN set for ' + empName, 'success');
     else showToast(d.error || 'Failed', 'error');
   });
+}
+
+// ─── EVENT KIT ────────────────────────────────────────────────────────────────
+
+let _ekKit = {};
+let _ekEmails = [];
+
+async function loadEventKitPage() {
+  const isEmployee = currentUser?.role === 'employee';
+  document.getElementById('ekAdminView').classList.toggle('hidden', isEmployee);
+  document.getElementById('ekEmployeeView').classList.toggle('hidden', !isEmployee);
+  if (isEmployee) { await loadEmployeeKits(); return; }
+  try {
+    const res = await fetch('/api/portfolio-events');
+    const evs = await res.json();
+    const sel = document.getElementById('ekEventSel');
+    const cur = sel.value;
+    sel.innerHTML = '<option value="">— Select Event —</option>' +
+      evs.map(e => `<option value="${e.id}"${String(e.id)===cur?' selected':''}>${esc(e.name)}${e.event_date?' ('+e.event_date.slice(0,10)+')':''}</option>`).join('');
+    const staffRes = await fetch('/api/employees/all');
+    const staff = await staffRes.json();
+    const ep = document.getElementById('ekEmpPicker');
+    ep.innerHTML = '<option value="">Pick from staff…</option>' +
+      staff.filter(s => s.email).map(s => `<option value="${esc(s.email)}">${esc(s.name)} (${esc(s.email)})</option>`).join('');
+    await renderKitsList();
+    if (cur) loadEventKit();
+  } catch(e) { showToast('Failed to load events', 'error'); }
+}
+
+async function renderKitsList() {
+  const res = await fetch('/api/event-kits');
+  if (!res.ok) return;
+  const kits = await res.json();
+  const el = document.getElementById('ekKitsList');
+  if (!kits.length) {
+    el.innerHTML = '<div style="color:var(--muted);font-size:0.85rem;text-align:center;padding:20px">No kits yet. Select an event above to create one.</div>';
+    return;
+  }
+  el.innerHTML = '<div style="font:700 13px/1 var(--font-sans);letter-spacing:.06em;text-transform:uppercase;color:var(--muted);margin-bottom:12px">Existing Kits</div>' +
+    kits.map(k => {
+      const materials = ['brochure','banner','roundtable','presentation','backdrop','name_badges']
+        .filter(t => k[t+'_url'] || k[t+'_file']).length;
+      return `<div class="card" style="padding:14px 18px;margin-bottom:8px;display:flex;align-items:center;gap:14px;cursor:pointer" onclick="document.getElementById('ekEventSel').value='${k.event_id}';loadEventKit()">
+        <div style="flex:1;min-width:0">
+          <div style="font:600 14px/1 var(--font-sans)">${esc(k.event_name)}</div>
+          <div style="font-size:0.75rem;color:var(--muted);margin-top:3px">${k.event_date?k.event_date.slice(0,10):''}</div>
+        </div>
+        <div style="display:flex;gap:6px;flex-wrap:wrap">
+          ${k.agenda_file ? '<span class="ek-badge ek-badge--agenda">📋 Agenda</span>' : ''}
+          ${materials > 0 ? `<span class="ek-badge ek-badge--mat">🎨 ${materials} material${materials!==1?'s':''}</span>` : ''}
+          <span class="ek-badge ek-badge--access">👥 ${k.access_emails.length} recipient${k.access_emails.length!==1?'s':''}</span>
+        </div>
+        <button class="btn btn-ghost btn-sm" onclick="event.stopPropagation();document.getElementById('ekEventSel').value='${k.event_id}';loadEventKit()">Edit</button>
+      </div>`;
+    }).join('');
+}
+
+const EK_MATERIAL_TYPES = [
+  { key:'brochure',     label:'Brochure',       accept:'.pdf,.png,.jpg' },
+  { key:'banner',       label:'Banner',          accept:'.pdf,.png,.jpg' },
+  { key:'roundtable',   label:'Roundtable Card', accept:'.pdf,.png,.jpg' },
+  { key:'presentation', label:'Presentation',    accept:'.pdf,.pptx,.ppt' },
+  { key:'backdrop',     label:'Backdrop',        accept:'.pdf,.png,.jpg' },
+  { key:'name_badges',  label:'Name Badges',     accept:'.pdf,.png,.jpg' },
+];
+
+async function loadEventKit() {
+  const sel = document.getElementById('ekEventSel');
+  const eid = sel.value;
+  const editor = document.getElementById('ekKitEditor');
+  if (!eid) { editor.classList.add('hidden'); return; }
+  editor.classList.remove('hidden');
+  document.getElementById('ekMaterialsList').innerHTML = EK_MATERIAL_TYPES.map(m => `
+    <div class="ek-material-row" data-type="${m.key}">
+      <span class="ek-type-label">${m.label}</span>
+      <input type="text" id="ekUrl-${m.key}" placeholder="Canva / URL (optional)" class="ek-url-input" style="flex:1;min-width:0">
+      <span class="ek-or">or</span>
+      <span class="ek-file-area">
+        <span id="ekFile-${m.key}" class="ek-file-name">No file</span>
+        <input type="file" id="ekFileInput-${m.key}" accept="${m.accept}" onchange="ekHandleFile('${m.key}',this)" style="display:none">
+        <button class="btn btn-ghost btn-sm" onclick="document.getElementById('ekFileInput-${m.key}').click()">Upload</button>
+        <button class="btn btn-ghost btn-sm ek-clear-btn hidden" id="ekClear-${m.key}" onclick="ekClearFile('${m.key}')">✕</button>
+      </span>
+    </div>`).join('');
+  _ekKit = {}; _ekEmails = [];
+  try {
+    const res = await fetch(`/api/event-kits/${eid}`);
+    const kit = await res.json();
+    if (kit) {
+      _ekKit = kit;
+      _ekEmails = Array.isArray(kit.access_emails) ? [...kit.access_emails] : [];
+      EK_MATERIAL_TYPES.forEach(m => {
+        const urlEl = document.getElementById(`ekUrl-${m.key}`);
+        if (urlEl) urlEl.value = kit[m.key+'_url'] || '';
+        if (kit[m.key+'_file']) {
+          document.getElementById(`ekFile-${m.key}`).textContent = kit[m.key+'_file'];
+          document.getElementById(`ekClear-${m.key}`)?.classList.remove('hidden');
+        }
+      });
+      if (kit.agenda_file) {
+        document.getElementById('ekFile-agenda').textContent = kit.agenda_file;
+        document.getElementById('ekClear-agenda')?.classList.remove('hidden');
+      }
+    }
+  } catch {}
+  renderEkAccessTags();
+  document.getElementById('ekSaveStatus').textContent = '';
+}
+
+function ekHandleFile(type, input) {
+  const file = input.files[0];
+  if (!file) return;
+  if (file.size > 10 * 1024 * 1024) { showToast('File too large (max 10 MB)', 'error'); return; }
+  const reader = new FileReader();
+  reader.onload = e => {
+    _ekKit[type+'_data'] = e.target.result.split(',')[1];
+    _ekKit[type+'_file'] = file.name;
+    document.getElementById(`ekFile-${type}`).textContent = file.name;
+    document.getElementById(`ekClear-${type}`)?.classList.remove('hidden');
+  };
+  reader.readAsDataURL(file);
+}
+
+function ekClearFile(type) {
+  _ekKit[type+'_data'] = ''; _ekKit[type+'_file'] = '';
+  document.getElementById(`ekFile-${type}`).textContent = 'No file';
+  document.getElementById(`ekClear-${type}`)?.classList.add('hidden');
+  const inp = document.getElementById(`ekFileInput-${type}`);
+  if (inp) inp.value = '';
+}
+
+function renderEkAccessTags() {
+  const el = document.getElementById('ekAccessTags');
+  if (!el) return;
+  el.innerHTML = _ekEmails.map(e =>
+    `<span class="ek-tag">${esc(e)}<button onclick="ekRemoveEmail('${esc(e)}')" style="background:none;border:none;cursor:pointer;margin-left:4px;color:var(--muted);font-size:11px">✕</button></span>`
+  ).join('');
+}
+
+function ekRemoveEmail(email) { _ekEmails = _ekEmails.filter(e => e !== email); renderEkAccessTags(); }
+function ekEmailKeydown(event) { if (event.key === 'Enter') { event.preventDefault(); ekAddEmailFromInput(); } }
+
+function ekAddEmailFromInput() {
+  const inp = document.getElementById('ekEmailInput');
+  const val = (inp.value || '').trim().toLowerCase();
+  if (!val) return;
+  if (!val.includes('@')) { showToast('Enter a valid email', 'error'); return; }
+  if (!_ekEmails.includes(val)) { _ekEmails.push(val); renderEkAccessTags(); }
+  inp.value = '';
+}
+
+function ekPickEmployee(sel) {
+  const email = sel.value;
+  if (!email) return;
+  if (!_ekEmails.includes(email)) { _ekEmails.push(email); renderEkAccessTags(); }
+  sel.value = '';
+}
+
+async function saveEventKit() {
+  const eid = document.getElementById('ekEventSel').value;
+  if (!eid) { showToast('Select an event first', 'error'); return; }
+  const body = { access_emails: _ekEmails };
+  ['agenda', ...EK_MATERIAL_TYPES.map(m => m.key)].forEach(type => {
+    const urlEl = document.getElementById(`ekUrl-${type}`);
+    body[type+'_url'] = urlEl ? urlEl.value.trim() : '';
+    body[type+'_file'] = _ekKit[type+'_file'] || '';
+    body[type+'_data'] = _ekKit[type+'_data'] || '';
+  });
+  const status = document.getElementById('ekSaveStatus');
+  status.textContent = 'Saving…';
+  const res = await fetch(`/api/event-kits/${eid}`, {
+    method: 'PUT', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body)
+  });
+  if (!res.ok) { showToast('Save failed', 'error'); status.textContent = ''; return; }
+  showToast('Kit saved', 'success');
+  status.textContent = '✓ Saved';
+  renderKitsList();
+}
+
+async function loadEmployeeKits() {
+  const el = document.getElementById('ekEmployeeKits');
+  el.innerHTML = '<div style="color:var(--muted);font-size:0.85rem;padding:20px">Loading…</div>';
+  try {
+    const res = await fetch('/api/event-kits');
+    const kits = await res.json();
+    if (!kits.length) {
+      el.innerHTML = '<div style="color:var(--muted);font-size:0.85rem;text-align:center;padding:40px">No materials have been shared with you yet.</div>';
+      return;
+    }
+    el.innerHTML = kits.map(k => renderEmployeeKitCard(k)).join('');
+  } catch { el.innerHTML = '<div style="color:var(--danger)">Failed to load materials.</div>'; }
+}
+
+function renderEmployeeKitCard(k) {
+  const eid = k.event_id;
+  const matRows = EK_MATERIAL_TYPES.map(m => {
+    const url = k[m.key+'_url'], file = k[m.key+'_file'];
+    if (!url && !file) return '';
+    return `<div class="ek-emp-mat-row"><span class="ek-emp-mat-label">${m.label}</span><div style="display:flex;gap:6px;flex-wrap:wrap">
+      ${url ? `<a class="btn btn-ghost btn-sm" href="${esc(url)}" target="_blank" rel="noopener">🔗 Open Link</a>` : ''}
+      ${file ? `<a class="btn btn-ghost btn-sm" href="/api/event-kits/${eid}/file/${m.key}" target="_blank">📄 ${esc(file)}</a>` : ''}
+    </div></div>`;
+  }).filter(Boolean).join('');
+  const agendaRow = k.agenda_file
+    ? `<div class="ek-emp-mat-row"><span class="ek-emp-mat-label">Agenda</span><a class="btn btn-ghost btn-sm" href="/api/event-kits/${eid}/file/agenda" target="_blank">📄 ${esc(k.agenda_file)}</a></div>`
+    : '';
+  return `<div class="card" style="padding:20px;margin-bottom:16px">
+    <div style="font:700 16px/1 var(--font-sans);margin-bottom:4px">${esc(k.event_name)}</div>
+    <div style="font-size:0.75rem;color:var(--muted);margin-bottom:16px">${k.event_date?k.event_date.slice(0,10):''}</div>
+    ${agendaRow}${matRows||'<div style="color:var(--muted);font-size:0.83rem">No materials uploaded yet.</div>'}
+  </div>`;
 }

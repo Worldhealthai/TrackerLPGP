@@ -69,6 +69,36 @@ async function runLateMigrations() {
     `ALTER TABLE deal_tracker ADD COLUMN IF NOT EXISTS is_flagged BOOLEAN DEFAULT FALSE`,
     `ALTER TABLE deals ADD COLUMN IF NOT EXISTS deal_month TEXT DEFAULT ''`,
     `ALTER TABLE deals ADD COLUMN IF NOT EXISTS fiscal_year INT`,
+    `CREATE TABLE IF NOT EXISTS event_kits (
+      id SERIAL PRIMARY KEY,
+      event_id INT NOT NULL,
+      agenda_file TEXT DEFAULT '',
+      agenda_data TEXT DEFAULT '',
+      brochure_url TEXT DEFAULT '',
+      brochure_file TEXT DEFAULT '',
+      brochure_data TEXT DEFAULT '',
+      banner_url TEXT DEFAULT '',
+      banner_file TEXT DEFAULT '',
+      banner_data TEXT DEFAULT '',
+      roundtable_url TEXT DEFAULT '',
+      roundtable_file TEXT DEFAULT '',
+      roundtable_data TEXT DEFAULT '',
+      presentation_url TEXT DEFAULT '',
+      presentation_file TEXT DEFAULT '',
+      presentation_data TEXT DEFAULT '',
+      backdrop_url TEXT DEFAULT '',
+      backdrop_file TEXT DEFAULT '',
+      backdrop_data TEXT DEFAULT '',
+      name_badges_url TEXT DEFAULT '',
+      name_badges_file TEXT DEFAULT '',
+      name_badges_data TEXT DEFAULT '',
+      access_emails TEXT DEFAULT '[]',
+      notes TEXT DEFAULT '',
+      created_by INT,
+      updated_at TIMESTAMPTZ DEFAULT NOW(),
+      created_at TIMESTAMPTZ DEFAULT NOW(),
+      UNIQUE(event_id)
+    )`,
     `CREATE TABLE IF NOT EXISTS deal_invoices (
       id SERIAL PRIMARY KEY,
       deal_id INT NOT NULL,
@@ -134,6 +164,8 @@ app.use('/api', async (req, res, next) => {
     return res.status(503).json({ error: msg });
   }
 });
+
+function safeJsonParse(v, fallback) { try { return JSON.parse(v); } catch { return fallback; } }
 
 function requireAuth(req, res, next) {
   const token = req.cookies.token;
@@ -2310,6 +2342,87 @@ app.get('/api/portal/calendar', async (req, res) => {
 module.exports = app;
 
 if (require.main === module) {
+  // ─── EVENT KITS ─────────────────────────────────────────────────────────────
+
+  app.get('/api/event-kits', requireAuth, async (req, res) => {
+    try {
+      const isStaff = req.admin.role === 'employee';
+      let rows;
+      if (isStaff) {
+        const email = req.admin.email || '';
+        const { rows: r } = await q(`
+          SELECT ek.id, ek.event_id, pe.name AS event_name, pe.event_date,
+            ek.agenda_file, ek.brochure_url, ek.brochure_file,
+            ek.banner_url, ek.banner_file, ek.roundtable_url, ek.roundtable_file,
+            ek.presentation_url, ek.presentation_file, ek.backdrop_url, ek.backdrop_file,
+            ek.name_badges_url, ek.name_badges_file, ek.access_emails, ek.notes
+          FROM event_kits ek
+          JOIN portfolio_events pe ON pe.id = ek.event_id
+          WHERE ek.access_emails::text ILIKE ?
+          ORDER BY pe.event_date DESC NULLS LAST`, [`%${email}%`]);
+        rows = r;
+      } else {
+        const { rows: r } = await q(`
+          SELECT ek.id, ek.event_id, pe.name AS event_name, pe.event_date,
+            ek.agenda_file, ek.brochure_url, ek.brochure_file,
+            ek.banner_url, ek.banner_file, ek.roundtable_url, ek.roundtable_file,
+            ek.presentation_url, ek.presentation_file, ek.backdrop_url, ek.backdrop_file,
+            ek.name_badges_url, ek.name_badges_file, ek.access_emails, ek.notes
+          FROM event_kits ek
+          JOIN portfolio_events pe ON pe.id = ek.event_id
+          ORDER BY pe.event_date DESC NULLS LAST`);
+        rows = r;
+      }
+      res.json(rows.map(r => ({ ...r, access_emails: safeJsonParse(r.access_emails, []) })));
+    } catch (e) { res.status(500).json({ error: e.message }); }
+  });
+
+  app.get('/api/event-kits/:eventId', requireAuth, async (req, res) => {
+    try {
+      const { rows } = await q('SELECT * FROM event_kits WHERE event_id=?', [req.params.eventId]);
+      if (!rows.length) return res.json(null);
+      const kit = rows[0];
+      kit.access_emails = safeJsonParse(kit.access_emails, []);
+      res.json(kit);
+    } catch (e) { res.status(500).json({ error: e.message }); }
+  });
+
+  app.get('/api/event-kits/:eventId/file/:type', requireAuth, async (req, res) => {
+    try {
+      const type = req.params.type;
+      const col = type + '_data', nameCol = type + '_file';
+      const { rows } = await q(`SELECT ${col}, ${nameCol} FROM event_kits WHERE event_id=?`, [req.params.eventId]);
+      if (!rows.length || !rows[0][col]) return res.status(404).json({ error: 'No file' });
+      const name = rows[0][nameCol] || 'file';
+      const ext = name.split('.').pop().toLowerCase();
+      const mimes = { pdf:'application/pdf', pptx:'application/vnd.openxmlformats-officedocument.presentationml.presentation', ppt:'application/vnd.ms-powerpoint', png:'image/png', jpg:'image/jpeg', jpeg:'image/jpeg' };
+      res.setHeader('Content-Type', mimes[ext] || 'application/octet-stream');
+      res.setHeader('Content-Disposition', `inline; filename="${name}"`);
+      res.send(Buffer.from(rows[0][col], 'base64'));
+    } catch (e) { res.status(500).json({ error: e.message }); }
+  });
+
+  app.put('/api/event-kits/:eventId', requireAuth, requireAdminOrManager, async (req, res) => {
+    try {
+      const eid = req.params.eventId;
+      const fields = ['agenda_file','agenda_data','brochure_url','brochure_file','brochure_data',
+        'banner_url','banner_file','banner_data','roundtable_url','roundtable_file','roundtable_data',
+        'presentation_url','presentation_file','presentation_data','backdrop_url','backdrop_file','backdrop_data',
+        'name_badges_url','name_badges_file','name_badges_data','access_emails','notes'];
+      const body = req.body;
+      const vals = fields.map(f => f === 'access_emails' ? JSON.stringify(Array.isArray(body[f]) ? body[f] : []) : (body[f] ?? ''));
+      const { rows: exist } = await q('SELECT id FROM event_kits WHERE event_id=?', [eid]);
+      if (exist.length) {
+        await q(`UPDATE event_kits SET ${fields.map(f => `${f}=?`).join(', ')}, updated_at=NOW() WHERE event_id=?`, [...vals, eid]);
+      } else {
+        const cols = ['event_id', ...fields, 'created_by'].join(', ');
+        await q(`INSERT INTO event_kits (${cols}) VALUES (${Array(fields.length + 2).fill('?').join(', ')})`, [eid, ...vals, req.admin.id]);
+      }
+      const { rows } = await q('SELECT id FROM event_kits WHERE event_id=?', [eid]);
+      res.json({ ok: true, id: rows[0]?.id });
+    } catch (e) { res.status(500).json({ error: e.message }); }
+  });
+
   app.listen(PORT, () => {
     console.log(`Employee Time Tracker running on http://localhost:${PORT}`);
     console.log('Default login: admin / admin123');
