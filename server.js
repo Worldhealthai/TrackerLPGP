@@ -67,6 +67,7 @@ async function runLateMigrations() {
     )`,
     `ALTER TABLE deal_tracker ADD COLUMN IF NOT EXISTS status TEXT DEFAULT 'active'`,
     `ALTER TABLE deal_tracker ADD COLUMN IF NOT EXISTS is_flagged BOOLEAN DEFAULT FALSE`,
+    `ALTER TABLE monthly_payments ADD COLUMN IF NOT EXISTS currency TEXT DEFAULT 'GBP'`,
     `ALTER TABLE deals ADD COLUMN IF NOT EXISTS deal_month TEXT DEFAULT ''`,
     `ALTER TABLE deals ADD COLUMN IF NOT EXISTS fiscal_year INT`,
     `CREATE TABLE IF NOT EXISTS event_kits (
@@ -475,7 +476,7 @@ app.post('/api/employees', requireAuth, async (req, res) => {
   if (!name) return res.status(400).json({ error: 'Name required' });
   const annualSal = parseFloat(annual_salary) || 0;
   const daily_rate = parseFloat((annualSal / 260).toFixed(4));
-  const cur = ['GBP','AED'].includes(currency) ? currency : 'GBP';
+  const cur = ['GBP','AED','PHP'].includes(currency) ? currency : 'GBP';
   const pensionRate = (employment_type === 'payroll' && pension_rate != null && pension_rate !== '') ? parseFloat(pension_rate) : 0;
   const { rows } = await q(
     `INSERT INTO employees
@@ -494,7 +495,7 @@ app.put('/api/employees/:id', requireAuth, async (req, res) => {
           portal_pin } = req.body;
   const annualSal = parseFloat(annual_salary) || 0;
   const daily_rate = parseFloat((annualSal / 260).toFixed(4));
-  const cur = ['GBP','AED'].includes(currency) ? currency : 'GBP';
+  const cur = ['GBP','AED','PHP'].includes(currency) ? currency : 'GBP';
   const pensionRate = (employment_type === 'payroll' && pension_rate != null && pension_rate !== '') ? parseFloat(pension_rate) : 0;
 
   // If salary changed, log old salary to history before updating
@@ -907,12 +908,13 @@ app.get('/api/payments/:employeeId', requireAuth, requireAdmin, async (req, res)
 });
 
 app.post('/api/payments', requireAuth, requireAdmin, async (req, res) => {
-  const { employee_id, payment_year, payment_month, amount, notes } = req.body;
+  const { employee_id, payment_year, payment_month, amount, notes, currency } = req.body;
   if (!employee_id || !payment_year || !payment_month || !amount)
     return res.status(400).json({ error: 'employee_id, year, month, amount required' });
+  const cur = ['GBP','AED','PHP'].includes(currency) ? currency : 'GBP';
   const { rows } = await q(
-    'INSERT INTO monthly_payments (employee_id, payment_year, payment_month, amount, notes, created_by) VALUES (?, ?, ?, ?, ?, ?) RETURNING id',
-    [employee_id, payment_year, payment_month, amount, notes || '', req.admin.id]
+    'INSERT INTO monthly_payments (employee_id, payment_year, payment_month, amount, notes, currency, created_by) VALUES (?, ?, ?, ?, ?, ?, ?) RETURNING id',
+    [employee_id, payment_year, payment_month, amount, notes || '', cur, req.admin.id]
   );
   res.json({ id: rows[0].id });
 });
@@ -1214,7 +1216,7 @@ app.get('/api/salary-history/:employeeId', requireAuth, requireAdmin, async (req
 app.post('/api/salary-history', requireAuth, requireAdmin, async (req, res) => {
   const { employee_id, annual_salary, currency, effective_from, reason } = req.body;
   if (!employee_id || !annual_salary) return res.status(400).json({ error: 'employee_id and annual_salary required' });
-  const cur = ['GBP','AED'].includes(currency) ? currency : 'GBP';
+  const cur = ['GBP','AED','PHP'].includes(currency) ? currency : 'GBP';
   const { rows } = await q(
     'INSERT INTO salary_history (employee_id, annual_salary, currency, effective_from, reason, created_by) VALUES (?, ?, ?, ?, ?, ?) RETURNING id',
     [employee_id, parseFloat(annual_salary), cur, effective_from || new Date().toISOString().slice(0,10), reason || '', req.admin.id]
@@ -1303,7 +1305,7 @@ app.post('/api/calendar-reminders', requireAuth, async (req, res) => {
     if (!title || !reminder_date) return res.status(400).json({ error: 'title and reminder_date required' });
     const rec = ['none','monthly','yearly'].includes(recurrence) ? recurrence : 'none';
     const cat = ['rent','subscription','deposit','utility','other'].includes(category) ? category : 'other';
-    const cur = ['GBP','AED'].includes(currency) ? currency : 'GBP';
+    const cur = ['GBP','AED','PHP'].includes(currency) ? currency : 'GBP';
     const { rows } = await q(
       'INSERT INTO calendar_reminders (title, reminder_date, recurrence, category, amount, currency, notes, created_by, visible_to_staff) VALUES (?,?,?,?,?,?,?,?,?) RETURNING id',
       [title, reminder_date, rec, cat, amount || null, cur, notes || '', req.admin.id, visible_to_staff ? true : false]

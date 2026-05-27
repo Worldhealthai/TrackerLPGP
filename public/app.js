@@ -2586,7 +2586,6 @@ function togglePaymentsList(btn) {
 
 function openSalaryPaymentModal(empId = '') {
   const now = new Date();
-  // Populate employee dropdown
   const sel = document.getElementById('spEmpId');
   sel.innerHTML = '';
   employees.forEach(e => {
@@ -2598,6 +2597,9 @@ function openSalaryPaymentModal(empId = '') {
   document.getElementById('spMonth').value = now.getMonth() + 1;
   document.getElementById('spAmount').value = '';
   document.getElementById('spNotes').value  = '';
+  // Auto-set currency from selected employee
+  const emp = employees.find(e => String(e.id) === String(empId));
+  document.getElementById('spCurrency').value = emp?.currency || 'GBP';
   openModal('salaryPayModal');
 }
 
@@ -2607,11 +2609,12 @@ async function saveSalaryPayment() {
   const payment_month = document.getElementById('spMonth').value;
   const amount        = document.getElementById('spAmount').value;
   const notes         = document.getElementById('spNotes').value;
+  const currency      = document.getElementById('spCurrency').value;
   if (!amount || parseFloat(amount) <= 0) return showToast('Enter a valid amount', 'error');
   const res = await fetch('/api/payments', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ employee_id, payment_year, payment_month, amount, notes })
+    body: JSON.stringify({ employee_id, payment_year, payment_month, amount, notes, currency })
   });
   if (!res.ok) { const e = await res.json(); return showToast(e.error, 'error'); }
   closeModal('salaryPayModal');
