@@ -1848,7 +1848,7 @@ async function loadSalaryPage() {
     const fmtN = (v, sym) => sym + v.toLocaleString('en-GB', {maximumFractionDigits:0});
     const fmtGBP = v => '£' + v.toLocaleString('en-GB', {maximumFractionDigits:0});
 
-    const rows = groups.map(g => {
+    const tableRows = groups.map(g => {
       const s       = currencySymbol(g.currency);
       const tTarget = g.rows.reduce((a, b) => a + (parseFloat(b.salary_target ?? b.annual_salary) || 0), 0);
       const tPaid   = g.rows.reduce((a, b) => a + (parseFloat(b.total_paid) || 0), 0);
@@ -1897,7 +1897,7 @@ async function loadSalaryPage() {
             <th>Still Owed</th>
             <th style="min-width:120px">Progress</th>
           </tr></thead>
-          <tbody>${rows}</tbody>
+          <tbody>${tableRows}</tbody>
           <tfoot><tr>
             <td><div style="font-weight:700">Total · GBP</div><div style="font-size:0.72rem;color:var(--muted)">${allActive.length} employees</div></td>
             <td><div style="font-weight:700">${fmtGBP(gtTarget)}</div></td>
