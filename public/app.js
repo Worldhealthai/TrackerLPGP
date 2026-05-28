@@ -1835,110 +1835,86 @@ async function loadSalaryPage() {
     const salFxToGBP = (v, c) => v * (SAL_FX[c] || 1);
     const AED_TO_GBP = SAL_FX.AED; // kept for legacy references below
 
-    const groupCards = groups.map(g => {
-      const s        = currencySymbol(g.currency);
-      const tTarget  = g.rows.reduce((a, b) => a + (parseFloat(b.salary_target ?? b.annual_salary) || 0), 0);
-      const tPaid    = g.rows.reduce((a, b) => a + (parseFloat(b.total_paid)    || 0), 0);
-      const tDeduct  = g.rows.reduce((a, b) => a + (parseFloat(b.excess_deduction) || 0) + (parseFloat(b.total_office_deductions) || 0), 0);
-      const tRemain  = g.rows.reduce((a, b) => a + (parseFloat(b.net_remaining) || 0), 0);
-      const typeLabel = groups.length > 1 ? `${TYPE_LABEL[g.type]} · ${g.currency}` : TYPE_LABEL[g.type];
-      const empName   = g.rows.length === 1 ? g.rows[0].name : null;
-      const header    = empName ? `${empName} · ${typeLabel}` : typeLabel;
-      const remainClass = tRemain < 0 ? 'overpaid' : tRemain === 0 ? 'clear' : '';
-      const paidPct   = tTarget > 0 ? Math.min(100, Math.round(tPaid / tTarget * 100)) : 0;
-      const isPayroll = g.type === 'payroll';
-      const accentClass = isPayroll ? 'payroll' : 'self-employed';
-      const icon = isPayroll ? '💼' : '🧾';
-      const aedConversion = (g.currency === 'AED' || g.currency === 'PHP') && tRemain > 0
-        ? `<div class="soc-conversion">≈ £${salFxToGBP(tRemain, g.currency).toLocaleString('en-GB',{maximumFractionDigits:0})} GBP${g.currency === 'AED' ? ' at 4.67 AED/GBP' : ' at ₱1 = £0.0138'}</div>`
-        : '';
-      return `
-        <div class="salary-overview-card ${accentClass}">
-          <div class="soc-accent-bar"></div>
-          <div class="soc-header">
-            <span class="soc-icon">${icon}</span>
-            <div class="soc-header-text">
-              <div class="soc-title">${header}</div>
-              <div class="soc-subtitle">${g.rows.length} employee${g.rows.length !== 1 ? 's' : ''}</div>
-            </div>
-            <div class="soc-pct-badge">${paidPct}%</div>
-          </div>
-          <div class="soc-hero">
-            <div class="soc-hero-block">
-              <div class="soc-hero-label">Annual Target</div>
-              <div class="soc-hero-val soc-col-target">${s}${fmtK(tTarget)}</div>
-            </div>
-            <div class="soc-hero-divider"></div>
-            <div class="soc-hero-block">
-              <div class="soc-hero-label">Paid So Far</div>
-              <div class="soc-hero-val soc-col-paid">${s}${fmtK(tPaid)}</div>
-            </div>
-          </div>
-          <div class="soc-progress-wrap">
-            <div class="soc-progress-bar ${accentClass}" style="width:${paidPct}%"></div>
-          </div>
-          <div class="soc-footer">
-            ${tDeduct > 0 ? `<div class="soc-footer-item"><span class="soc-footer-label">Deductions</span><span class="soc-footer-val soc-col-deduct">−${s}${fmtK(tDeduct)}</span></div>` : ''}
-            <div class="soc-footer-item soc-footer-item--outstanding">
-              <span class="soc-footer-label">Outstanding</span>
-              <span class="soc-footer-val soc-col-outstanding ${remainClass}">${tRemain < 0 ? 'Overpaid ' : ''}${tRemain < 0 ? '' : ''}${s}${fmtK(Math.abs(tRemain))}</span>
-            </div>
-          </div>
-          ${aedConversion}
-        </div>`;
-    });
-
-    // Grand total card — all currencies converted to GBP, with full breakdown
-    const allActive = activeRows; // alias for clarity
+    // ── Summary table ──
+    const allActive = activeRows;
     const gtTarget  = allActive.reduce((s, e) => s + salFxToGBP(parseFloat(e.salary_target ?? e.annual_salary) || 0, e.currency || 'GBP'), 0);
     const gtPaid    = allActive.reduce((s, e) => s + salFxToGBP(parseFloat(e.total_paid)    || 0, e.currency || 'GBP'), 0);
-    const gtDayOff  = allActive.reduce((s, e) => s + salFxToGBP(parseFloat(e.excess_deduction) || 0, e.currency || 'GBP'), 0);
-    const gtOffice  = allActive.reduce((s, e) => s + salFxToGBP(parseFloat(e.total_office_deductions) || 0, e.currency || 'GBP'), 0);
-    const gtDeduct  = gtDayOff + gtOffice;
-    // Remaining = max(0) per employee so overpaid don't cancel owed amounts
+    const gtDeduct  = allActive.reduce((s, e) => s + salFxToGBP((parseFloat(e.excess_deduction)||0)+(parseFloat(e.total_office_deductions)||0), e.currency || 'GBP'), 0);
     const gtRemain  = allActive.reduce((s, e) => s + Math.max(0, salFxToGBP(parseFloat(e.net_remaining) || 0, e.currency || 'GBP')), 0);
     const hasMultiCurrency = groups.some(g => g.currency !== 'GBP');
     const phpGroups = groups.filter(g => g.currency === 'PHP');
     const phpRemain = phpGroups.reduce((s, g) => s + g.rows.reduce((a, e) => a + Math.max(0, parseFloat(e.net_remaining) || 0), 0), 0);
     const gtPaidPct = gtTarget > 0 ? Math.min(100, Math.round(gtPaid / gtTarget * 100)) : 0;
-    const gbpCard = `
-      <div class="salary-overview-card soc-gbp-total">
-        <div class="soc-accent-bar"></div>
-        <div class="soc-header">
-          <span class="soc-icon">📊</span>
-          <div class="soc-header-text">
-            <div class="soc-title">Total · GBP${hasMultiCurrency ? ` <span style="font-size:0.68rem;font-weight:500;opacity:0.6">${groups.some(g=>g.currency==='AED')?'AED @ 4.67':''}${groups.some(g=>g.currency==='AED')&&groups.some(g=>g.currency==='PHP')?' · ':''}${groups.some(g=>g.currency==='PHP')?'₱ @ 0.0138':''}</span>` : ''}</div>
-            <div class="soc-subtitle">All groups combined</div>
-          </div>
-          <div class="soc-pct-badge soc-pct-badge--green">${gtPaidPct}%</div>
-        </div>
-        <div class="soc-hero">
-          <div class="soc-hero-block">
-            <div class="soc-hero-label">Annual Target</div>
-            <div class="soc-hero-val soc-col-target">£${fmtK(gtTarget)}</div>
-          </div>
-          <div class="soc-hero-divider"></div>
-          <div class="soc-hero-block">
-            <div class="soc-hero-label">Paid So Far</div>
-            <div class="soc-hero-val soc-col-paid">£${fmtK(gtPaid)}</div>
-          </div>
-        </div>
-        <div class="soc-progress-wrap">
-          <div class="soc-progress-bar soc-gbp-total" style="width:${gtPaidPct}%"></div>
-        </div>
-        <div class="soc-footer">
-          ${gtDayOff > 0 ? `<div class="soc-footer-item"><span class="soc-footer-label">Day-Off Deductions</span><span class="soc-footer-val soc-col-deduct">−£${fmtK(gtDayOff)}</span></div>` : ''}
-          ${gtOffice > 0 ? `<div class="soc-footer-item"><span class="soc-footer-label">Office Deductions</span><span class="soc-footer-val soc-col-deduct">−£${fmtK(gtOffice)}</span></div>` : ''}
-          <div class="soc-footer-item soc-footer-item--outstanding">
-            <span class="soc-footer-label">Remaining to Pay</span>
-            <span class="soc-footer-val soc-col-outstanding soc-col-outstanding--green">£${gtRemain.toLocaleString('en-GB',{minimumFractionDigits:2,maximumFractionDigits:2})}</span>
-          </div>
-        </div>
-        ${phpRemain > 0 ? `<div class="soc-conversion">PHP employees owe ₱${phpRemain.toLocaleString('en-GB',{maximumFractionDigits:0})} (≈ £${salFxToGBP(phpRemain,'PHP').toLocaleString('en-GB',{maximumFractionDigits:0})})</div>` : ''}
-        ${hasMultiCurrency ? `<div class="soc-conversion">All non-GBP converted · ${year}</div>` : ''}
-      </div>`;
+    const fmtN = (v, sym) => sym + v.toLocaleString('en-GB', {maximumFractionDigits:0});
+    const fmtGBP = v => '£' + v.toLocaleString('en-GB', {maximumFractionDigits:0});
 
-    document.getElementById('salaryTotals').innerHTML = (groupCards.join('') + gbpCard) || '';
+    const tableRows = groups.map(g => {
+      const s       = currencySymbol(g.currency);
+      const tTarget = g.rows.reduce((a, b) => a + (parseFloat(b.salary_target ?? b.annual_salary) || 0), 0);
+      const tPaid   = g.rows.reduce((a, b) => a + (parseFloat(b.total_paid) || 0), 0);
+      const tDeduct = g.rows.reduce((a, b) => a + (parseFloat(b.excess_deduction)||0) + (parseFloat(b.total_office_deductions)||0), 0);
+      const tRemain = g.rows.reduce((a, b) => a + (parseFloat(b.net_remaining) || 0), 0);
+      const pct     = tTarget > 0 ? Math.min(100, Math.round(tPaid / tTarget * 100)) : 0;
+      const isNonGBP = g.currency !== 'GBP';
+      const groupLabel = `${TYPE_LABEL[g.type]}${g.currency !== 'GBP' ? ' · ' + g.currency : ''}`;
+      return `<tr>
+        <td>
+          <div style="font-weight:600;font-size:0.85rem">${groupLabel}</div>
+          <div style="font-size:0.72rem;color:var(--muted)">${g.rows.length} employee${g.rows.length !== 1 ? 's' : ''}</div>
+        </td>
+        <td>
+          <div>${fmtN(tTarget, s)}</div>
+          ${isNonGBP ? `<div class="sal-tbl-sub">${fmtGBP(salFxToGBP(tTarget,g.currency))}</div>` : ''}
+        </td>
+        <td>
+          <div style="color:var(--positive);font-weight:600">${fmtN(tPaid, s)}</div>
+          ${isNonGBP ? `<div class="sal-tbl-sub">${fmtGBP(salFxToGBP(tPaid,g.currency))}</div>` : ''}
+        </td>
+        <td>${tDeduct > 0 ? `<div style="color:var(--warning)">−${fmtN(tDeduct,s)}</div>` : '<span style="color:var(--muted)">—</span>'}</td>
+        <td>
+          <div style="color:${tRemain < 0 ? 'var(--positive)' : tRemain === 0 ? 'var(--muted)' : 'var(--negative)'};font-weight:600">${tRemain < 0 ? 'Overpaid' : fmtN(Math.abs(tRemain),s)}</div>
+          ${isNonGBP && tRemain > 0 ? `<div class="sal-tbl-sub">${fmtGBP(salFxToGBP(tRemain,g.currency))}</div>` : ''}
+        </td>
+        <td>
+          <div style="display:flex;align-items:center;gap:8px">
+            <div style="flex:1;height:6px;background:var(--border);border-radius:3px;min-width:48px">
+              <div style="height:100%;width:${pct}%;background:var(--primary);border-radius:3px"></div>
+            </div>
+            <span style="font-size:0.78rem;font-weight:600;color:var(--muted);min-width:30px">${pct}%</span>
+          </div>
+        </td>
+      </tr>`;
+    }).join('');
+
+    document.getElementById('salaryTotals').innerHTML = `
+      <div class="card" style="padding:0;overflow:hidden">
+        <table class="sal-summary-tbl">
+          <thead><tr>
+            <th>Group</th>
+            <th>Annual</th>
+            <th>Paid</th>
+            <th>Deductions</th>
+            <th>Still Owed</th>
+            <th style="min-width:120px">Progress</th>
+          </tr></thead>
+          <tbody>${tableRows}</tbody>
+          <tfoot><tr>
+            <td><div style="font-weight:700">Total · GBP</div><div style="font-size:0.72rem;color:var(--muted)">${allActive.length} employees</div></td>
+            <td><div style="font-weight:700">${fmtGBP(gtTarget)}</div></td>
+            <td><div style="font-weight:700;color:var(--positive)">${fmtGBP(gtPaid)}</div></td>
+            <td>${gtDeduct > 0 ? `<div style="color:var(--warning)">−${fmtGBP(gtDeduct)}</div>` : '<span style="color:var(--muted)">—</span>'}</td>
+            <td><div style="font-weight:700;color:var(--negative)">${fmtGBP(gtRemain)}</div>${phpRemain > 0 ? `<div class="sal-tbl-sub">₱${phpRemain.toLocaleString('en-GB',{maximumFractionDigits:0})} PHP</div>` : ''}</td>
+            <td>
+              <div style="display:flex;align-items:center;gap:8px">
+                <div style="flex:1;height:6px;background:var(--border);border-radius:3px;min-width:48px">
+                  <div style="height:100%;width:${gtPaidPct}%;background:var(--positive);border-radius:3px"></div>
+                </div>
+                <span style="font-size:0.78rem;font-weight:700;min-width:30px">${gtPaidPct}%</span>
+              </div>
+            </td>
+          </tr></tfoot>
+        </table>
+      </div>`;
 
     // Payment Board removed — salary reminder panel handles categorized view
     document.getElementById('salaryBoard').innerHTML = '';
@@ -2094,7 +2070,7 @@ async function loadSalaryPage() {
           <div class="sc-section">
             <button class="sc-sec-toggle" onclick="toggleSection(this)">
               <span class="sc-sec-title">Payments (${payments.length})</span>
-              ${payments.length ? `<span class="sc-sec-sum green">+${sym}${totalPaidEmp.toLocaleString('en-GB',{minimumFractionDigits:2})}</span>` : ''}
+              ${payments.length ? `<span style="font-size:1rem;font-weight:700;color:var(--positive)">${sym}${totalPaidEmp.toLocaleString('en-GB',{minimumFractionDigits:2})}</span>` : ''}
               <span class="sc-chevron">›</span>
             </button>
             <div class="sc-sec-body">
@@ -2687,6 +2663,7 @@ async function deleteSalaryHistory(id) {
 }
 
 function fmtK(n) {
+  if (n >= 1_000_000) return (n / 1_000_000).toFixed(2) + 'M';
   if (n >= 1000) return (n / 1000).toFixed(1) + 'k';
   return n.toFixed(2);
 }
