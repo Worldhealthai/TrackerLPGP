@@ -7457,17 +7457,17 @@ async function loadEmployeeKitPage() {
   empView.classList.remove('hidden');
   empView.innerHTML = '<div style="color:var(--muted);font-size:0.85rem;padding:20px">Loading…</div>';
   try {
-    const res = await fetch('/api/event-kits');
-    _empKits = res.ok ? await res.json() : [];
-    if (!_empKits.length) {
-      empView.innerHTML = '<div style="color:var(--muted);font-size:0.85rem;text-align:center;padding:40px">No event kits have been shared with you yet.</div>';
+    const res = await fetch('/api/portfolio-events');
+    const events = res.ok ? await res.json() : [];
+    if (!events.length) {
+      empView.innerHTML = '<div style="color:var(--muted);font-size:0.85rem;text-align:center;padding:40px">No events found.</div>';
       return;
     }
     empView.innerHTML = `
       <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:20px">
         <select id="ekEmpEventSel" class="deal-select" style="min-width:220px" onchange="loadEmployeeKitEditor()">
           <option value="">— Select Event —</option>
-          ${_empKits.map(k => `<option value="${k.event_id}">${esc(k.event_name)}${k.event_date?' ('+k.event_date.slice(0,10)+')':''}</option>`).join('')}
+          ${events.map(e => `<option value="${e.id}">${esc(e.name)}${e.event_date?' ('+e.event_date.slice(0,10)+')':''}</option>`).join('')}
         </select>
       </div>
       <div id="ekEmpEditor"></div>`;
@@ -7481,10 +7481,12 @@ async function loadEmployeeKitEditor() {
   el.innerHTML = '<div style="color:var(--muted);font-size:0.85rem;padding:12px 0">Loading…</div>';
   try {
     const res = await fetch(`/api/event-kits/${eid}`);
-    const kit = res.ok ? await res.json() : {};
-    const hasFile = !!(kit && kit.agenda_file);
+    const kit = res.ok ? await res.json() : null;
 
-    const matRows = EK_MATERIAL_TYPES.map(m => {
+    const myEmail = (currentUser?.email || '').toLowerCase();
+    const hasAccess = kit && Array.isArray(kit.access_emails) && kit.access_emails.map(e => e.toLowerCase()).includes(myEmail);
+
+    const matRows = hasAccess ? EK_MATERIAL_TYPES.map(m => {
       const url = kit[m.key+'_url'], file = kit[m.key+'_file'];
       if (!url && !file) return '';
       return `<div class="ek-emp-mat-row">
@@ -7494,13 +7496,15 @@ async function loadEmployeeKitEditor() {
           ${file ? `<a class="btn btn-ghost btn-sm" href="/api/event-kits/${eid}/file/${m.key}" target="_blank">📄 ${esc(file)}</a>` : ''}
         </div>
       </div>`;
-    }).filter(Boolean).join('');
+    }).filter(Boolean).join('') : '';
+
+    const hasFile = !!(kit && kit.agenda_file);
 
     el.innerHTML = `
       ${matRows ? `<div class="card" style="padding:24px;margin-bottom:16px">
         <div style="font:700 13px/1 var(--font-sans);letter-spacing:.06em;text-transform:uppercase;color:var(--muted);margin-bottom:16px">🎨 Marketing Materials</div>
         ${matRows}
-      </div>` : ''}
+      </div>` : (hasAccess ? `<div class="card" style="padding:20px;margin-bottom:16px;color:var(--muted);font-size:0.85rem">🎨 Marketing materials will appear here once your admin prepares them.</div>` : '')}
       <div class="card" style="padding:24px">
         <div style="font:700 13px/1 var(--font-sans);letter-spacing:.06em;text-transform:uppercase;color:var(--muted);margin-bottom:16px">📋 My Agenda</div>
         <div class="ek-material-row">
