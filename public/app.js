@@ -2094,7 +2094,7 @@ async function loadSalaryPage() {
           <div class="sc-section">
             <button class="sc-sec-toggle" onclick="toggleSection(this)">
               <span class="sc-sec-title">Payments (${payments.length})</span>
-              ${payments.length ? `<span class="sc-sec-sum green">+${sym}${totalPaidEmp.toLocaleString('en-GB',{minimumFractionDigits:2})}</span>` : ''}
+              ${payments.length ? `<span style="font-size:1rem;font-weight:700;color:var(--positive)">${sym}${totalPaidEmp.toLocaleString('en-GB',{minimumFractionDigits:2})}</span>` : ''}
               <span class="sc-chevron">›</span>
             </button>
             <div class="sc-sec-body">
