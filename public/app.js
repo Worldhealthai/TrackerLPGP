@@ -7309,6 +7309,8 @@ async function loadEventKit() {
       </span>
     </div>`).join('');
   _ekKit = {}; _ekEmails = [];
+  const agendaBanner = document.getElementById('ekAgendaBanner');
+  if (agendaBanner) agendaBanner.remove();
   try {
     const res = await fetch(`/api/event-kits/${eid}`);
     const kit = await res.json();
@@ -7323,6 +7325,14 @@ async function loadEventKit() {
           document.getElementById(`ekClear-${m.key}`)?.classList.remove('hidden');
         }
       });
+      if (kit.agenda_file) {
+        const banner = document.createElement('div');
+        banner.id = 'ekAgendaBanner';
+        banner.className = 'card';
+        banner.style.cssText = 'padding:16px 24px;margin-bottom:16px;display:flex;align-items:center;gap:12px';
+        banner.innerHTML = `<span style="font-size:1.1rem">📋</span><div style="flex:1"><div style="font-size:0.8rem;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:2px">Employee Uploaded Agenda</div><div style="font-size:0.88rem">${esc(kit.agenda_file)}</div></div><a class="btn btn-ghost btn-sm" href="/api/event-kits/${eid}/file/agenda" target="_blank">Download</a>`;
+        document.getElementById('ekKitEditor').insertBefore(banner, document.getElementById('ekKitEditor').firstChild);
+      }
     }
   } catch {}
   renderEkAccessTags();
@@ -7388,6 +7398,9 @@ async function saveEventKit() {
     body[type+'_file'] = _ekKit[type+'_file'] || '';
     body[type+'_data'] = _ekKit[type+'_data'] || '';
   });
+  // Preserve employee-uploaded agenda so admin saves don't wipe it
+  body.agenda_file = _ekKit.agenda_file || '';
+  body.agenda_data = _ekKit.agenda_data || '';
   const status = document.getElementById('ekSaveStatus');
   status.textContent = 'Saving…';
   const res = await fetch(`/api/event-kits/${eid}`, {
