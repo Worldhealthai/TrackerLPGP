@@ -1731,6 +1731,23 @@ tbody tr:last-child td { border-bottom: none; }
 #hotelTable td.ht-cell { white-space: nowrap; }
 .card:has(#hotelTable) .table-wrap { overflow-x: auto; }
 
+.ht-notes-btn {
+  background: none; border: none; cursor: pointer; font-size: 0.9rem; opacity: 0.35;
+  padding: 2px 4px; border-radius: 4px; transition: opacity 0.15s, background 0.15s;
+}
+.ht-notes-btn:hover { opacity: 0.8; background: var(--primary-light); }
+.ht-notes-btn--has { opacity: 1; }
+.hotel-notes-row td { padding: 0 !important; white-space: normal !important; overflow: visible !important; }
+.hotel-notes-panel { padding: 10px 16px 14px; background: var(--bg-2); border-top: 1px solid var(--border); }
+.hotel-notes-ta {
+  width: 100%; min-height: 72px; resize: vertical; font-size: 0.84rem; font-family: inherit;
+  border: 1.5px solid var(--border); border-radius: 8px; padding: 10px 12px;
+  background: var(--card); color: var(--text); outline: none; box-sizing: border-box;
+  transition: border-color 0.15s;
+}
+.hotel-notes-ta:focus { border-color: var(--primary); }
+.hotel-notes-hint { font-size: 0.7rem; color: var(--muted); margin-top: 4px; }
+
 /* ══════════════════════════════════════════
    SALARY PAGE (legacy card)
 ══════════════════════════════════════════ */

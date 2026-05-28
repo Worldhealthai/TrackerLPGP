@@ -3533,6 +3533,17 @@ function renderHotelTable() {
       </td>
       <td style="padding:4px 8px">${invoiceCell}</td>
       <td><button class="btn btn-danger btn-sm" onclick="deleteHotelExpense(${r.id})">×</button></td>
+      <td style="padding:4px 6px;text-align:center">
+        <button class="ht-notes-btn${r.notes ? ' ht-notes-btn--has' : ''}" onclick="toggleHotelNotes(${r.id})" title="${r.notes ? 'View/edit notes' : 'Add notes'}">📝</button>
+      </td>
+    </tr>
+    <tr id="hotel-notes-row-${r.id}" class="hotel-notes-row" style="display:none">
+      <td colspan="11" style="padding:0">
+        <div class="hotel-notes-panel">
+          <textarea id="hotel-notes-ta-${r.id}" class="hotel-notes-ta" placeholder="Add notes for this event…" onblur="saveHotelNotes(${r.id})">${esc(r.notes || '')}</textarea>
+          <div class="hotel-notes-hint">Changes save automatically when you click away</div>
+        </div>
+      </td>
     </tr>`;
   }).join('');
 }
@@ -3544,6 +3555,31 @@ function toggleHotelDetail(id) {
   const open = detail.style.display !== 'none';
   detail.style.display = open ? 'none' : 'table-row';
   if (chev) chev.style.transform = open ? '' : 'rotate(90deg)';
+}
+
+function toggleHotelNotes(id) {
+  const row = document.getElementById('hotel-notes-row-' + id);
+  if (!row) return;
+  const open = row.style.display !== 'none';
+  row.style.display = open ? 'none' : 'table-row';
+  if (!open) {
+    const ta = document.getElementById('hotel-notes-ta-' + id);
+    if (ta) { ta.focus(); ta.setSelectionRange(ta.value.length, ta.value.length); }
+  }
+}
+
+async function saveHotelNotes(id) {
+  const ta = document.getElementById('hotel-notes-ta-' + id);
+  if (!ta) return;
+  const notes = ta.value;
+  await htPatchField(id, 'notes', notes);
+  const btn = document.querySelector(`#htr-${id} .ht-notes-btn`);
+  if (btn) {
+    btn.classList.toggle('ht-notes-btn--has', !!notes.trim());
+    btn.title = notes.trim() ? 'View/edit notes' : 'Add notes';
+  }
+  const rec = hotelData.find(h => h.id === id);
+  if (rec) rec.notes = notes;
 }
 
 function openHotelModal(id) {
@@ -7511,7 +7547,7 @@ async function ekEmpUploadAgenda(eid, input) {
     const res = await fetch(`/api/event-kits/${eid}/agenda`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ agenda_file: file.name, agenda_data: ev.target.result })
+      body: JSON.stringify({ agenda_file: file.name, agenda_data: ev.target.result.split(',')[1] })
     });
     if (res.ok) { showToast('Agenda uploaded — admins have been notified', 'success'); await loadEmployeeKitEditor(); }
     else { showToast('Upload failed', 'error'); if (label) label.textContent = 'No file'; }
