@@ -7511,7 +7511,7 @@ async function ekEmpUploadAgenda(eid, input) {
     const res = await fetch(`/api/event-kits/${eid}/agenda`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ agenda_file: file.name, agenda_data: ev.target.result })
+      body: JSON.stringify({ agenda_file: file.name, agenda_data: ev.target.result.split(',')[1] })
     });
     if (res.ok) { showToast('Agenda uploaded — admins have been notified', 'success'); await loadEmployeeKitEditor(); }
     else { showToast('Upload failed', 'error'); if (label) label.textContent = 'No file'; }
