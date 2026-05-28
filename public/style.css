@@ -1955,6 +1955,11 @@ tbody tr:last-child td { border-bottom: none; }
   letter-spacing: -0.5px;
   line-height: 1.1;
 }
+.soc-hero-sub {
+  font-size: 0.72rem;
+  color: var(--muted);
+  margin-top: 3px;
+}
 .soc-col-target  { color: var(--text); }
 .soc-col-paid    { color: var(--success); }
 .soc-col-deduct  { color: var(--warning); }
