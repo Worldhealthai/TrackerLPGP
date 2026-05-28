@@ -1835,104 +1835,86 @@ async function loadSalaryPage() {
     const salFxToGBP = (v, c) => v * (SAL_FX[c] || 1);
     const AED_TO_GBP = SAL_FX.AED; // kept for legacy references below
 
-    const groupCards = groups.map(g => {
-      const s        = currencySymbol(g.currency);
-      const tTarget  = g.rows.reduce((a, b) => a + (parseFloat(b.salary_target ?? b.annual_salary) || 0), 0);
-      const tPaid    = g.rows.reduce((a, b) => a + (parseFloat(b.total_paid)    || 0), 0);
-      const tDeduct  = g.rows.reduce((a, b) => a + (parseFloat(b.excess_deduction) || 0) + (parseFloat(b.total_office_deductions) || 0), 0);
-      const tRemain  = g.rows.reduce((a, b) => a + (parseFloat(b.net_remaining) || 0), 0);
-      const typeLabel = TYPE_LABEL[g.type];
-      const paidPct   = tTarget > 0 ? Math.min(100, Math.round(tPaid / tTarget * 100)) : 0;
-      const isPayroll = g.type === 'payroll';
-      const accentClass = isPayroll ? 'payroll' : 'self-employed';
-      const isNonGBP = g.currency !== 'GBP';
-      const gbpRemain = isNonGBP && tRemain > 0 ? salFxToGBP(tRemain, g.currency) : 0;
-      const gbpTarget = isNonGBP ? salFxToGBP(tTarget, g.currency) : 0;
-      const fmt = v => s + v.toLocaleString('en-GB', {maximumFractionDigits:0});
-      return `
-        <div class="salary-overview-card ${accentClass}">
-          <div class="soc-accent-bar"></div>
-          <div class="soc-header">
-            <div class="soc-header-text">
-              <div class="soc-title">${typeLabel}${g.currency !== 'GBP' ? ` <span style="opacity:0.6;font-size:0.75rem">${g.currency}</span>` : ''}</div>
-              <div class="soc-subtitle">${g.rows.length} employee${g.rows.length !== 1 ? 's' : ''}</div>
-            </div>
-            <div class="soc-pct-badge">${paidPct}%</div>
-          </div>
-          <div class="soc-hero">
-            <div class="soc-hero-block">
-              <div class="soc-hero-label">Annual</div>
-              <div class="soc-hero-val soc-col-target">${fmt(tTarget)}</div>
-              ${isNonGBP ? `<div class="soc-hero-sub">≈ £${gbpTarget.toLocaleString('en-GB',{maximumFractionDigits:0})}</div>` : ''}
-            </div>
-            <div class="soc-hero-divider"></div>
-            <div class="soc-hero-block">
-              <div class="soc-hero-label">Paid</div>
-              <div class="soc-hero-val soc-col-paid">${fmt(tPaid)}</div>
-              ${isNonGBP ? `<div class="soc-hero-sub">≈ £${salFxToGBP(tPaid,g.currency).toLocaleString('en-GB',{maximumFractionDigits:0})}</div>` : ''}
-            </div>
-          </div>
-          <div class="soc-progress-wrap">
-            <div class="soc-progress-bar ${accentClass}" style="width:${paidPct}%"></div>
-          </div>
-          <div class="soc-footer">
-            ${tDeduct > 0 ? `<div class="soc-footer-item"><span class="soc-footer-label">Deductions</span><span class="soc-footer-val soc-col-deduct">−${fmt(tDeduct)}</span></div>` : ''}
-            <div class="soc-footer-item soc-footer-item--outstanding">
-              <span class="soc-footer-label">${tRemain < 0 ? 'Overpaid' : 'Still owed'}</span>
-              <span class="soc-footer-val soc-col-outstanding ${tRemain < 0 ? 'overpaid' : tRemain === 0 ? 'clear' : ''}">${fmt(Math.abs(tRemain))}${isNonGBP && tRemain > 0 ? ` <span style="font-size:0.72rem;font-weight:500;opacity:0.7">≈ £${gbpRemain.toLocaleString('en-GB',{maximumFractionDigits:0})}</span>` : ''}</span>
-            </div>
-          </div>
-        </div>`;
-    });
-
-    // Grand total card — all currencies converted to GBP
+    // ── Summary table ──
     const allActive = activeRows;
     const gtTarget  = allActive.reduce((s, e) => s + salFxToGBP(parseFloat(e.salary_target ?? e.annual_salary) || 0, e.currency || 'GBP'), 0);
     const gtPaid    = allActive.reduce((s, e) => s + salFxToGBP(parseFloat(e.total_paid)    || 0, e.currency || 'GBP'), 0);
-    const gtDayOff  = allActive.reduce((s, e) => s + salFxToGBP(parseFloat(e.excess_deduction) || 0, e.currency || 'GBP'), 0);
-    const gtOffice  = allActive.reduce((s, e) => s + salFxToGBP(parseFloat(e.total_office_deductions) || 0, e.currency || 'GBP'), 0);
-    const gtDeduct  = gtDayOff + gtOffice;
+    const gtDeduct  = allActive.reduce((s, e) => s + salFxToGBP((parseFloat(e.excess_deduction)||0)+(parseFloat(e.total_office_deductions)||0), e.currency || 'GBP'), 0);
     const gtRemain  = allActive.reduce((s, e) => s + Math.max(0, salFxToGBP(parseFloat(e.net_remaining) || 0, e.currency || 'GBP')), 0);
     const hasMultiCurrency = groups.some(g => g.currency !== 'GBP');
     const phpGroups = groups.filter(g => g.currency === 'PHP');
     const phpRemain = phpGroups.reduce((s, g) => s + g.rows.reduce((a, e) => a + Math.max(0, parseFloat(e.net_remaining) || 0), 0), 0);
     const gtPaidPct = gtTarget > 0 ? Math.min(100, Math.round(gtPaid / gtTarget * 100)) : 0;
+    const fmtN = (v, sym) => sym + v.toLocaleString('en-GB', {maximumFractionDigits:0});
     const fmtGBP = v => '£' + v.toLocaleString('en-GB', {maximumFractionDigits:0});
-    const gbpCard = `
-      <div class="salary-overview-card soc-gbp-total">
-        <div class="soc-accent-bar"></div>
-        <div class="soc-header">
-          <div class="soc-header-text">
-            <div class="soc-title">Total ${hasMultiCurrency ? '<span style="opacity:0.6;font-size:0.75rem">· all converted to GBP</span>' : ''}</div>
-            <div class="soc-subtitle">${allActive.length} employee${allActive.length !== 1 ? 's' : ''}</div>
-          </div>
-          <div class="soc-pct-badge soc-pct-badge--green">${gtPaidPct}%</div>
-        </div>
-        <div class="soc-hero">
-          <div class="soc-hero-block">
-            <div class="soc-hero-label">Annual</div>
-            <div class="soc-hero-val soc-col-target">${fmtGBP(gtTarget)}</div>
-          </div>
-          <div class="soc-hero-divider"></div>
-          <div class="soc-hero-block">
-            <div class="soc-hero-label">Paid</div>
-            <div class="soc-hero-val soc-col-paid">${fmtGBP(gtPaid)}</div>
-          </div>
-        </div>
-        <div class="soc-progress-wrap">
-          <div class="soc-progress-bar soc-gbp-total" style="width:${gtPaidPct}%"></div>
-        </div>
-        <div class="soc-footer">
-          ${gtDeduct > 0 ? `<div class="soc-footer-item"><span class="soc-footer-label">Deductions</span><span class="soc-footer-val soc-col-deduct">−${fmtGBP(gtDeduct)}</span></div>` : ''}
-          <div class="soc-footer-item soc-footer-item--outstanding">
-            <span class="soc-footer-label">Still owed</span>
-            <span class="soc-footer-val soc-col-outstanding--green">${fmtGBP(gtRemain)}</span>
-          </div>
-        </div>
-        ${phpRemain > 0 ? `<div class="soc-conversion">PHP employees: ₱${phpRemain.toLocaleString('en-GB',{maximumFractionDigits:0})} ≈ £${salFxToGBP(phpRemain,'PHP').toLocaleString('en-GB',{maximumFractionDigits:0})} GBP</div>` : ''}
-      </div>`;
 
-    document.getElementById('salaryTotals').innerHTML = (groupCards.join('') + gbpCard) || '';
+    const rows = groups.map(g => {
+      const s       = currencySymbol(g.currency);
+      const tTarget = g.rows.reduce((a, b) => a + (parseFloat(b.salary_target ?? b.annual_salary) || 0), 0);
+      const tPaid   = g.rows.reduce((a, b) => a + (parseFloat(b.total_paid) || 0), 0);
+      const tDeduct = g.rows.reduce((a, b) => a + (parseFloat(b.excess_deduction)||0) + (parseFloat(b.total_office_deductions)||0), 0);
+      const tRemain = g.rows.reduce((a, b) => a + (parseFloat(b.net_remaining) || 0), 0);
+      const pct     = tTarget > 0 ? Math.min(100, Math.round(tPaid / tTarget * 100)) : 0;
+      const isNonGBP = g.currency !== 'GBP';
+      const groupLabel = `${TYPE_LABEL[g.type]}${g.currency !== 'GBP' ? ' · ' + g.currency : ''}`;
+      return `<tr>
+        <td>
+          <div style="font-weight:600;font-size:0.85rem">${groupLabel}</div>
+          <div style="font-size:0.72rem;color:var(--muted)">${g.rows.length} employee${g.rows.length !== 1 ? 's' : ''}</div>
+        </td>
+        <td>
+          <div>${fmtN(tTarget, s)}</div>
+          ${isNonGBP ? `<div class="sal-tbl-sub">${fmtGBP(salFxToGBP(tTarget,g.currency))}</div>` : ''}
+        </td>
+        <td>
+          <div style="color:var(--positive);font-weight:600">${fmtN(tPaid, s)}</div>
+          ${isNonGBP ? `<div class="sal-tbl-sub">${fmtGBP(salFxToGBP(tPaid,g.currency))}</div>` : ''}
+        </td>
+        <td>${tDeduct > 0 ? `<div style="color:var(--warning)">−${fmtN(tDeduct,s)}</div>` : '<span style="color:var(--muted)">—</span>'}</td>
+        <td>
+          <div style="color:${tRemain < 0 ? 'var(--positive)' : tRemain === 0 ? 'var(--muted)' : 'var(--negative)'};font-weight:600">${tRemain < 0 ? 'Overpaid' : fmtN(Math.abs(tRemain),s)}</div>
+          ${isNonGBP && tRemain > 0 ? `<div class="sal-tbl-sub">${fmtGBP(salFxToGBP(tRemain,g.currency))}</div>` : ''}
+        </td>
+        <td>
+          <div style="display:flex;align-items:center;gap:8px">
+            <div style="flex:1;height:6px;background:var(--border);border-radius:3px;min-width:48px">
+              <div style="height:100%;width:${pct}%;background:var(--primary);border-radius:3px"></div>
+            </div>
+            <span style="font-size:0.78rem;font-weight:600;color:var(--muted);min-width:30px">${pct}%</span>
+          </div>
+        </td>
+      </tr>`;
+    }).join('');
+
+    document.getElementById('salaryTotals').innerHTML = `
+      <div class="card" style="padding:0;overflow:hidden">
+        <table class="sal-summary-tbl">
+          <thead><tr>
+            <th>Group</th>
+            <th>Annual</th>
+            <th>Paid</th>
+            <th>Deductions</th>
+            <th>Still Owed</th>
+            <th style="min-width:120px">Progress</th>
+          </tr></thead>
+          <tbody>${rows}</tbody>
+          <tfoot><tr>
+            <td><div style="font-weight:700">Total · GBP</div><div style="font-size:0.72rem;color:var(--muted)">${allActive.length} employees</div></td>
+            <td><div style="font-weight:700">${fmtGBP(gtTarget)}</div></td>
+            <td><div style="font-weight:700;color:var(--positive)">${fmtGBP(gtPaid)}</div></td>
+            <td>${gtDeduct > 0 ? `<div style="color:var(--warning)">−${fmtGBP(gtDeduct)}</div>` : '<span style="color:var(--muted)">—</span>'}</td>
+            <td><div style="font-weight:700;color:var(--negative)">${fmtGBP(gtRemain)}</div>${phpRemain > 0 ? `<div class="sal-tbl-sub">₱${phpRemain.toLocaleString('en-GB',{maximumFractionDigits:0})} PHP</div>` : ''}</td>
+            <td>
+              <div style="display:flex;align-items:center;gap:8px">
+                <div style="flex:1;height:6px;background:var(--border);border-radius:3px;min-width:48px">
+                  <div style="height:100%;width:${gtPaidPct}%;background:var(--positive);border-radius:3px"></div>
+                </div>
+                <span style="font-size:0.78rem;font-weight:700;min-width:30px">${gtPaidPct}%</span>
+              </div>
+            </td>
+          </tr></tfoot>
+        </table>
+      </div>`;
 
     // Payment Board removed — salary reminder panel handles categorized view
     document.getElementById('salaryBoard').innerHTML = '';
