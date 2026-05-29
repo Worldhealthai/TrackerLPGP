@@ -421,6 +421,19 @@ app.get('/api/me', requireAuth, (req, res) => {
   res.json({ username: req.user.username, role: req.user.role || 'admin' });
 });
 
+// PWA icons — generated as SVG served with image/png MIME for compatibility
+function makePwaIcon(size) {
+  const r = Math.round(size * 0.18);
+  const fontSize = Math.round(size * 0.38);
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 ${size} ${size}">
+    <rect width="${size}" height="${size}" rx="${r}" fill="#4f6ef7"/>
+    <text x="50%" y="54%" font-family="system-ui,Arial,sans-serif" font-weight="700" font-size="${fontSize}" fill="white" text-anchor="middle" dominant-baseline="middle">L</text>
+  </svg>`;
+}
+app.get('/icon-192.png', (req, res) => { res.setHeader('Content-Type','image/svg+xml'); res.send(makePwaIcon(192)); });
+app.get('/icon-512.png', (req, res) => { res.setHeader('Content-Type','image/svg+xml'); res.send(makePwaIcon(512)); });
+app.get('/favicon.ico',  (req, res) => { res.setHeader('Content-Type','image/svg+xml'); res.send(makePwaIcon(32)); });
+
 // ─── ADMINS ──────────────────────────────────────────────────────────────────
 
 app.get('/api/admins', requireAuth, async (req, res) => {
