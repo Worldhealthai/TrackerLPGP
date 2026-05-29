@@ -3,7 +3,10 @@ const cookieParser = require('cookie-parser');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const path = require('path');
+const fs = require('fs');
 const nodemailer = require('nodemailer');
+const PizZip = require('pizzip');
+const Docxtemplater = require('docxtemplater');
 const { sql, initDb } = require('./database');
 
 // Email transporter — configured via env vars; silently disabled if not set
@@ -2369,6 +2372,33 @@ app.get('/api/portal/calendar', async (req, res) => {
 });
 
 // ─── START ────────────────────────────────────────────────────────────────────
+
+// ─── INVOICE GENERATOR ───────────────────────────────────────────────────────
+app.post('/api/generate-invoice', requireAuth, requireAdminOrManager, async (req, res) => {
+  try {
+    const templatePath = path.join(__dirname, 'public', 'invoice_template.docx');
+    if (!fs.existsSync(templatePath)) return res.status(404).json({ error: 'Invoice template not found' });
+    const content = fs.readFileSync(templatePath, 'binary');
+    const zip = new PizZip(content);
+    const doc = new Docxtemplater(zip, {
+      delimiters: { start: '{{', end: '}}' },
+      paragraphLoop: true,
+      linebreaks: true
+    });
+    const {
+      contact_name = '', company_name = '', address = '', email = '',
+      invoice_number = '', date = '', event_name = '', package_name = '',
+      amount_ex_vat = '', vat_amount = '', total_due = '', client_name = ''
+    } = req.body;
+    doc.render({ contact_name, company_name, address, email, invoice_number, date,
+      event_name, package_name, amount_ex_vat, vat_amount, total_due, client_name });
+    const buf = doc.getZip().generate({ type: 'nodebuffer', compression: 'DEFLATE' });
+    const filename = `LPGPCONNECTCOMLTD${invoice_number || 'DRAFT'}.docx`;
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document');
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+    res.send(buf);
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
 
 // ─── EVENT KITS ─────────────────────────────────────────────────────────────
 
