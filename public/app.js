@@ -7615,6 +7615,8 @@ function openInvoiceGenModal(dealId) {
   document.getElementById('igVatAmount').value = vatAmt;
   document.getElementById('igTotalDue').value = totalDue;
   document.getElementById('igClientName').value = deal.company || deal.title || '';
+  document.getElementById('igBenefits').value = '';
+  document.getElementById('igAdditionalNotes').value = '';
   document.getElementById('invoiceGenModal').classList.add('open');
 }
 
@@ -7639,6 +7641,8 @@ async function generateInvoice() {
     vat_amount:     document.getElementById('igVatAmount').value.trim(),
     total_due:      document.getElementById('igTotalDue').value.trim(),
     client_name:    document.getElementById('igClientName').value.trim(),
+    benefits:       document.getElementById('igBenefits').value.split('\n').map(s => s.trim()).filter(Boolean),
+    additional_notes: document.getElementById('igAdditionalNotes').value.trim(),
   };
 
   try {
