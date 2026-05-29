@@ -4614,3 +4614,89 @@ tbody tr:last-child td { border-bottom: none; }
 .ek-emp-mat-row { display:flex;align-items:center;gap:12px;padding:10px 0;border-bottom:1px solid var(--border);flex-wrap:wrap; }
 .ek-emp-mat-row:last-child { border-bottom:none; }
 .ek-emp-mat-label { font:600 13px/1 var(--font-sans);color:var(--text);width:130px;flex-shrink:0; }
+
+/* ══════════════════════════════════════════
+   MOBILE / PWA IMPROVEMENTS
+══════════════════════════════════════════ */
+
+/* Safe area insets for notch/home-bar phones */
+@supports (padding: env(safe-area-inset-bottom)) {
+  .bottom-nav { padding-bottom: env(safe-area-inset-bottom); height: calc(58px + env(safe-area-inset-bottom)); }
+  .main { padding-bottom: calc(62px + env(safe-area-inset-bottom)); }
+  .modal { padding-bottom: max(24px, env(safe-area-inset-bottom)); }
+}
+
+@media (max-width: 768px) {
+  /* Login page */
+  .login-wrap { padding: 16px; align-items: flex-start; padding-top: 40px; min-height: 100dvh; }
+  .login-card { max-width: 100%; width: 100%; border-radius: 16px; padding: 28px 22px; }
+
+  /* Topbar */
+  .topbar { padding: 0 12px 0 14px; }
+  #notifBtn { padding: 6px 8px; }
+
+  /* Tables — allow horizontal scroll without breaking layout */
+  .table-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; max-width: 100%; }
+  .table-wrap table { min-width: 560px; }
+  #hotelTable { min-width: 820px; }
+  #hotelTable th, #hotelTable td { font-size: 0.74rem; padding: 7px 6px; }
+
+  /* Salary table */
+  .sal-summary-tbl { font-size: 0.78rem; }
+  .sal-summary-tbl th, .sal-summary-tbl td { padding: 9px 10px; }
+
+  /* Cards with grids */
+  .dash-mini-grid { grid-template-columns: repeat(2, 1fr) !important; gap: 10px !important; }
+  .stats-grid { grid-template-columns: repeat(2, 1fr); }
+  .deal-stat-cards { grid-template-columns: repeat(2, 1fr) !important; }
+  .hotel-fin-strip { gap: 8px; }
+  .hotel-fin-card { min-width: 140px; }
+
+  /* Modals slide up from bottom */
+  .modal-overlay { align-items: flex-end; padding: 0; }
+  .modal {
+    width: 100%; max-width: 100%; border-radius: 20px 20px 0 0;
+    max-height: 92dvh; overflow-y: auto;
+  }
+
+  /* Salary cards */
+  .sc-prog-bar-wrap { margin: 0 0 12px; }
+  .sc-fig-grid { grid-template-columns: 1fr 1fr !important; }
+
+  /* Event kit material rows */
+  .ek-material-row { flex-wrap: wrap; gap: 8px; }
+  .ek-url-input { min-width: 0 !important; width: 100% !important; }
+
+  /* Subscriptions / deals filter bars */
+  .deal-q-filters { flex-wrap: wrap; gap: 6px; }
+  .deal-q-btn { font-size: 0.72rem; padding: 6px 10px; }
+
+  /* Notes hotel panel */
+  .hotel-notes-panel { padding: 10px 12px 14px; }
+
+  /* Page headers */
+  .page-head { flex-direction: column; align-items: flex-start; gap: 10px; }
+  .page-head > div { width: 100%; }
+
+  /* Buttons in filter areas go full-width on very small screens */
+  .filter-bar .btn { width: 100%; justify-content: center; }
+
+  /* Employee portal cards */
+  .sc-card { margin-bottom: 12px; }
+  .sc-payment-toggle { flex-wrap: wrap; gap: 6px; }
+}
+
+@media (max-width: 420px) {
+  .stats-grid { grid-template-columns: 1fr 1fr; gap: 8px; }
+  .content { padding: 10px 10px 80px; }
+  .login-card { padding: 22px 16px; }
+  .modal { padding: 20px 16px; }
+  .btn { padding: 10px 14px; }
+  .btn-sm { padding: 7px 11px; font-size: 0.78rem; }
+  .dash-mini-grid { grid-template-columns: 1fr 1fr !important; }
+}
+
+/* PWA standalone mode — hide browser chrome compensations */
+@media (display-mode: standalone) {
+  .topbar { padding-top: env(safe-area-inset-top, 0px); height: calc(56px + env(safe-area-inset-top, 0px)); }
+}
