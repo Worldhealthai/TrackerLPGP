@@ -4436,9 +4436,9 @@ function renderDealsTable() {
       <td class="deal-cell-toggle" onclick="dealToggleBool(${d.id},'signature_received',${!!d.signature_received})" style="text-align:center;cursor:pointer" title="Click to toggle">${d.signature_received ? '✅' : '<span style="color:var(--muted)">—</span>'}</td>
       ${ec('initials','text',d.initials||'', d.initials ? `<span class="deal-initials-badge">${esc(d.initials)}</span>` : '<span style="color:var(--muted)">—</span>', 'style="text-align:center"')}
       ${ec('notes','textarea',d.notes||'', notesDisplay)}
-      <td style="text-align:center">
+      <td style="text-align:center;white-space:nowrap;padding:4px 6px">
+        <button class="btn btn-ghost btn-sm" onclick="event.stopPropagation();openInvoiceGenModal(${d.id})" style="padding:4px 8px;font-size:0.72rem;margin-bottom:3px;display:block;width:100%">📄 Invoice</button>
         <button class="btn-icon btn-icon--danger" title="Delete" onclick="deleteDeal(${d.id})">🗑️</button>
-        <button class="btn-icon" title="Generate Invoice" onclick="event.stopPropagation();openInvoiceGenModal(${d.id})" style="font-size:13px">📄</button>
       </td>
     </tr>`;
   }).join('');
