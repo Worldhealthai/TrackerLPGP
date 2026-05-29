@@ -148,6 +148,14 @@ app.use(express.json({ limit: '15mb' }));
 app.use(express.urlencoded({ extended: true, limit: '15mb' }));
 app.use(cookieParser());
 
+// Serve PWA assets without auth so browsers can install the app
+const publicDir = path.join(__dirname, 'public');
+app.get('/manifest.json', (req, res) => res.sendFile(path.join(publicDir, 'manifest.json')));
+app.get('/sw.js',         (req, res) => res.sendFile(path.join(publicDir, 'sw.js')));
+app.get('/icon-192.png',  (req, res) => { res.setHeader('Content-Type','image/svg+xml'); res.send(makePwaIcon(192)); });
+app.get('/icon-512.png',  (req, res) => { res.setHeader('Content-Type','image/svg+xml'); res.send(makePwaIcon(512)); });
+app.get('/favicon.ico',   (req, res) => { res.setHeader('Content-Type','image/svg+xml'); res.send(makePwaIcon(32)); });
+
 app.get('/', async (req, res, next) => {
   try {
     await ensureDb();
@@ -433,10 +441,6 @@ function makePwaIcon(size) {
     <text x="50%" y="54%" font-family="system-ui,Arial,sans-serif" font-weight="700" font-size="${fontSize}" fill="white" text-anchor="middle" dominant-baseline="middle">L</text>
   </svg>`;
 }
-app.get('/icon-192.png', (req, res) => { res.setHeader('Content-Type','image/svg+xml'); res.send(makePwaIcon(192)); });
-app.get('/icon-512.png', (req, res) => { res.setHeader('Content-Type','image/svg+xml'); res.send(makePwaIcon(512)); });
-app.get('/favicon.ico',  (req, res) => { res.setHeader('Content-Type','image/svg+xml'); res.send(makePwaIcon(32)); });
-
 // ─── ADMINS ──────────────────────────────────────────────────────────────────
 
 app.get('/api/admins', requireAuth, async (req, res) => {
