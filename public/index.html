@@ -1641,6 +1641,78 @@
 
 <script src="app.js"></script>
 <script>
+<!-- Invoice Generator Modal -->
+<div class="modal-overlay" id="invoiceGenModal">
+  <div class="modal" style="max-width:560px">
+    <div class="modal-header">
+      <span class="modal-title">📄 Generate Invoice</span>
+      <button class="modal-close" onclick="closeInvoiceGenModal()">✕</button>
+    </div>
+    <input type="hidden" id="igDealId">
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px">
+      <div class="form-group">
+        <label>Contact Name *</label>
+        <input type="text" id="igContact" placeholder="e.g. Alex Kaihau">
+      </div>
+      <div class="form-group">
+        <label>Company Name *</label>
+        <input type="text" id="igCompany" placeholder="e.g. Kroll (HK) Limited">
+      </div>
+    </div>
+    <div class="form-group" style="margin-bottom:14px">
+      <label>Address *</label>
+      <input type="text" id="igAddress" placeholder="Full address">
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px">
+      <div class="form-group">
+        <label>Email</label>
+        <input type="email" id="igEmail" placeholder="contact@company.com">
+      </div>
+      <div class="form-group">
+        <label>Invoice Number *</label>
+        <input type="text" id="igInvoiceNum" placeholder="e.g. 680">
+      </div>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px">
+      <div class="form-group">
+        <label>Date *</label>
+        <input type="text" id="igDate" placeholder="DD/MM/YYYY">
+      </div>
+      <div class="form-group">
+        <label>Event Name *</label>
+        <input type="text" id="igEventName" placeholder="e.g. 4th Annual CFO Summit">
+      </div>
+    </div>
+    <div class="form-group" style="margin-bottom:14px">
+      <label>Package Name *</label>
+      <input type="text" id="igPackageName" placeholder="e.g. Event Partner, Gold Sponsor">
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:14px;margin-bottom:14px">
+      <div class="form-group">
+        <label>Amount (ex VAT) *</label>
+        <input type="text" id="igAmountExVat" placeholder="8,550">
+      </div>
+      <div class="form-group">
+        <label>VAT Amount</label>
+        <input type="text" id="igVatAmount" placeholder="1,710">
+      </div>
+      <div class="form-group">
+        <label>Total Due</label>
+        <input type="text" id="igTotalDue" placeholder="10,260">
+      </div>
+    </div>
+    <div class="form-group" style="margin-bottom:20px">
+      <label>Client Signing Name *</label>
+      <input type="text" id="igClientName" placeholder="Name as it appears in the agreement (e.g. Kroll LLC)">
+    </div>
+    <div style="display:flex;gap:10px;justify-content:flex-end">
+      <button class="btn btn-ghost" onclick="closeInvoiceGenModal()">Cancel</button>
+      <button class="btn btn-primary" id="igGenerateBtn" onclick="generateInvoice()">Generate & Download</button>
+    </div>
+  </div>
+</div>
+
+<script>
   if ('serviceWorker' in navigator) {
     navigator.serviceWorker.register('/sw.js').catch(() => {});
   }

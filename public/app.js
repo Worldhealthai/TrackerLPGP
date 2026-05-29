@@ -4438,6 +4438,7 @@ function renderDealsTable() {
       ${ec('notes','textarea',d.notes||'', notesDisplay)}
       <td style="text-align:center">
         <button class="btn-icon btn-icon--danger" title="Delete" onclick="deleteDeal(${d.id})">🗑️</button>
+        <button class="btn-icon" title="Generate Invoice" onclick="event.stopPropagation();openInvoiceGenModal(${d.id})" style="font-size:13px">📄</button>
       </td>
     </tr>`;
   }).join('');
@@ -7588,4 +7589,74 @@ async function ekEmpClearAgenda(eid) {
   });
   if (res.ok) { showToast('Agenda removed', 'success'); await loadEmployeeKitEditor(); }
   else showToast('Failed to remove', 'error');
+}
+
+// ── Invoice Generator ──────────────────────────────────────────────────────────
+function openInvoiceGenModal(dealId) {
+  const deal = dealsData.find(d => d.id === dealId);
+  if (!deal) return;
+  const sym = { GBP:'£', USD:'$', AED:'AED ', PHP:'₱', EUR:'€' }[deal.currency] || '£';
+  const amtEx = deal.amount || '';
+  const vatAmt = deal.tax_vat ? String(parseFloat(deal.tax_vat).toLocaleString('en-GB', { minimumFractionDigits: 0, maximumFractionDigits: 0 })) : '';
+  const totalDue = (deal.amount && deal.tax_vat)
+    ? (parseFloat(deal.amount) + parseFloat(deal.tax_vat)).toLocaleString('en-GB', { minimumFractionDigits: 0, maximumFractionDigits: 0 })
+    : '';
+
+  document.getElementById('igDealId').value = dealId;
+  document.getElementById('igContact').value = '';
+  document.getElementById('igCompany').value = deal.company || deal.title || '';
+  document.getElementById('igAddress').value = '';
+  document.getElementById('igEmail').value = '';
+  document.getElementById('igInvoiceNum').value = deal.invoice_number || '';
+  document.getElementById('igDate').value = new Date().toLocaleDateString('en-GB');
+  document.getElementById('igEventName').value = '';
+  document.getElementById('igPackageName').value = '';
+  document.getElementById('igAmountExVat').value = amtEx ? Number(amtEx).toLocaleString('en-GB') : '';
+  document.getElementById('igVatAmount').value = vatAmt;
+  document.getElementById('igTotalDue').value = totalDue;
+  document.getElementById('igClientName').value = deal.company || deal.title || '';
+  document.getElementById('invoiceGenModal').classList.add('open');
+}
+
+function closeInvoiceGenModal() {
+  document.getElementById('invoiceGenModal').classList.remove('open');
+}
+
+async function generateInvoice() {
+  const btn = document.getElementById('igGenerateBtn');
+  btn.disabled = true; btn.textContent = 'Generating…';
+
+  const payload = {
+    contact_name:   document.getElementById('igContact').value.trim(),
+    company_name:   document.getElementById('igCompany').value.trim(),
+    address:        document.getElementById('igAddress').value.trim(),
+    email:          document.getElementById('igEmail').value.trim(),
+    invoice_number: document.getElementById('igInvoiceNum').value.trim(),
+    date:           document.getElementById('igDate').value.trim(),
+    event_name:     document.getElementById('igEventName').value.trim(),
+    package_name:   document.getElementById('igPackageName').value.trim(),
+    amount_ex_vat:  document.getElementById('igAmountExVat').value.trim(),
+    vat_amount:     document.getElementById('igVatAmount').value.trim(),
+    total_due:      document.getElementById('igTotalDue').value.trim(),
+    client_name:    document.getElementById('igClientName').value.trim(),
+  };
+
+  try {
+    const res = await fetch('/api/generate-invoice', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+    if (!res.ok) { showToast('Generation failed', 'error'); return; }
+    const blob = await res.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `LPGPCONNECTCOMLTD${payload.invoice_number || 'DRAFT'}.docx`;
+    a.click();
+    URL.revokeObjectURL(url);
+    showToast('Invoice downloaded', 'success');
+    closeInvoiceGenModal();
+  } catch { showToast('Generation failed', 'error'); }
+  finally { btn.disabled = false; btn.textContent = 'Generate & Download'; }
 }
