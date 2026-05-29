@@ -2392,10 +2392,13 @@ app.post('/api/generate-invoice', requireAuth, requireAdminOrManager, async (req
     const {
       contact_name = '', company_name = '', address = '', email = '',
       invoice_number = '', date = '', event_name = '', package_name = '',
-      amount_ex_vat = '', vat_amount = '', total_due = '', client_name = ''
+      amount_ex_vat = '', vat_amount = '', total_due = '', client_name = '',
+      benefits = [], additional_notes = ''
     } = req.body;
+    const benefitsArr = Array.isArray(benefits) ? benefits : String(benefits).split('\n').map(s => s.trim()).filter(Boolean);
     doc.render({ contact_name, company_name, address, email, invoice_number, date,
-      event_name, package_name, amount_ex_vat, vat_amount, total_due, client_name });
+      event_name, package_name, amount_ex_vat, vat_amount, total_due, client_name,
+      benefits: benefitsArr, additional_notes });
     const buf = doc.getZip().generate({ type: 'nodebuffer', compression: 'DEFLATE' });
     const filename = `LPGPCONNECTCOMLTD${invoice_number || 'DRAFT'}.docx`;
     res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document');
