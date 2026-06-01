@@ -1684,7 +1684,7 @@ app.get('/api/deals', requireAuth, requireAdminOrManager, async (req, res) => {
       FROM deals d
       LEFT JOIN deal_events de ON de.deal_id = d.id
       LEFT JOIN portfolio_events pe ON pe.id = de.event_id
-      GROUP BY d.id ORDER BY d.invoice_date DESC NULLS LAST, d.created_at DESC`);
+      GROUP BY d.id ORDER BY d.created_at DESC`);
     res.json(deals);
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
