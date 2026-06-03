@@ -535,33 +535,94 @@ async function loadDashboard() {
 
   const tbody = document.getElementById('dashTable');
   tbody.innerHTML = '';
+  const salById = {};
+  salaryData.forEach(s => { salById[s.employee_id] = s; });
+  const esCounts = { all: 0, se: 0, payroll: 0, intl: 0 };
+
   summary.forEach(row => {
     const emp = allEmps.find(e => e.id === row.employee_id);
+    const sal = salById[row.employee_id] || {};
+    const currency = sal.currency || emp?.currency || 'GBP';
+    const isIntl   = currency !== 'GBP';
+    // Mutually exclusive grouping: international takes precedence, else by employment type
+    const group = isIntl ? 'intl' : (row.employment_type === 'self_employed' ? 'se' : 'payroll');
+    esCounts.all++; esCounts[group]++;
+
     const typeBadge = row.employment_type === 'self_employed' ? 'badge-yellow' : 'badge-blue';
     const typeLabel = row.employment_type === 'self_employed' ? 'Self-Emp' : 'Payroll';
     const daysColor = row.excess_days > 0 ? 'text-danger fw-bold' : '';
+    const typeCell  = `<span class="badge ${typeBadge}">${typeLabel}</span>` +
+      (isIntl ? ` <span class="badge es-badge-intl">${esc(currency)}</span>` : '');
+
+    // Annual salary left to pay (net of deductions) + % paid bar
+    const annual    = parseFloat(sal.annual_salary != null ? sal.annual_salary : row.annual_salary) || 0;
+    const remaining = sal.net_remaining != null ? parseFloat(sal.net_remaining) : null;
+    const pctPaid   = sal.pct_paid != null ? Math.min(100, Math.round(parseFloat(sal.pct_paid))) : null;
+    let annualCell;
+    if (annual <= 0 || remaining === null) {
+      annualCell = '<span style="color:var(--muted)">—</span>';
+    } else if (remaining <= 0) {
+      annualCell = `<div style="font-weight:700;color:var(--positive)">${remaining < 0 ? 'Overpaid' : 'Fully paid'}</div>
+        <div class="es-prog"><div class="es-prog-fill" style="width:100%"></div></div>`;
+    } else {
+      annualCell = `<div style="font-weight:700;color:var(--negative)">${fmtMoney(remaining, currency)}</div>
+        <div class="es-prog"><div class="es-prog-fill" style="width:${pctPaid || 0}%"></div></div>
+        <div class="es-prog-lbl">${pctPaid != null ? pctPaid : 0}% paid</div>`;
+    }
+
+    // Last payment recorded this year (most recent month)
+    const pays = Array.isArray(sal.payments) ? sal.payments : [];
+    let lastCell = '<span style="color:var(--muted)">—</span>';
+    if (pays.length) {
+      const last = pays.reduce((a, b) => (Number(b.payment_month) > Number(a.payment_month) ? b : a), pays[0]);
+      const m = MONTHS[Number(last.payment_month)] || '';
+      lastCell = `<div style="font-weight:700">${fmtMoney(last.amount, last.currency || currency)}</div>
+        <div style="font-size:0.72rem;color:var(--muted)">${m}${last.payment_year ? ' ' + last.payment_year : ''}</div>`;
+    }
+
     const tr = document.createElement('tr');
+    tr.dataset.group = group;
     tr.innerHTML = `
       <td>
         <div style="font-weight:700">${esc(row.name)}</div>
         ${emp?.job_title ? `<div style="font-size:0.73rem;color:var(--muted)">${esc(emp.job_title)}</div>` : ''}
       </td>
       <td>${emp?.department ? `<span style="font-size:0.82rem;font-weight:600">${esc(emp.department)}</span>` : '<span style="color:var(--muted)">—</span>'}</td>
-      <td><span class="badge ${typeBadge}">${typeLabel}</span></td>
+      <td>${typeCell}</td>
       <td class="${daysColor}">${row.year_days_off} / ${row.allowance_days}</td>
-      <td>${row.excess_days > 0 ? `<span class="badge badge-red">${row.excess_days} excess</span>` : '<span class="badge badge-green">OK</span>'}</td>
-      <td style="color:var(--primary)">£${(row.ref_time_amount||0).toFixed(2)}</td>
-      <td class="${row.excess_day_deduction > 0 ? 'text-danger fw-bold' : ''}">£${(row.excess_day_deduction||0).toFixed(2)}</td>
-      <td class="${row.total_deduction > 0 ? 'text-danger fw-bold' : ''}">£${(row.total_deduction||0).toFixed(2)}</td>
+      <td class="${row.total_deduction > 0 ? 'text-danger fw-bold' : ''}">${row.total_deduction > 0 ? fmtMoney(row.total_deduction, currency) : '<span style="color:var(--muted)">—</span>'}</td>
+      <td>${annualCell}</td>
+      <td>${lastCell}</td>
       <td><button class="btn btn-ghost btn-sm" onclick="goToTracking(${row.employee_id})">View</button></td>
     `;
     tbody.appendChild(tr);
   });
+
+  // Update tab counts and re-apply the active filter
+  document.querySelectorAll('#esTabs .es-tab-count').forEach(el => {
+    el.textContent = esCounts[el.dataset.count] || 0;
+  });
+  filterEmpSummary(window._esFilter || 'all');
   } catch(e) {
     console.error('loadDashboard error:', e);
     const el = document.getElementById('dashStats');
     if (el) el.innerHTML = `<div style="padding:20px;color:var(--negative);font-family:var(--font-mono);font-size:12px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius)">Dashboard error: ${e.message}</div>`;
   }
+}
+
+// Tab filter for the dashboard Employee Summary table (all / se / payroll / intl)
+function filterEmpSummary(tab, btn) {
+  window._esFilter = tab;
+  document.querySelectorAll('#esTabs .es-tab').forEach(t =>
+    t.classList.toggle('es-tab--active', t.dataset.tab === tab));
+  let visible = 0;
+  document.querySelectorAll('#dashTable tr').forEach(r => {
+    const show = tab === 'all' || r.dataset.group === tab;
+    r.style.display = show ? '' : 'none';
+    if (show) visible++;
+  });
+  const empty = document.getElementById('dashTableEmpty');
+  if (empty) empty.style.display = visible === 0 ? '' : 'none';
 }
 
 function renderRevenueIntelPanel(deals, expiring, evtRevData) {

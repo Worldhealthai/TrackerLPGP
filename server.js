@@ -765,8 +765,12 @@ app.get('/api/employee/salary', requireAuth, async (req, res) => {
     const netFactor       = ukPay ? ukPay.net_annual / annualSal : 1;
     const netSalaryTarget = parseFloat((salaryTarget * netFactor).toFixed(2));
     const totalPaid       = payments.reduce((a, b) => a + parseFloat(b.amount), 0);
-    const netRemaining    = parseFloat((netSalaryTarget - totalPaid - dayCalc.excess_deduction).toFixed(2));
-    const pctPaid         = netSalaryTarget > 0 ? Math.min(100, Math.round((totalPaid / netSalaryTarget) * 100)) : 0;
+    // % paid is measured against the target net of deductions, matching "amount left".
+    const effectiveTarget = parseFloat((netSalaryTarget - dayCalc.excess_deduction).toFixed(2));
+    const netRemaining    = parseFloat((effectiveTarget - totalPaid).toFixed(2));
+    const pctPaid         = effectiveTarget > 0
+      ? Math.min(100, Math.round((totalPaid / effectiveTarget) * 100))
+      : (totalPaid > 0 ? 100 : 0);
 
     res.json({
       name:             emp.name,
@@ -1037,8 +1041,13 @@ app.get('/api/salary-overview', requireAuth, requireAdmin, async (req, res) => {
 
       const totalOffice   = officeRows.reduce((a, b) => a + parseFloat(b.amount), 0);
       const totalPaid     = payments.reduce((a, b) => a + parseFloat(b.amount), 0);
-      const netRemaining  = parseFloat((netSalaryTarget - totalPaid - dayCalc.excess_deduction - totalOffice).toFixed(2));
-      const pctPaid       = netSalaryTarget > 0 ? Math.min(100, Math.round((totalPaid / netSalaryTarget) * 100)) : 0;
+      // Effective amount actually owed = salary target minus all deductions (day-off + office).
+      // % paid is measured against this so it stays consistent with the "amount left" figure.
+      const effectiveTarget = parseFloat((netSalaryTarget - dayCalc.excess_deduction - totalOffice).toFixed(2));
+      const netRemaining  = parseFloat((effectiveTarget - totalPaid).toFixed(2));
+      const pctPaid       = effectiveTarget > 0
+        ? Math.min(100, Math.round((totalPaid / effectiveTarget) * 100))
+        : (totalPaid > 0 ? 100 : 0);
 
       return {
         employee_id:         emp.id,

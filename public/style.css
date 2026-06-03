@@ -2193,6 +2193,34 @@ tbody tr:last-child td { border-bottom: none; }
 .sr-tab-pane--hidden { display: none; }
 .sr-empty { padding: 12px 16px; font-size: 0.78rem; color: var(--muted); font-style: italic; }
 
+/* ── Dashboard Employee Summary: tabs, mini progress, last payment ── */
+.es-header { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.es-tabs { display: flex; gap: 6px; flex-wrap: wrap; }
+.es-tab {
+  padding: 5px 12px; border-radius: 20px; border: 1px solid var(--border);
+  background: transparent; font: 600 11px/1 var(--font-mono); color: var(--muted);
+  cursor: pointer; transition: all 0.15s; display: inline-flex; align-items: center; gap: 5px;
+}
+.es-tab:not(.es-tab--active):hover { background: var(--bg); color: var(--text); }
+.es-tab--active { background: var(--accent); color: #fff; border-color: var(--accent); }
+.es-tab-count {
+  display: inline-block; background: var(--surface-2); color: var(--muted);
+  border-radius: 10px; padding: 1px 6px; font-size: 10px; line-height: 1.4; min-width: 16px; text-align: center;
+}
+.es-tab--active .es-tab-count { background: rgba(255,255,255,0.25); color: #fff; }
+.es-tab-count--intl { background: rgba(8,145,178,0.15); color: #0891b2; }
+.es-tab--active .es-tab-count--intl { background: rgba(255,255,255,0.25); color: #fff; }
+.es-badge-intl { background: rgba(8,145,178,0.12); color: #0891b2; border-color: rgba(8,145,178,0.25); }
+
+.es-prog { height: 5px; background: var(--surface-2); border-radius: 3px; overflow: hidden; margin-top: 5px; max-width: 130px; }
+.es-prog-fill { height: 100%; background: var(--accent); border-radius: 3px; transition: width .4s ease; }
+.es-prog-lbl { font-size: 0.68rem; color: var(--muted); margin-top: 3px; }
+.es-empty { padding: 28px 16px; text-align: center; font-size: 0.85rem; color: var(--muted); }
+
+[data-theme="dark"] .es-tab-count { background: rgba(255,255,255,0.08); color: var(--muted); }
+[data-theme="dark"] .es-tab-count--intl { background: rgba(8,145,178,0.2); color: #5ed4e0; }
+[data-theme="dark"] .es-prog { background: rgba(255,255,255,0.08); }
+
 /* Annual remaining sub-section */
 .sr-annual-section { border-top: 1px dashed rgba(0,0,0,0.1); margin-top: 4px; }
 .sr-annual-hd {
