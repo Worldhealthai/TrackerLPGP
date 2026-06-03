@@ -1903,8 +1903,6 @@ async function loadSalaryPage() {
     const gtDeduct  = allActive.reduce((s, e) => s + salFxToGBP((parseFloat(e.excess_deduction)||0)+(parseFloat(e.total_office_deductions)||0), e.currency || 'GBP'), 0);
     const gtRemain  = allActive.reduce((s, e) => s + Math.max(0, salFxToGBP(parseFloat(e.net_remaining) || 0, e.currency || 'GBP')), 0);
     const hasMultiCurrency = groups.some(g => g.currency !== 'GBP');
-    const phpGroups = groups.filter(g => g.currency === 'PHP');
-    const phpRemain = phpGroups.reduce((s, g) => s + g.rows.reduce((a, e) => a + Math.max(0, parseFloat(e.net_remaining) || 0), 0), 0);
     const gtPaidPct = gtTarget > 0 ? Math.min(100, Math.round(gtPaid / gtTarget * 100)) : 0;
     const fmtN = (v, sym) => sym + v.toLocaleString('en-GB', {maximumFractionDigits:0});
     const fmtGBP = v => '£' + v.toLocaleString('en-GB', {maximumFractionDigits:0});
@@ -1964,7 +1962,7 @@ async function loadSalaryPage() {
             <td><div style="font-weight:700">${fmtGBP(gtTarget)}</div></td>
             <td><div style="font-weight:700;color:var(--positive)">${fmtGBP(gtPaid)}</div></td>
             <td>${gtDeduct > 0 ? `<div style="color:var(--warning)">−${fmtGBP(gtDeduct)}</div>` : '<span style="color:var(--muted)">—</span>'}</td>
-            <td><div style="font-weight:700;color:var(--negative)">${fmtGBP(gtRemain)}</div>${phpRemain > 0 ? `<div class="sal-tbl-sub">₱${phpRemain.toLocaleString('en-GB',{maximumFractionDigits:0})} PHP</div>` : ''}</td>
+            <td><div style="font-weight:700;color:var(--negative)">${fmtGBP(gtRemain)}</div></td>
             <td>
               <div style="display:flex;align-items:center;gap:8px">
                 <div style="flex:1;height:6px;background:var(--border);border-radius:3px;min-width:48px">
