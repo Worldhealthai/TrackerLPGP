@@ -1892,6 +1892,31 @@ tbody tr:last-child td { border-bottom: none; }
   font-size: 0.84rem;
 }
 .sal-tbl-sub { font-size: 0.7rem; color: var(--muted); margin-top: 2px; }
+
+/* Expandable group rows (merged "to pay" lists) */
+.sal-grp-clickable { cursor: pointer; }
+.sal-grp-clickable:hover td { background: var(--surface-2); }
+.sal-grp-open td { background: rgba(251,191,36,0.05); }
+.sal-grp-label { display: flex; align-items: center; gap: 10px; }
+.sal-grp-chevron { font-size: 0.6rem; color: var(--muted); width: 10px; flex-shrink: 0; }
+.sal-grp-topay {
+  margin-left: 2px; padding: 2px 9px; border-radius: 11px;
+  background: rgba(217,119,6,0.12); color: #b45309;
+  font: 600 0.68rem/1.4 var(--font-mono); white-space: nowrap;
+}
+.sal-grp-detail td { padding: 0 !important; background: rgba(251,191,36,0.04); }
+.sal-grp-paylist { display: flex; flex-direction: column; }
+.sal-grp-payitem {
+  display: flex; align-items: center; gap: 14px;
+  padding: 10px 16px 10px 42px; border-top: 1px solid var(--border);
+}
+.sal-grp-payname { flex: 1; font-weight: 600; font-size: 0.84rem; color: var(--text); }
+.sal-grp-payamt { font: 600 0.8rem/1 var(--font-mono); color: var(--muted); white-space: nowrap; }
+.sal-grp-payactions { display: flex; gap: 6px; align-items: center; flex-shrink: 0; }
+
+[data-theme="dark"] .sal-grp-open td { background: rgba(217,119,6,0.08); }
+[data-theme="dark"] .sal-grp-detail td { background: rgba(217,119,6,0.05); }
+[data-theme="dark"] .sal-grp-topay { background: rgba(217,119,6,0.2); color: #fbbf24; }
 .salary-overview-card .soc-footer-item--outstanding .soc-footer-val { font-size: 1.05rem; }
 /* ── Salary Overview Cards ──────────────────────────────────────────────────── */
 .salary-overview-card {

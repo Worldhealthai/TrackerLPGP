@@ -172,7 +172,7 @@ function navigate(page) {
   if (page === 'employees') loadEmpTable();
   if (page === 'admins') loadAdmins();
   if (page === 'calendar') loadCalendar();
-  if (page === 'salary') { loadSalaryPage(); renderSalaryReminderPanel(); }
+  if (page === 'salary') { loadSalaryPage(); }
   if (page === 'hotels') loadHotelExpenses();
   if (page === 'subscriptions') loadSubscriptions();
   if (page === 'portfolio') { loadPortfolio(); }
@@ -1816,7 +1816,6 @@ function initSalaryYearSelect() {
 
 async function loadSalaryPage() {
   const container = document.getElementById('salaryCards');
-  renderSalaryReminderPanel();
   try {
     initSalaryYearSelect();
     const year       = document.getElementById('salaryYear').value || new Date().getFullYear();
@@ -1838,6 +1837,17 @@ async function loadSalaryPage() {
     }
     const data = await res.json();
     if (!Array.isArray(data)) throw new Error('Unexpected response from server');
+
+    // Unpaid-this-month set (current year only) — powers the expandable "to pay"
+    // lists inside the summary table, replacing the standalone reminder panel.
+    const _now = new Date();
+    const curY = _now.getFullYear(), curM = _now.getMonth() + 1;
+    const isCurrentYear = parseInt(year) === curY;
+    const unpaidList = isCurrentYear ? getUnpaidThisMonth(data, curY, curM) : [];
+    const unpaidSet  = new Set(unpaidList.map(e => e.employee_id));
+    const monthShort = MONTHS[curM].slice(0, 3);
+    updateSalaryBadge(unpaidList.length);
+
     // Update tab counts
     const base = empFilter ? data.filter(e => String(e.employee_id) === empFilter) : data;
     const searched = searchTerm
@@ -1901,6 +1911,7 @@ async function loadSalaryPage() {
     const fmtN = (v, sym) => sym + v.toLocaleString('en-GB', {maximumFractionDigits:0});
     const fmtGBP = v => '£' + v.toLocaleString('en-GB', {maximumFractionDigits:0});
 
+    window._salGrpOpen = window._salGrpOpen || {};
     const tableRows = groups.map(g => {
       const s       = currencySymbol(g.currency);
       const tTarget = g.rows.reduce((a, b) => a + (parseFloat(b.salary_target ?? b.annual_salary) || 0), 0);
@@ -1910,10 +1921,38 @@ async function loadSalaryPage() {
       const pct     = tTarget > 0 ? Math.min(100, Math.round(tPaid / tTarget * 100)) : 0;
       const isNonGBP = g.currency !== 'GBP';
       const groupLabel = `${TYPE_LABEL[g.type]}${g.currency !== 'GBP' ? ' · ' + g.currency : ''}`;
-      return `<tr>
+
+      // Employees in this group still needing payment this month
+      const groupUnpaid = g.rows.filter(r => unpaidSet.has(r.employee_id));
+      const key = `${g.type}_${g.currency}`;
+      const canExpand = groupUnpaid.length > 0;
+      const isOpen = canExpand && !!window._salGrpOpen[key];
+
+      const detailRows = canExpand ? groupUnpaid.map(r => {
+        const sym = currencySymbol(r.currency || 'GBP');
+        const grossMo = (parseFloat(r.annual_salary) || 0) / 12;
+        const netMo = r.net_monthly ? parseFloat(r.net_monthly) : null;
+        const amt = netMo ?? grossMo;
+        return `<div class="sal-grp-payitem">
+          <span class="sal-grp-payname">${esc(r.name)}</span>
+          <span class="sal-grp-payamt">${sym}${amt.toLocaleString('en-GB',{minimumFractionDigits:2})}/mo${netMo ? '<span class="srr-net">net</span>' : ''}</span>
+          <span class="sal-grp-payactions">
+            <button class="srr-skip" onclick="skipGroupReminder(${r.employee_id})">Skip ${monthShort}</button>
+            <button class="srr-pay" onclick="openSalaryPaymentModal(${r.employee_id})">Log Payment</button>
+          </span>
+        </div>`;
+      }).join('') : '';
+
+      const headRow = `<tr class="sal-grp-row${canExpand ? ' sal-grp-clickable' : ''}${isOpen ? ' sal-grp-open' : ''}" id="salgrp-head-${key}"${canExpand ? ` onclick="toggleSalaryGroup('${key}')"` : ''}>
         <td>
-          <div style="font-weight:600;font-size:0.85rem">${groupLabel}</div>
-          <div style="font-size:0.72rem;color:var(--muted)">${g.rows.length} employee${g.rows.length !== 1 ? 's' : ''}</div>
+          <div class="sal-grp-label">
+            <span class="sal-grp-chevron">${canExpand ? (isOpen ? '▼' : '▶') : ''}</span>
+            <div>
+              <div style="font-weight:600;font-size:0.85rem">${groupLabel}</div>
+              <div style="font-size:0.72rem;color:var(--muted)">${g.rows.length} employee${g.rows.length !== 1 ? 's' : ''}</div>
+            </div>
+            ${canExpand ? `<span class="sal-grp-topay">${groupUnpaid.length} to pay</span>` : ''}
+          </div>
         </td>
         <td>
           <div>${fmtN(tTarget, s)}</div>
@@ -1937,6 +1976,12 @@ async function loadSalaryPage() {
           </div>
         </td>
       </tr>`;
+
+      const detailRow = canExpand ? `<tr class="sal-grp-detail" id="salgrp-detail-${key}" style="display:${isOpen ? '' : 'none'}">
+        <td colspan="6"><div class="sal-grp-paylist">${detailRows}</div></td>
+      </tr>` : '';
+
+      return headRow + detailRow;
     }).join('');
 
     document.getElementById('salaryTotals').innerHTML = `
@@ -3204,179 +3249,26 @@ function getUnpaidThisMonth(overview, year, month) {
   });
 }
 
-async function renderSalaryReminderPanel() {
-  const panel = document.getElementById('salaryReminderPanel');
-  if (!panel) return;
-  const now   = new Date();
-  const year  = now.getFullYear();
-  const month = now.getMonth() + 1;
-
-  try {
-    const res = await fetch(`/api/salary-overview?year=${year}`);
-    if (!res.ok) { panel.classList.add('hidden'); return; }
-    const overview = await res.json();
-    const unpaid   = getUnpaidThisMonth(overview, year, month);
-    updateSalaryBadge(unpaid.length);
-
-    if (!unpaid.length) { panel.classList.add('hidden'); return; }
-
-    panel.classList.remove('hidden');
-    const monthName = MONTHS[month];
-    const monthShort = monthName.slice(0, 3);
-
-    const seGBP      = unpaid.filter(e => e.employment_type === 'self_employed' && (e.currency || 'GBP') === 'GBP');
-    const seIntl     = unpaid.filter(e => e.employment_type === 'self_employed' && (e.currency || 'GBP') !== 'GBP');
-    const payrollGBP = unpaid.filter(e => e.employment_type === 'payroll'       && (e.currency || 'GBP') === 'GBP');
-    const payrollIntl= unpaid.filter(e => e.employment_type === 'payroll'       && (e.currency || 'GBP') !== 'GBP');
-
-    function buildReminderRow(emp) {
-      const sym = currencySymbol(emp.currency || 'GBP');
-      const grossMonthly = (parseFloat(emp.annual_salary) || 0) / 12;
-      const netMo = emp.net_monthly ? parseFloat(emp.net_monthly) : null;
-      const displayAmount = netMo ?? grossMonthly;
-      const isNet = !!netMo;
-      const isPayroll = emp.employment_type === 'payroll';
-      const avatarColor = isPayroll ? '#4f46e5' : '#d97706';
-      const initials = (emp.name || '').split(' ').map(w => w[0] || '').slice(0, 2).join('').toUpperCase();
-      const remaining = parseFloat(emp.net_remaining || 0);
-      const annual    = parseFloat(emp.annual_salary || 0);
-      const pct = emp.pct_paid != null
-        ? Math.min(100, Math.round(parseFloat(emp.pct_paid)))
-        : (annual > 0 && emp.total_paid ? Math.min(100, Math.round(parseFloat(emp.total_paid) / annual * 100)) : 0);
-      const showBar = annual > 0 && remaining > 0;
-      return `<div class="srr" id="srr_${emp.employee_id}">
-        <div class="srr-avatar" style="background:${avatarColor}18;color:${avatarColor}">${initials}</div>
-        <div class="srr-info">
-          <div class="srr-name">${esc(emp.name)}</div>
-          ${showBar ? `<div class="srr-prog">
-            <div class="srr-prog-track"><div class="srr-prog-fill" style="width:${pct}%;background:${avatarColor}"></div></div>
-            <span class="srr-prog-lbl">${pct}%&thinsp;paid &middot; ${sym}${remaining.toLocaleString('en-GB',{maximumFractionDigits:0})} left</span>
-          </div>` : ''}
-        </div>
-        <div class="srr-right">
-          <div class="srr-amount">${sym}${displayAmount.toLocaleString('en-GB',{minimumFractionDigits:2})}/mo${isNet ? '<span class="srr-net">net</span>' : ''}</div>
-          <div class="srr-actions">
-            <button class="srr-skip" onclick="skipSalaryReminder(${emp.employee_id},${year},${month})">Skip ${monthShort}</button>
-            <button class="srr-pay" onclick="openSalaryPaymentModal(${emp.employee_id})">Log Payment</button>
-          </div>
-        </div>
-      </div>`;
-    }
-
-    function buildSESection(gbpList, intlList) {
-      const totalCount = gbpList.length + intlList.length;
-      if (!totalCount) return '';
-      const collapseKey = 'srCollapse_se';
-      const isCollapsed = localStorage.getItem(collapseKey) === '1';
-      const gbpRows  = gbpList.map(buildReminderRow).join('');
-      const intlRows = intlList.map(buildReminderRow).join('');
-      const hasIntl  = intlList.length > 0;
-      return `<div class="sr-section sr-section--se${isCollapsed ? ' sr-collapsed' : ''}">
-        <div class="sr-section-hd" onclick="srToggleSection(this,'${collapseKey}')">
-          <span class="sr-chevron">${isCollapsed ? '▶' : '▼'}</span>
-          <span class="sr-section-dot" style="background:#d97706"></span>
-          <span class="sr-section-title">Self-Employed</span>
-          <span class="sr-section-count">${totalCount} to pay</span>
-        </div>
-        <div class="sr-section-body">
-          ${hasIntl ? `<div class="sr-tabs">
-            <button class="sr-tab sr-tab--active" data-tab="gbp" onclick="srSwitchTab(this,'gbp')">
-              GBP${gbpList.length ? ` <span class="sr-tab-badge">${gbpList.length}</span>` : ''}
-            </button>
-            <button class="sr-tab" data-tab="intl" onclick="srSwitchTab(this,'intl')">
-              International${intlList.length ? ` <span class="sr-tab-badge sr-tab-badge--intl">${intlList.length}</span>` : ''}
-            </button>
-          </div>
-          <div class="sr-tab-pane" data-pane="gbp">${gbpRows || '<div class="srr-empty">All paid ✓</div>'}</div>
-          <div class="sr-tab-pane sr-tab-pane--hidden" data-pane="intl">${intlRows}</div>` :
-          gbpRows}
-        </div>
-      </div>`;
-    }
-
-    function buildPayrollSection(gbpList, intlList) {
-      const totalCount = gbpList.length + intlList.length;
-      if (!totalCount) return '';
-      const collapseKey = 'srCollapse_payroll';
-      const isCollapsed = localStorage.getItem(collapseKey) === '1';
-      const allRows = [...gbpList, ...intlList].map(buildReminderRow).join('');
-      return `<div class="sr-section${isCollapsed ? ' sr-collapsed' : ''}">
-        <div class="sr-section-hd" onclick="srToggleSection(this,'${collapseKey}')">
-          <span class="sr-chevron">${isCollapsed ? '▶' : '▼'}</span>
-          <span class="sr-section-dot" style="background:#4f46e5"></span>
-          <span class="sr-section-title">Payroll</span>
-          <span class="sr-section-count">${totalCount} to pay</span>
-        </div>
-        <div class="sr-section-body">${allRows}</div>
-      </div>`;
-    }
-
-    panel.innerHTML = `<div class="srp">
-      <div class="srp-hd">
-        <div class="srp-hd-left">
-          <span class="srp-icon">💳</span>
-          <div>
-            <div class="srp-title">${unpaid.length} employee${unpaid.length > 1 ? 's' : ''} unpaid</div>
-            <div class="srp-sub">${monthName} ${year}</div>
-          </div>
-        </div>
-        <button class="srp-dismiss" onclick="dismissAllReminders()" title="Skip all for this month">Dismiss all</button>
-      </div>
-      ${buildSESection(seGBP, seIntl)}
-      ${buildPayrollSection(payrollGBP, payrollIntl)}
-    </div>`;
-  } catch(e) {
-    panel.classList.add('hidden');
+// Expand/collapse a group's "to pay" list inside the salary summary table
+function toggleSalaryGroup(key) {
+  window._salGrpOpen = window._salGrpOpen || {};
+  const open = !window._salGrpOpen[key];
+  window._salGrpOpen[key] = open;
+  const detail = document.getElementById('salgrp-detail-' + key);
+  const head   = document.getElementById('salgrp-head-' + key);
+  if (detail) detail.style.display = open ? '' : 'none';
+  if (head) {
+    head.classList.toggle('sal-grp-open', open);
+    const chev = head.querySelector('.sal-grp-chevron');
+    if (chev) chev.textContent = open ? '▼' : '▶';
   }
 }
 
-function skipSalaryReminder(empId, year, month) {
-  localStorage.setItem(`paySkip_${year}_${month}_${empId}`, '1');
-  const row = document.getElementById(`srr_${empId}`);
-  if (row) {
-    row.style.transition = 'opacity 0.25s, max-height 0.3s, padding 0.3s';
-    row.style.overflow = 'hidden';
-    row.style.opacity = '0';
-    row.style.maxHeight = '0';
-    row.style.paddingTop = '0';
-    row.style.paddingBottom = '0';
-    setTimeout(() => renderSalaryReminderPanel(), 320);
-  } else {
-    renderSalaryReminderPanel();
-  }
-}
-
-function toggleSalaryReminder() {
-  const body = document.getElementById('salaryReminderBody');
-  const btn  = document.getElementById('salaryReminderToggleBtn');
-  if (!body) return;
-  const opening = body.style.display === 'none';
-  body.style.display = opening ? '' : 'none';
-  if (btn) btn.innerHTML = opening ? '&#9650; Hide' : '&#9660; Show';
-  localStorage.setItem('salaryReminderOpen', opening ? '1' : '0');
-}
-
-function dismissAllReminders() {
-  const now   = new Date();
-  const year  = now.getFullYear();
-  const month = now.getMonth() + 1;
-  const panel = document.getElementById('salaryReminderPanel');
-  if (!panel) return;
-  panel.querySelectorAll('.srr-skip').forEach(btn => btn.click());
-}
-
-function srToggleSection(hd, key) {
-  const section = hd.closest('.sr-section');
-  const chevron = hd.querySelector('.sr-chevron');
-  const collapsed = section.classList.toggle('sr-collapsed');
-  if (chevron) chevron.textContent = collapsed ? '▶' : '▼';
-  localStorage.setItem(key, collapsed ? '1' : '0');
-}
-
-function srSwitchTab(btn, tab) {
-  const section = btn.closest('.sr-section');
-  section.querySelectorAll('.sr-tab').forEach(t => t.classList.toggle('sr-tab--active', t.dataset.tab === tab));
-  section.querySelectorAll('.sr-tab-pane').forEach(p => p.classList.toggle('sr-tab-pane--hidden', p.dataset.pane !== tab));
+// Skip a single employee for the current month from the merged summary list
+function skipGroupReminder(empId) {
+  const now = new Date();
+  localStorage.setItem(`paySkip_${now.getFullYear()}_${now.getMonth() + 1}_${empId}`, '1');
+  loadSalaryPage();
 }
 
 // ─── CALENDAR REMINDERS ───────────────────────────────────────────────────────
