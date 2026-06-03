@@ -246,17 +246,11 @@ function renderEmpTable() {
     const terminated = !emp.active && emp.termination_date;
     const statusBadge = emp.active ? 'badge-green' : (terminated ? 'badge-red' : 'badge-grey');
     const statusLabel = emp.active ? 'Active' : (terminated ? `Terminated ${emp.termination_date.slice(0,10)}` : 'Inactive');
-    const initials = (emp.name || '?').split(' ').filter(Boolean).slice(0,2).map(w => w[0]).join('').toUpperCase();
     const tr = document.createElement('tr');
     tr.innerHTML = `
       <td>
-        <div style="display:flex;align-items:center;gap:10px">
-          <div style="width:28px;height:28px;border-radius:7px;background:var(--accent-soft);border:1px solid var(--accent-line);color:var(--accent);font:700 10px/1 var(--font-mono);display:grid;place-items:center;flex-shrink:0">${initials}</div>
-          <div>
-            <div style="font-weight:600;color:var(--text);font-size:12.5px">${esc(emp.name)}</div>
-            <div style="font-size:10.5px;color:var(--muted);font-family:var(--font-mono)">${esc(emp.job_title||emp.department||'')}</div>
-          </div>
-        </div>
+        <div style="font-weight:600;color:var(--text);font-size:12.5px">${esc(emp.name)}</div>
+        <div style="font-size:10.5px;color:var(--muted);font-family:var(--font-mono)">${esc(emp.job_title||emp.department||'')}</div>
       </td>
       <td>
         ${emp.department ? `<div style="font-weight:600;font-size:0.83rem">${esc(emp.department)}</div>` : ''}
