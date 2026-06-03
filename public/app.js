@@ -7854,8 +7854,9 @@ function wmToggleMic() {
   _wmRecognition.continuous = false;
 
   let _sentThisTurn = false;
+  let _gotSpeech = false;
 
-  _wmRecognition.onstart = () => { _wmListening = true; _sentThisTurn = false; micBtn?.classList.add('wm-mic--live'); };
+  _wmRecognition.onstart = () => { _wmListening = true; _sentThisTurn = false; _gotSpeech = false; micBtn?.classList.add('wm-mic--live'); };
   _wmRecognition.onend = () => {
     _wmListening = false;
     micBtn?.classList.remove('wm-mic--live');
@@ -7864,10 +7865,25 @@ function wmToggleMic() {
     if (!_sentThisTurn) {
       const input = document.getElementById('wmInput');
       if (input?.value.trim()) { _sentThisTurn = true; setTimeout(() => wmSend(), 50); }
+      else if (!_gotSpeech) showToast('Didn\'t catch that — try speaking again', 'info');
     }
   };
-  _wmRecognition.onerror = () => { _wmListening = false; micBtn?.classList.remove('wm-mic--live'); };
+  _wmRecognition.onerror = (ev) => {
+    _wmListening = false;
+    micBtn?.classList.remove('wm-mic--live');
+    const reasons = {
+      'not-allowed':   'Microphone blocked. Allow mic access for this site in your browser settings (click the padlock in the address bar).',
+      'service-not-allowed': 'Microphone blocked. Allow mic access for this site in your browser settings.',
+      'audio-capture': 'No microphone found. Check your mic is connected and enabled.',
+      'no-speech':     'No speech detected — try again and speak clearly.',
+      'network':       'Voice recognition needs an internet connection.',
+      'aborted':       null
+    };
+    const msg = reasons[ev?.error] ?? `Voice input error: ${ev?.error || 'unknown'}`;
+    if (msg) showToast(msg, 'error');
+  };
   _wmRecognition.onresult = (ev) => {
+    _gotSpeech = true;
     const transcript = Array.from(ev.results).map(r => r[0].transcript).join('');
     const input = document.getElementById('wmInput');
     if (input) input.value = transcript;
@@ -7876,5 +7892,14 @@ function wmToggleMic() {
       setTimeout(() => wmSend(), 150);
     }
   };
-  _wmRecognition.start();
+  try {
+    _wmRecognition.start();
+  } catch (e) {
+    // start() throws if called while already running, or on insecure (non-HTTPS) origins
+    _wmListening = false;
+    micBtn?.classList.remove('wm-mic--live');
+    showToast(location.protocol === 'https:' || location.hostname === 'localhost'
+      ? 'Couldn\'t start the microphone — try again.'
+      : 'Voice input needs a secure (HTTPS) connection.', 'error');
+  }
 }
