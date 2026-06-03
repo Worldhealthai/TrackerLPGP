@@ -117,6 +117,17 @@ document.addEventListener('DOMContentLoaded', async () => {
   loadDashboard();
   refreshCalendarBadge();
 
+  // Deep-link / PWA shortcut support: /?page=salary opens that page directly
+  try {
+    const startPage = new URLSearchParams(window.location.search).get('page');
+    const validPages = ['dashboard','tracking','salary','employees','reports','calendar','admins','hotels','subscriptions','portfolio','deals','eventkit'];
+    if (startPage && validPages.includes(startPage)) {
+      navigate(startPage);
+      // tidy the URL so a manual refresh doesn't re-trigger
+      window.history.replaceState({}, '', '/');
+    }
+  } catch (e) { /* no-op */ }
+
   // Notification bell — admin only
   if (currentUser.role === 'admin') {
     document.getElementById('notifBellWrap').style.display = 'block';

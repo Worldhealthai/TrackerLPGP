@@ -162,7 +162,18 @@ body {
   font-variant-numeric: tabular-nums;
   overflow: hidden;
   height: 100vh;
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+  -webkit-tap-highlight-color: transparent;
 }
+
+/* Touch ergonomics — no accidental text selection on taps, smooth momentum scroll */
+.bottom-nav, .nav-item, .btn, .salary-tab, .es-tab, .badge,
+.dss-card, .dash-mini-card, .deal-q-btn {
+  -webkit-tap-highlight-color: transparent;
+  -webkit-touch-callout: none;
+}
+.content, .table-wrap, .modal { -webkit-overflow-scrolling: touch; }
 
 /* ══ NUMERIC UTILITY ══ */
 .num, td.num, .stat-value, .dash-hero-value, .dash-mini-value,
@@ -4948,6 +4959,37 @@ tbody tr:last-child td { border-bottom: none; }
   /* Employee portal cards */
   .sc-card { margin-bottom: 12px; }
   .sc-payment-toggle { flex-wrap: wrap; gap: 6px; }
+
+  /* iOS zooms the page when focusing inputs smaller than 16px — force 16px */
+  .form-group input,
+  .form-group select,
+  .form-group textarea,
+  input[type="search"],
+  input[type="text"],
+  input[type="number"],
+  input[type="email"],
+  input[type="password"],
+  input[type="date"],
+  select, textarea {
+    font-size: 16px !important;
+  }
+
+  /* Comfortable touch targets (Apple/Google guidance ≈ 44px) */
+  .btn { min-height: 40px; }
+  .btn-sm { min-height: 36px; }
+  td .btn-ghost.btn-sm { min-height: 34px; padding: 7px 12px; }
+  .nav-item { min-height: 44px; }
+  select, .form-group input, .form-group select { min-height: 42px; }
+
+  /* New dashboard stat strip — 2-up on tablet/phone */
+  .dash-stat-strip { grid-template-columns: 1fr 1fr; gap: 10px; }
+  .dss-card { padding: 16px 16px 14px; }
+  .dss-value { font-size: 30px; }
+
+  /* Roomier card padding rhythm */
+  .card-header { padding: 13px 15px; }
+  .es-tabs, .salary-tabs { overflow-x: auto; -webkit-overflow-scrolling: touch; flex-wrap: nowrap; }
+  .es-tab, .salary-tab { flex-shrink: 0; }
 }
 
 @media (max-width: 420px) {
@@ -4958,6 +5000,13 @@ tbody tr:last-child td { border-bottom: none; }
   .btn { padding: 10px 14px; }
   .btn-sm { padding: 7px 11px; font-size: 0.78rem; }
   .dash-mini-grid { grid-template-columns: 1fr 1fr !important; }
+  .page-head h1 { font-size: 20px; }
+  /* Stat strip: 1 per row on small phones so numbers stay legible */
+  .dash-stat-strip { grid-template-columns: 1fr; }
+  .dss-value { font-size: 32px; }
+  .dss-card { flex-direction: row; flex-wrap: wrap; align-items: baseline; gap: 6px 12px; }
+  .dss-card .dss-label { width: 100%; }
+  .dss-sub { margin-top: 0; }
 }
 
 /* PWA standalone mode — hide browser chrome compensations */
