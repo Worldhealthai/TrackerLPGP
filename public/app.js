@@ -3170,19 +3170,29 @@ async function renderSalaryReminderPanel() {
     panel.classList.remove('hidden');
     const monthName = MONTHS[month];
 
-    const seList      = unpaid.filter(e => e.employment_type === 'self_employed' && (e.currency || 'GBP') === 'GBP');
-    const payrollList = unpaid.filter(e => e.employment_type === 'payroll'       && (e.currency || 'GBP') === 'GBP');
-    const intlList    = unpaid.filter(e => (e.currency || 'GBP') !== 'GBP');
+    const seGBP      = unpaid.filter(e => e.employment_type === 'self_employed' && (e.currency || 'GBP') === 'GBP');
+    const seIntl     = unpaid.filter(e => e.employment_type === 'self_employed' && (e.currency || 'GBP') !== 'GBP');
+    const payrollGBP = unpaid.filter(e => e.employment_type === 'payroll'       && (e.currency || 'GBP') === 'GBP');
+    const payrollIntl= unpaid.filter(e => e.employment_type === 'payroll'       && (e.currency || 'GBP') !== 'GBP');
+
+    // All active SE GBP employees for "Annual Remaining" sub-section
+    const seGBPAll = overview.filter(e =>
+      !e.is_terminated &&
+      e.employment_type === 'self_employed' &&
+      (e.currency || 'GBP') === 'GBP' &&
+      parseFloat(e.net_remaining || 0) > 0 &&
+      parseFloat(e.annual_salary || 0) > 0
+    );
 
     function buildReminderRow(emp) {
       const sym = currencySymbol(emp.currency || 'GBP');
       const grossMonthly = (parseFloat(emp.annual_salary) || 0) / 12;
       const netMo = emp.net_monthly ? parseFloat(emp.net_monthly) : null;
       const displayAmount = netMo ?? grossMonthly;
-      const taxLabel = netMo ? ` <span class="sr-net-label">(net take-home)</span>` : '';
+      const taxLabel = netMo ? ` <span class="sr-net-label">(net)</span>` : '';
       return `<div class="salary-reminder-row">
         <div class="salary-reminder-name">${esc(emp.name)}</div>
-        <div class="salary-reminder-amount">${sym}${displayAmount.toLocaleString('en-GB',{minimumFractionDigits:2})} /mo${taxLabel}</div>
+        <div class="salary-reminder-amount">${sym}${displayAmount.toLocaleString('en-GB',{minimumFractionDigits:2})}/mo${taxLabel}</div>
         <div class="salary-reminder-actions">
           <button class="btn btn-ghost btn-sm" onclick="skipSalaryReminder(${emp.employee_id},${year},${month})">Skip</button>
           <button class="btn btn-primary btn-sm" onclick="openSalaryPaymentModal(${emp.employee_id})">Log Payment</button>
@@ -3190,25 +3200,87 @@ async function renderSalaryReminderPanel() {
       </div>`;
     }
 
-    function buildReminderSection(label, color, emps) {
+    function buildAnnualRemainingSection(emps) {
       if (!emps.length) return '';
-      return `<div class="sr-section">
-        <div class="sr-section-hd" style="border-left:3px solid ${color}">
-          <span class="sr-section-title" style="color:${color}">${label}</span>
-          <span class="sr-section-count">${emps.length} to pay</span>
+      return `<div class="sr-annual-section">
+        <div class="sr-annual-hd" onclick="this.parentElement.classList.toggle('sr-annual-open')">
+          <span class="sr-annual-title">Annual Remaining</span>
+          <span class="sr-annual-chevron">▶</span>
         </div>
-        ${emps.map(buildReminderRow).join('')}
+        <div class="sr-annual-body">
+          ${emps.map(e => {
+            const remaining = parseFloat(e.net_remaining || 0);
+            const annual    = parseFloat(e.annual_salary || 0);
+            const pct       = annual > 0 ? Math.round((remaining / annual) * 100) : 0;
+            return `<div class="sr-annual-row">
+              <span class="sr-annual-name">${esc(e.name)}</span>
+              <span class="sr-annual-amt">£${remaining.toLocaleString('en-GB',{minimumFractionDigits:2})} left</span>
+              <span class="sr-annual-pct">${pct}%</span>
+            </div>`;
+          }).join('')}
+        </div>
+      </div>`;
+    }
+
+    function buildSESection(gbpList, intlList, annualList) {
+      const totalCount = gbpList.length + intlList.length;
+      if (totalCount === 0 && !annualList.length) return '';
+      const collapseKey = 'srCollapse_se';
+      const isCollapsed = localStorage.getItem(collapseKey) === '1';
+      const gbpRows  = gbpList.map(buildReminderRow).join('');
+      const intlRows = intlList.map(buildReminderRow).join('');
+      const annualSec = buildAnnualRemainingSection(annualList);
+      const hasIntl = intlList.length > 0;
+      return `<div class="sr-section sr-section--se${isCollapsed ? ' sr-collapsed' : ''}">
+        <div class="sr-section-hd sr-section-hd--se" onclick="srToggleSection(this,'${collapseKey}')">
+          <span class="sr-chevron">${isCollapsed ? '▶' : '▼'}</span>
+          <span class="sr-section-title" style="color:#d97706">Self-Employed</span>
+          <span class="sr-section-count">${totalCount > 0 ? totalCount + ' to pay' : 'all paid'}</span>
+        </div>
+        <div class="sr-section-body">
+          ${totalCount > 0 ? `
+          <div class="sr-tabs">
+            <button class="sr-tab sr-tab--active" data-tab="gbp" onclick="srSwitchTab(this,'gbp')">
+              GBP ${gbpList.length > 0 ? `<span class="sr-tab-badge">${gbpList.length}</span>` : ''}
+            </button>
+            <button class="sr-tab" data-tab="intl" onclick="srSwitchTab(this,'intl')">
+              International ${intlList.length > 0 ? `<span class="sr-tab-badge sr-tab-badge--intl">${intlList.length}</span>` : ''}
+            </button>
+          </div>
+          <div class="sr-tab-pane" data-pane="gbp">
+            ${gbpRows || '<div class="sr-empty">All GBP self-employed paid ✓</div>'}
+          </div>
+          <div class="sr-tab-pane sr-tab-pane--hidden" data-pane="intl">
+            ${intlRows || '<div class="sr-empty">No international self-employed unpaid ✓</div>'}
+          </div>` : ''}
+          ${annualSec}
+        </div>
+      </div>`;
+    }
+
+    function buildPayrollSection(gbpList, intlList) {
+      const totalCount = gbpList.length + intlList.length;
+      if (!totalCount) return '';
+      const collapseKey = 'srCollapse_payroll';
+      const isCollapsed = localStorage.getItem(collapseKey) === '1';
+      const allRows = [...gbpList, ...intlList].map(buildReminderRow).join('');
+      return `<div class="sr-section${isCollapsed ? ' sr-collapsed' : ''}">
+        <div class="sr-section-hd" onclick="srToggleSection(this,'${collapseKey}')">
+          <span class="sr-chevron">▼</span>
+          <span class="sr-section-title" style="color:#4f46e5">Payroll</span>
+          <span class="sr-section-count">${totalCount} to pay</span>
+        </div>
+        <div class="sr-section-body">${allRows}</div>
       </div>`;
     }
 
     panel.innerHTML = `
       <div class="salary-reminder-header">
-        <span>💳 ${unpaid.length} employee${unpaid.length > 1 ? 's' : ''} not yet paid for ${monthName} ${year}</span>
+        <span class="sr-header-text">💳 ${unpaid.length} employee${unpaid.length > 1 ? 's' : ''} not yet paid for ${monthName} ${year}</span>
         <button class="btn btn-ghost btn-sm" onclick="dismissAllReminders()">Dismiss all</button>
       </div>
-      ${buildReminderSection('Self-Employed', '#d97706', seList)}
-      ${buildReminderSection('Payroll', '#4f46e5', payrollList)}
-      ${buildReminderSection('Internationals', '#0891b2', intlList)}`;
+      ${buildSESection(seGBP, seIntl, seGBPAll)}
+      ${buildPayrollSection(payrollGBP, payrollIntl)}`;
   } catch(e) {
     panel.classList.add('hidden');
   }
@@ -3239,6 +3311,20 @@ function dismissAllReminders() {
     const btn = row.querySelector('button[onclick^="skipSalaryReminder"]');
     if (btn) btn.click();
   });
+}
+
+function srToggleSection(hd, key) {
+  const section = hd.closest('.sr-section');
+  const chevron = hd.querySelector('.sr-chevron');
+  const collapsed = section.classList.toggle('sr-collapsed');
+  if (chevron) chevron.textContent = collapsed ? '▶' : '▼';
+  localStorage.setItem(key, collapsed ? '1' : '0');
+}
+
+function srSwitchTab(btn, tab) {
+  const section = btn.closest('.sr-section');
+  section.querySelectorAll('.sr-tab').forEach(t => t.classList.toggle('sr-tab--active', t.dataset.tab === tab));
+  section.querySelectorAll('.sr-tab-pane').forEach(p => p.classList.toggle('sr-tab-pane--hidden', p.dataset.pane !== tab));
 }
 
 // ─── CALENDAR REMINDERS ───────────────────────────────────────────────────────
