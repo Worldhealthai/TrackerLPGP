@@ -3230,91 +3230,74 @@ async function renderSalaryReminderPanel() {
 
     panel.classList.remove('hidden');
     const monthName = MONTHS[month];
+    const monthShort = monthName.slice(0, 3);
 
     const seGBP      = unpaid.filter(e => e.employment_type === 'self_employed' && (e.currency || 'GBP') === 'GBP');
     const seIntl     = unpaid.filter(e => e.employment_type === 'self_employed' && (e.currency || 'GBP') !== 'GBP');
     const payrollGBP = unpaid.filter(e => e.employment_type === 'payroll'       && (e.currency || 'GBP') === 'GBP');
     const payrollIntl= unpaid.filter(e => e.employment_type === 'payroll'       && (e.currency || 'GBP') !== 'GBP');
 
-    // All active SE GBP employees for "Annual Remaining" sub-section
-    const seGBPAll = overview.filter(e =>
-      !e.is_terminated &&
-      e.employment_type === 'self_employed' &&
-      (e.currency || 'GBP') === 'GBP' &&
-      parseFloat(e.net_remaining || 0) > 0 &&
-      parseFloat(e.annual_salary || 0) > 0
-    );
-
     function buildReminderRow(emp) {
       const sym = currencySymbol(emp.currency || 'GBP');
       const grossMonthly = (parseFloat(emp.annual_salary) || 0) / 12;
       const netMo = emp.net_monthly ? parseFloat(emp.net_monthly) : null;
       const displayAmount = netMo ?? grossMonthly;
-      const taxLabel = netMo ? ` <span class="sr-net-label">(net)</span>` : '';
-      return `<div class="salary-reminder-row">
-        <div class="salary-reminder-name">${esc(emp.name)}</div>
-        <div class="salary-reminder-amount">${sym}${displayAmount.toLocaleString('en-GB',{minimumFractionDigits:2})}/mo${taxLabel}</div>
-        <div class="salary-reminder-actions">
-          <button class="btn btn-ghost btn-sm" onclick="skipSalaryReminder(${emp.employee_id},${year},${month})">Skip</button>
-          <button class="btn btn-primary btn-sm" onclick="openSalaryPaymentModal(${emp.employee_id})">Log Payment</button>
+      const isNet = !!netMo;
+      const isPayroll = emp.employment_type === 'payroll';
+      const avatarColor = isPayroll ? '#4f46e5' : '#d97706';
+      const initials = (emp.name || '').split(' ').map(w => w[0] || '').slice(0, 2).join('').toUpperCase();
+      const remaining = parseFloat(emp.net_remaining || 0);
+      const annual    = parseFloat(emp.annual_salary || 0);
+      const pct = emp.pct_paid != null
+        ? Math.min(100, Math.round(parseFloat(emp.pct_paid)))
+        : (annual > 0 && emp.total_paid ? Math.min(100, Math.round(parseFloat(emp.total_paid) / annual * 100)) : 0);
+      const showBar = annual > 0 && remaining > 0;
+      return `<div class="srr" id="srr_${emp.employee_id}">
+        <div class="srr-avatar" style="background:${avatarColor}18;color:${avatarColor}">${initials}</div>
+        <div class="srr-info">
+          <div class="srr-name">${esc(emp.name)}</div>
+          ${showBar ? `<div class="srr-prog">
+            <div class="srr-prog-track"><div class="srr-prog-fill" style="width:${pct}%;background:${avatarColor}"></div></div>
+            <span class="srr-prog-lbl">${pct}%&thinsp;paid &middot; ${sym}${remaining.toLocaleString('en-GB',{maximumFractionDigits:0})} left</span>
+          </div>` : ''}
+        </div>
+        <div class="srr-right">
+          <div class="srr-amount">${sym}${displayAmount.toLocaleString('en-GB',{minimumFractionDigits:2})}/mo${isNet ? '<span class="srr-net">net</span>' : ''}</div>
+          <div class="srr-actions">
+            <button class="srr-skip" onclick="skipSalaryReminder(${emp.employee_id},${year},${month})">Skip ${monthShort}</button>
+            <button class="srr-pay" onclick="openSalaryPaymentModal(${emp.employee_id})">Log Payment</button>
+          </div>
         </div>
       </div>`;
     }
 
-    function buildAnnualRemainingSection(emps) {
-      if (!emps.length) return '';
-      return `<div class="sr-annual-section">
-        <div class="sr-annual-hd" onclick="this.parentElement.classList.toggle('sr-annual-open')">
-          <span class="sr-annual-title">Annual Remaining</span>
-          <span class="sr-annual-chevron">▶</span>
-        </div>
-        <div class="sr-annual-body">
-          ${emps.map(e => {
-            const remaining = parseFloat(e.net_remaining || 0);
-            const annual    = parseFloat(e.annual_salary || 0);
-            const pct       = annual > 0 ? Math.round((remaining / annual) * 100) : 0;
-            return `<div class="sr-annual-row">
-              <span class="sr-annual-name">${esc(e.name)}</span>
-              <span class="sr-annual-amt">£${remaining.toLocaleString('en-GB',{minimumFractionDigits:2})} left</span>
-              <span class="sr-annual-pct">${pct}%</span>
-            </div>`;
-          }).join('')}
-        </div>
-      </div>`;
-    }
-
-    function buildSESection(gbpList, intlList, annualList) {
+    function buildSESection(gbpList, intlList) {
       const totalCount = gbpList.length + intlList.length;
-      if (totalCount === 0 && !annualList.length) return '';
+      if (!totalCount) return '';
       const collapseKey = 'srCollapse_se';
       const isCollapsed = localStorage.getItem(collapseKey) === '1';
       const gbpRows  = gbpList.map(buildReminderRow).join('');
       const intlRows = intlList.map(buildReminderRow).join('');
-      const annualSec = buildAnnualRemainingSection(annualList);
-      const hasIntl = intlList.length > 0;
+      const hasIntl  = intlList.length > 0;
       return `<div class="sr-section sr-section--se${isCollapsed ? ' sr-collapsed' : ''}">
-        <div class="sr-section-hd sr-section-hd--se" onclick="srToggleSection(this,'${collapseKey}')">
+        <div class="sr-section-hd" onclick="srToggleSection(this,'${collapseKey}')">
           <span class="sr-chevron">${isCollapsed ? '▶' : '▼'}</span>
-          <span class="sr-section-title" style="color:#d97706">Self-Employed</span>
-          <span class="sr-section-count">${totalCount > 0 ? totalCount + ' to pay' : 'all paid'}</span>
+          <span class="sr-section-dot" style="background:#d97706"></span>
+          <span class="sr-section-title">Self-Employed</span>
+          <span class="sr-section-count">${totalCount} to pay</span>
         </div>
         <div class="sr-section-body">
-          ${totalCount > 0 ? `
-          <div class="sr-tabs">
+          ${hasIntl ? `<div class="sr-tabs">
             <button class="sr-tab sr-tab--active" data-tab="gbp" onclick="srSwitchTab(this,'gbp')">
-              GBP ${gbpList.length > 0 ? `<span class="sr-tab-badge">${gbpList.length}</span>` : ''}
+              GBP${gbpList.length ? ` <span class="sr-tab-badge">${gbpList.length}</span>` : ''}
             </button>
             <button class="sr-tab" data-tab="intl" onclick="srSwitchTab(this,'intl')">
-              International ${intlList.length > 0 ? `<span class="sr-tab-badge sr-tab-badge--intl">${intlList.length}</span>` : ''}
+              International${intlList.length ? ` <span class="sr-tab-badge sr-tab-badge--intl">${intlList.length}</span>` : ''}
             </button>
           </div>
-          <div class="sr-tab-pane" data-pane="gbp">
-            ${gbpRows || '<div class="sr-empty">All GBP self-employed paid ✓</div>'}
-          </div>
-          <div class="sr-tab-pane sr-tab-pane--hidden" data-pane="intl">
-            ${intlRows || '<div class="sr-empty">No international self-employed unpaid ✓</div>'}
-          </div>` : ''}
-          ${annualSec}
+          <div class="sr-tab-pane" data-pane="gbp">${gbpRows || '<div class="srr-empty">All paid ✓</div>'}</div>
+          <div class="sr-tab-pane sr-tab-pane--hidden" data-pane="intl">${intlRows}</div>` :
+          gbpRows}
         </div>
       </div>`;
     }
@@ -3327,21 +3310,29 @@ async function renderSalaryReminderPanel() {
       const allRows = [...gbpList, ...intlList].map(buildReminderRow).join('');
       return `<div class="sr-section${isCollapsed ? ' sr-collapsed' : ''}">
         <div class="sr-section-hd" onclick="srToggleSection(this,'${collapseKey}')">
-          <span class="sr-chevron">▼</span>
-          <span class="sr-section-title" style="color:#4f46e5">Payroll</span>
+          <span class="sr-chevron">${isCollapsed ? '▶' : '▼'}</span>
+          <span class="sr-section-dot" style="background:#4f46e5"></span>
+          <span class="sr-section-title">Payroll</span>
           <span class="sr-section-count">${totalCount} to pay</span>
         </div>
         <div class="sr-section-body">${allRows}</div>
       </div>`;
     }
 
-    panel.innerHTML = `
-      <div class="salary-reminder-header">
-        <span class="sr-header-text">💳 ${unpaid.length} employee${unpaid.length > 1 ? 's' : ''} not yet paid for ${monthName} ${year}</span>
-        <button class="btn btn-ghost btn-sm" onclick="dismissAllReminders()">Dismiss all</button>
+    panel.innerHTML = `<div class="srp">
+      <div class="srp-hd">
+        <div class="srp-hd-left">
+          <span class="srp-icon">💳</span>
+          <div>
+            <div class="srp-title">${unpaid.length} employee${unpaid.length > 1 ? 's' : ''} unpaid</div>
+            <div class="srp-sub">${monthName} ${year}</div>
+          </div>
+        </div>
+        <button class="srp-dismiss" onclick="dismissAllReminders()" title="Skip all for this month">Dismiss all</button>
       </div>
-      ${buildSESection(seGBP, seIntl, seGBPAll)}
-      ${buildPayrollSection(payrollGBP, payrollIntl)}`;
+      ${buildSESection(seGBP, seIntl)}
+      ${buildPayrollSection(payrollGBP, payrollIntl)}
+    </div>`;
   } catch(e) {
     panel.classList.add('hidden');
   }
@@ -3349,7 +3340,18 @@ async function renderSalaryReminderPanel() {
 
 function skipSalaryReminder(empId, year, month) {
   localStorage.setItem(`paySkip_${year}_${month}_${empId}`, '1');
-  renderSalaryReminderPanel();
+  const row = document.getElementById(`srr_${empId}`);
+  if (row) {
+    row.style.transition = 'opacity 0.25s, max-height 0.3s, padding 0.3s';
+    row.style.overflow = 'hidden';
+    row.style.opacity = '0';
+    row.style.maxHeight = '0';
+    row.style.paddingTop = '0';
+    row.style.paddingBottom = '0';
+    setTimeout(() => renderSalaryReminderPanel(), 320);
+  } else {
+    renderSalaryReminderPanel();
+  }
 }
 
 function toggleSalaryReminder() {
@@ -3368,10 +3370,7 @@ function dismissAllReminders() {
   const month = now.getMonth() + 1;
   const panel = document.getElementById('salaryReminderPanel');
   if (!panel) return;
-  panel.querySelectorAll('.salary-reminder-row').forEach(row => {
-    const btn = row.querySelector('button[onclick^="skipSalaryReminder"]');
-    if (btn) btn.click();
-  });
+  panel.querySelectorAll('.srr-skip').forEach(btn => btn.click());
 }
 
 function srToggleSection(hd, key) {
