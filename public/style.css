@@ -2169,6 +2169,59 @@ tbody tr:last-child td { border-bottom: none; }
 .sr-section .salary-reminder-row { border-bottom: 1px solid rgba(253,230,138,0.6); }
 .sr-section .salary-reminder-row:last-child { border-bottom: none; }
 
+/* Collapsible sections */
+.sr-section-hd { cursor: pointer; user-select: none; }
+.sr-section-hd:hover { background: rgba(0,0,0,0.04); }
+.sr-chevron { font-size: 0.65rem; color: var(--muted); flex-shrink: 0; transition: transform 0.15s; }
+.sr-collapsed .sr-section-body { display: none; }
+
+/* SE tabs */
+.sr-tabs { display: flex; gap: 6px; padding: 10px 16px 0; }
+.sr-tab {
+  padding: 5px 14px; border-radius: 20px; border: 1px solid var(--border);
+  background: transparent; font: 600 11px/1 var(--font-mono); color: var(--muted);
+  cursor: pointer; transition: all 0.15s;
+}
+.sr-tab--active { background: #d97706; color: #fff; border-color: #d97706; }
+.sr-tab:not(.sr-tab--active):hover { background: var(--bg); }
+.sr-tab-badge {
+  display: inline-block; background: rgba(255,255,255,0.35); color: inherit;
+  border-radius: 10px; padding: 1px 6px; font-size: 10px; margin-left: 4px;
+}
+.sr-tab--active .sr-tab-badge { background: rgba(255,255,255,0.3); }
+.sr-tab-badge--intl { background: rgba(8,145,178,0.15); color: #0891b2; }
+.sr-tab-pane--hidden { display: none; }
+.sr-empty { padding: 12px 16px; font-size: 0.78rem; color: var(--muted); font-style: italic; }
+
+/* Annual remaining sub-section */
+.sr-annual-section { border-top: 1px dashed rgba(0,0,0,0.1); margin-top: 4px; }
+.sr-annual-hd {
+  display: flex; align-items: center; gap: 8px; padding: 8px 16px;
+  cursor: pointer; user-select: none;
+}
+.sr-annual-hd:hover { background: rgba(0,0,0,0.03); }
+.sr-annual-title { font: 700 0.67rem/1 var(--font-mono); text-transform: uppercase; letter-spacing: 0.6px; color: #059669; flex: 1; }
+.sr-annual-chevron { font-size: 0.6rem; color: #059669; }
+.sr-annual-open .sr-annual-chevron { transform: rotate(90deg); }
+.sr-annual-body { display: none; padding: 0 0 8px; }
+.sr-annual-open .sr-annual-body { display: block; }
+.sr-annual-row {
+  display: flex; align-items: center; gap: 10px;
+  padding: 6px 16px; font-size: 0.8rem;
+  border-bottom: 1px solid rgba(0,0,0,0.04);
+}
+.sr-annual-row:last-child { border-bottom: none; }
+.sr-annual-name { flex: 1; font-weight: 600; color: var(--text); }
+.sr-annual-amt { font: 600 0.8rem/1 var(--font-mono); color: #059669; }
+.sr-annual-pct { font-size: 0.72rem; color: var(--muted); min-width: 32px; text-align: right; }
+
+/* Dark mode overrides */
+[data-theme="dark"] .salary-reminder-panel { background: var(--card); border-color: rgba(217,119,6,0.3); }
+[data-theme="dark"] .salary-reminder-header { background: rgba(217,119,6,0.1); border-color: rgba(217,119,6,0.2); }
+[data-theme="dark"] .sr-section { border-color: rgba(217,119,6,0.15); }
+[data-theme="dark"] .salary-reminder-row { border-color: rgba(217,119,6,0.1); }
+[data-theme="dark"] .sr-annual-section { border-color: rgba(255,255,255,0.08); }
+
 /* ══════════════════════════════════════════
    CALENDAR REMINDER DOTS & CHIPS
 ══════════════════════════════════════════ */
