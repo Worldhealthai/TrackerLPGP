@@ -2133,94 +2133,158 @@ tbody tr:last-child td { border-bottom: none; }
 .nav-badge-bottom { position: absolute; top: 4px; right: calc(50% - 18px); min-width: 16px; height: 16px; font-size: 0.55rem; margin-left: 0; }
 
 /* ══════════════════════════════════════════
-   SALARY PAYMENT REMINDER PANEL
+   SALARY PAYMENT REMINDER PANEL  (srp / srr)
 ══════════════════════════════════════════ */
-.salary-reminder-panel {
-  background: #fffbeb; border: 1px solid #fde68a; border-radius: var(--radius);
-  overflow: hidden; box-shadow: var(--shadow-sm);
-}
-.salary-reminder-header {
-  display: flex; align-items: center; gap: 10px; padding: 13px 18px;
-  border-bottom: 1px solid #fde68a; background: rgba(251,191,36,0.10);
-}
-.salary-reminder-icon { font-size: 1rem; }
-.salary-reminder-title { flex: 1; font-size: 0.875rem; font-weight: 700; color: #78350f; }
-.salary-reminder-dismiss { background: none; border: none; cursor: pointer; color: #92400e; font-size: 0.9rem; opacity: 0.45; transition: opacity 0.15s; padding: 2px 6px; border-radius: 4px; }
-.salary-reminder-dismiss:hover { opacity: 1; background: rgba(0,0,0,0.06); }
-.salary-reminder-row { display: flex; align-items: center; gap: 10px; padding: 11px 18px; border-bottom: 1px solid #fde68a; font-size: 0.845rem; flex-wrap: wrap; }
-.salary-reminder-row:last-child { border-bottom: none; }
-.salary-reminder-name { font-weight: 700; color: var(--text); flex: 1; min-width: 100px; }
-.salary-reminder-amount { color: var(--muted); font-size: 0.8rem; }
-.sr-net-label { font-size: 0.72rem; color: var(--muted); }
 
-/* Salary reminder category sections */
-.sr-section { border-bottom: 1px solid #fde68a; }
-.sr-section:last-child { border-bottom: none; }
+/* Outer wrapper injected by JS */
+.srp {
+  background: var(--surface); border: 1px solid #fde68a;
+  border-radius: var(--radius); overflow: hidden; box-shadow: var(--shadow-sm);
+}
+
+/* Panel header */
+.srp-hd {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 14px 20px; background: rgba(251,191,36,0.07);
+  border-bottom: 1px solid #fde68a;
+}
+.srp-hd-left { display: flex; align-items: center; gap: 12px; }
+.srp-icon { font-size: 1.15rem; line-height: 1; }
+.srp-title { font: 700 0.875rem/1.2 var(--font-sans); color: #78350f; }
+.srp-sub { font: 500 0.72rem/1 var(--font-mono); color: #92400e; margin-top: 3px; opacity: 0.7; }
+.srp-dismiss {
+  padding: 5px 12px; border-radius: 6px; border: 1px solid rgba(217,119,6,0.3);
+  background: transparent; font: 600 0.72rem var(--font-sans); color: #92400e;
+  cursor: pointer; transition: all 0.15s; flex-shrink: 0;
+}
+.srp-dismiss:hover { background: rgba(217,119,6,0.1); }
+
+/* Category sections */
+.sr-section { border-top: 1px solid #fde68a; }
+.sr-section:first-of-type { border-top: none; }
 .sr-section-hd {
-  display: flex; align-items: center; gap: 10px;
-  padding: 7px 18px; background: rgba(0,0,0,0.02);
-  border-bottom: 1px solid rgba(0,0,0,0.04);
+  display: flex; align-items: center; gap: 8px; padding: 9px 20px;
+  background: rgba(0,0,0,0.015); cursor: pointer; user-select: none;
+  border-bottom: 1px solid rgba(253,230,138,0.4);
 }
-.sr-section-title {
-  font-size: 0.67rem; font-weight: 800; text-transform: uppercase; letter-spacing: 0.7px;
-  flex: 1;
-}
-.sr-section-count { font-size: 0.72rem; color: var(--muted); }
-.sr-section .salary-reminder-row { border-bottom: 1px solid rgba(253,230,138,0.6); }
-.sr-section .salary-reminder-row:last-child { border-bottom: none; }
-
-/* Collapsible sections */
-.sr-section-hd { cursor: pointer; user-select: none; }
-.sr-section-hd:hover { background: rgba(0,0,0,0.04); }
-.sr-chevron { font-size: 0.65rem; color: var(--muted); flex-shrink: 0; transition: transform 0.15s; }
+.sr-section-hd:hover { background: rgba(0,0,0,0.03); }
+.sr-chevron { font-size: 0.6rem; color: var(--muted); flex-shrink: 0; }
+.sr-section-dot { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; }
+.sr-section-title { font: 700 0.67rem/1 var(--font-mono); text-transform: uppercase; letter-spacing: 0.8px; color: var(--text); flex: 1; }
+.sr-section-count { font: 500 0.72rem/1 var(--font-mono); color: var(--muted); }
 .sr-collapsed .sr-section-body { display: none; }
 
 /* SE tabs */
-.sr-tabs { display: flex; gap: 6px; padding: 10px 16px 0; }
+.sr-tabs { display: flex; gap: 6px; padding: 10px 20px 0; }
 .sr-tab {
-  padding: 5px 14px; border-radius: 20px; border: 1px solid var(--border);
+  padding: 4px 13px; border-radius: 20px; border: 1px solid var(--border);
   background: transparent; font: 600 11px/1 var(--font-mono); color: var(--muted);
   cursor: pointer; transition: all 0.15s;
 }
 .sr-tab--active { background: #d97706; color: #fff; border-color: #d97706; }
 .sr-tab:not(.sr-tab--active):hover { background: var(--bg); }
 .sr-tab-badge {
-  display: inline-block; background: rgba(255,255,255,0.35); color: inherit;
-  border-radius: 10px; padding: 1px 6px; font-size: 10px; margin-left: 4px;
+  display: inline-block; background: rgba(0,0,0,0.12); color: inherit;
+  border-radius: 10px; padding: 1px 5px; font-size: 10px; margin-left: 3px;
 }
 .sr-tab--active .sr-tab-badge { background: rgba(255,255,255,0.3); }
 .sr-tab-badge--intl { background: rgba(8,145,178,0.15); color: #0891b2; }
 .sr-tab-pane--hidden { display: none; }
-.sr-empty { padding: 12px 16px; font-size: 0.78rem; color: var(--muted); font-style: italic; }
+.srr-empty { padding: 12px 20px; font-size: 0.78rem; color: var(--muted); font-style: italic; }
 
-/* Annual remaining sub-section */
-.sr-annual-section { border-top: 1px dashed rgba(0,0,0,0.1); margin-top: 4px; }
-.sr-annual-hd {
-  display: flex; align-items: center; gap: 8px; padding: 8px 16px;
-  cursor: pointer; user-select: none;
+/* Individual employee row */
+.srr {
+  display: flex; align-items: center; gap: 14px; padding: 12px 20px;
+  border-bottom: 1px solid rgba(253,230,138,0.45);
+  transition: background 0.12s;
 }
-.sr-annual-hd:hover { background: rgba(0,0,0,0.03); }
-.sr-annual-title { font: 700 0.67rem/1 var(--font-mono); text-transform: uppercase; letter-spacing: 0.6px; color: #059669; flex: 1; }
-.sr-annual-chevron { font-size: 0.6rem; color: #059669; }
-.sr-annual-open .sr-annual-chevron { transform: rotate(90deg); }
-.sr-annual-body { display: none; padding: 0 0 8px; }
-.sr-annual-open .sr-annual-body { display: block; }
-.sr-annual-row {
-  display: flex; align-items: center; gap: 10px;
-  padding: 6px 16px; font-size: 0.8rem;
-  border-bottom: 1px solid rgba(0,0,0,0.04);
+.srr:last-child { border-bottom: none; }
+.srr:hover { background: rgba(251,191,36,0.04); }
+
+.srr-avatar {
+  width: 36px; height: 36px; border-radius: 50%; flex-shrink: 0;
+  display: flex; align-items: center; justify-content: center;
+  font: 700 11px/1 var(--font-mono); text-transform: uppercase;
 }
-.sr-annual-row:last-child { border-bottom: none; }
-.sr-annual-name { flex: 1; font-weight: 600; color: var(--text); }
-.sr-annual-amt { font: 600 0.8rem/1 var(--font-mono); color: #059669; }
-.sr-annual-pct { font-size: 0.72rem; color: var(--muted); min-width: 32px; text-align: right; }
+.srr-info { flex: 1; min-width: 0; }
+.srr-name { font: 600 0.875rem/1.2 var(--font-sans); color: var(--text); }
+.srr-prog { display: flex; align-items: center; gap: 8px; margin-top: 5px; }
+.srr-prog-track { flex: 1; max-width: 110px; height: 4px; background: rgba(0,0,0,0.08); border-radius: 2px; overflow: hidden; }
+.srr-prog-fill { height: 100%; border-radius: 2px; transition: width 0.4s ease; }
+.srr-prog-lbl { font-size: 0.67rem; color: var(--muted); white-space: nowrap; }
+
+.srr-right { display: flex; flex-direction: column; align-items: flex-end; gap: 6px; flex-shrink: 0; }
+.srr-amount { font: 600 0.82rem/1 var(--font-mono); color: var(--text); }
+.srr-net {
+  display: inline-block; font-size: 0.65rem; font-weight: 500; color: var(--muted);
+  background: var(--surface-2); border-radius: 4px; padding: 1px 4px; margin-left: 4px;
+}
+.srr-actions { display: flex; gap: 6px; align-items: center; }
+.srr-skip {
+  padding: 4px 10px; border-radius: 6px; border: 1px solid var(--border);
+  background: transparent; font: 500 0.7rem/1 var(--font-sans); color: var(--muted);
+  cursor: pointer; transition: all 0.15s;
+}
+.srr-skip:hover { border-color: var(--negative); color: var(--negative); background: rgba(220,38,38,0.04); }
+.srr-pay {
+  padding: 4px 12px; border-radius: 6px; border: none;
+  background: #d97706; color: #fff; font: 600 0.7rem/1 var(--font-sans);
+  cursor: pointer; transition: background 0.15s;
+}
+.srr-pay:hover { background: #b45309; }
+
+/* Deprecated selectors kept so nothing breaks if referenced elsewhere */
+.salary-reminder-panel { }
+.salary-reminder-header { }
+.salary-reminder-row { }
+.salary-reminder-name { }
+.salary-reminder-amount { }
+.sr-net-label { }
+
+/* ── Dashboard Employee Summary: tabs, mini progress, last payment ── */
+.es-header { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.es-tabs { display: flex; gap: 6px; flex-wrap: wrap; }
+.es-tab {
+  padding: 5px 12px; border-radius: 20px; border: 1px solid var(--border);
+  background: transparent; font: 600 11px/1 var(--font-mono); color: var(--muted);
+  cursor: pointer; transition: all 0.15s; display: inline-flex; align-items: center; gap: 5px;
+}
+.es-tab:not(.es-tab--active):hover { background: var(--bg); color: var(--text); }
+.es-tab--active { background: var(--accent); color: #fff; border-color: var(--accent); }
+.es-tab-count {
+  display: inline-block; background: var(--surface-2); color: var(--muted);
+  border-radius: 10px; padding: 1px 6px; font-size: 10px; line-height: 1.4; min-width: 16px; text-align: center;
+}
+.es-tab--active .es-tab-count { background: rgba(255,255,255,0.25); color: #fff; }
+.es-tab-count--intl { background: rgba(8,145,178,0.15); color: #0891b2; }
+.es-tab--active .es-tab-count--intl { background: rgba(255,255,255,0.25); color: #fff; }
+.es-badge-intl { background: rgba(8,145,178,0.12); color: #0891b2; border-color: rgba(8,145,178,0.25); }
+
+.es-prog { height: 5px; background: var(--surface-2); border-radius: 3px; overflow: hidden; margin-top: 5px; max-width: 130px; }
+.es-prog-fill { height: 100%; background: var(--accent); border-radius: 3px; transition: width .4s ease; }
+.es-prog-lbl { font-size: 0.68rem; color: var(--muted); margin-top: 3px; }
+.es-empty { padding: 28px 16px; text-align: center; font-size: 0.85rem; color: var(--muted); }
+
+[data-theme="dark"] .es-tab-count { background: rgba(255,255,255,0.08); color: var(--muted); }
+[data-theme="dark"] .es-tab-count--intl { background: rgba(8,145,178,0.2); color: #5ed4e0; }
+[data-theme="dark"] .es-prog { background: rgba(255,255,255,0.08); }
+
 
 /* Dark mode overrides */
-[data-theme="dark"] .salary-reminder-panel { background: var(--card); border-color: rgba(217,119,6,0.3); }
-[data-theme="dark"] .salary-reminder-header { background: rgba(217,119,6,0.1); border-color: rgba(217,119,6,0.2); }
+[data-theme="dark"] .srp { background: var(--card); border-color: rgba(217,119,6,0.3); }
+[data-theme="dark"] .srp-hd { background: rgba(217,119,6,0.08); border-color: rgba(217,119,6,0.2); }
+[data-theme="dark"] .srp-title { color: #fde68a; }
+[data-theme="dark"] .srp-sub { color: #fde68a; }
+[data-theme="dark"] .srp-dismiss { border-color: rgba(217,119,6,0.2); color: #fde68a; }
+[data-theme="dark"] .srp-dismiss:hover { background: rgba(217,119,6,0.15); }
 [data-theme="dark"] .sr-section { border-color: rgba(217,119,6,0.15); }
-[data-theme="dark"] .salary-reminder-row { border-color: rgba(217,119,6,0.1); }
-[data-theme="dark"] .sr-annual-section { border-color: rgba(255,255,255,0.08); }
+[data-theme="dark"] .sr-section-hd { background: rgba(255,255,255,0.02); border-color: rgba(217,119,6,0.12); }
+[data-theme="dark"] .sr-section-hd:hover { background: rgba(255,255,255,0.04); }
+[data-theme="dark"] .srr { border-color: rgba(217,119,6,0.1); }
+[data-theme="dark"] .srr:hover { background: rgba(217,119,6,0.05); }
+[data-theme="dark"] .srr-skip { border-color: rgba(255,255,255,0.1); color: var(--muted); }
+[data-theme="dark"] .srr-skip:hover { border-color: var(--negative); color: var(--negative); background: rgba(220,38,38,0.08); }
+[data-theme="dark"] .srr-prog-track { background: rgba(255,255,255,0.08); }
 
 /* ══════════════════════════════════════════
    CALENDAR REMINDER DOTS & CHIPS

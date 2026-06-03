@@ -149,7 +149,15 @@
         <div id="contractExpiryPanel" style="margin-bottom:20px"></div>
 
         <div class="card">
-          <div class="card-header"><span class="card-title">Employee Summary</span></div>
+          <div class="card-header es-header">
+            <span class="card-title">Employee Summary</span>
+            <div class="es-tabs" id="esTabs">
+              <button class="es-tab es-tab--active" data-tab="all"     onclick="filterEmpSummary('all', this)">All <span class="es-tab-count" data-count="all">0</span></button>
+              <button class="es-tab"                data-tab="se"      onclick="filterEmpSummary('se', this)">Self-Employed <span class="es-tab-count" data-count="se">0</span></button>
+              <button class="es-tab"                data-tab="payroll" onclick="filterEmpSummary('payroll', this)">Payroll <span class="es-tab-count" data-count="payroll">0</span></button>
+              <button class="es-tab"                data-tab="intl"    onclick="filterEmpSummary('intl', this)">International <span class="es-tab-count es-tab-count--intl" data-count="intl">0</span></button>
+            </div>
+          </div>
           <div class="table-wrap">
             <table>
               <thead>
@@ -158,15 +166,15 @@
                   <th>Department</th>
                   <th>Type</th>
                   <th>Days Off (Year)</th>
-                  <th>Allowance</th>
-                  <th>Ref. Potential ⓘ</th>
-                  <th>Day-Off Deduction</th>
                   <th>Total Deduction</th>
+                  <th>Annual Left</th>
+                  <th>Last Payment</th>
                   <th></th>
                 </tr>
               </thead>
               <tbody id="dashTable"></tbody>
             </table>
+            <div id="dashTableEmpty" class="es-empty" style="display:none">No employees in this group.</div>
           </div>
         </div>
       </div>
