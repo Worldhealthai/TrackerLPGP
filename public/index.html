@@ -2,14 +2,19 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-  <meta name="theme-color" content="#4f6ef7">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0, viewport-fit=cover">
+  <meta name="theme-color" content="#4f46e5" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="#1e2235" media="(prefers-color-scheme: dark)">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="apple-mobile-web-app-title" content="LPGP">
   <meta name="mobile-web-app-capable" content="yes">
+  <meta name="application-name" content="LPGP Tracker">
   <link rel="manifest" href="/manifest.json">
   <link rel="apple-touch-icon" href="/icon-192.png">
+  <link rel="apple-touch-icon" sizes="192x192" href="/icon-192.png">
+  <link rel="apple-touch-icon" sizes="512x512" href="/icon-512.png">
+  <link rel="icon" type="image/png" sizes="192x192" href="/icon-192.png">
   <title>LPGP Tracker</title>
   <link rel="stylesheet" href="style.css">
   <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -151,11 +156,17 @@
         <div class="card">
           <div class="card-header es-header">
             <span class="card-title">Employee Summary</span>
-            <div class="es-tabs" id="esTabs">
-              <button class="es-tab es-tab--active" data-tab="all"     onclick="filterEmpSummary('all', this)">All <span class="es-tab-count" data-count="all">0</span></button>
-              <button class="es-tab"                data-tab="se"      onclick="filterEmpSummary('se', this)">Self-Employed <span class="es-tab-count" data-count="se">0</span></button>
-              <button class="es-tab"                data-tab="payroll" onclick="filterEmpSummary('payroll', this)">Payroll <span class="es-tab-count" data-count="payroll">0</span></button>
-              <button class="es-tab"                data-tab="intl"    onclick="filterEmpSummary('intl', this)">International <span class="es-tab-count es-tab-count--intl" data-count="intl">0</span></button>
+            <div class="es-controls">
+              <div class="es-search">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+                <input type="search" id="esSearch" placeholder="Search name…" oninput="searchEmpSummary()" autocomplete="off" />
+              </div>
+              <div class="es-tabs" id="esTabs">
+                <button class="es-tab es-tab--active" data-tab="all"     onclick="filterEmpSummary('all', this)">All <span class="es-tab-count" data-count="all">0</span></button>
+                <button class="es-tab"                data-tab="se"      onclick="filterEmpSummary('se', this)">Self-Employed <span class="es-tab-count" data-count="se">0</span></button>
+                <button class="es-tab"                data-tab="payroll" onclick="filterEmpSummary('payroll', this)">Payroll <span class="es-tab-count" data-count="payroll">0</span></button>
+                <button class="es-tab"                data-tab="intl"    onclick="filterEmpSummary('intl', this)">International <span class="es-tab-count es-tab-count--intl" data-count="intl">0</span></button>
+              </div>
             </div>
           </div>
           <div class="table-wrap">
@@ -238,27 +249,6 @@
 
       <!-- ══ SALARY ══ -->
       <div class="page" id="page-salary">
-        <div class="page-head">
-          <div>
-            <h1>Salary <span class="tag" id="salaryPageTag">2026</span></h1>
-            <div class="sub" id="salarySub">// Payroll YTD</div>
-          </div>
-          <div class="actions">
-            <button class="btn btn-ghost btn-sm" onclick="exportPayrollCSV()"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg> Export CSV</button>
-            <button class="btn btn-primary" onclick="openSalaryPaymentModal()"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg> Log payment</button>
-          </div>
-        </div>
-        <!-- Salary payment reminder panel -->
-        <div id="salaryReminderPanel" class="hidden" style="margin-bottom:18px">
-          <div class="salary-reminder-panel">
-            <div class="salary-reminder-header">
-              <span class="salary-reminder-icon">🔔</span>
-              <span id="salaryReminderTitle" class="salary-reminder-title">Unpaid employees this month</span>
-              <button class="salary-reminder-dismiss" onclick="dismissAllReminders()" title="Dismiss all">✕</button>
-            </div>
-            <div id="salaryReminderRows"></div>
-          </div>
-        </div>
         <!-- Controls row -->
         <div class="filter-bar" style="align-items:center">
           <div class="form-group" style="margin:0">
@@ -375,15 +365,6 @@
 
       <!-- ══ CALENDAR ══ -->
       <div class="page" id="page-calendar">
-        <div class="page-head">
-          <div>
-            <h1>Calendar</h1>
-            <div class="sub" id="calSub">// Days off &amp; expense reminders</div>
-          </div>
-          <div class="actions">
-            <button class="btn btn-primary" onclick="openCalReminderModal()"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg> Add reminder</button>
-          </div>
-        </div>
         <div class="filter-bar" style="align-items:center">
           <button class="btn btn-ghost" onclick="calPrevMonth()">‹ Prev</button>
           <h2 id="calMonthLabel" style="flex:1;text-align:center;font-size:1.1rem;margin:0"></h2>
@@ -1386,6 +1367,45 @@
 
 <!-- Toast container -->
 <div id="toastContainer" aria-live="polite" aria-atomic="false"></div>
+
+<!-- ══ WASTEMAN — AI assistant (admin only) ══ -->
+<button class="wm-launcher admin-only hidden" id="wmLauncher" onclick="wmToggle()" title="Ask Wasteman" aria-label="Ask Wasteman">
+  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2a3 3 0 0 1 3 3v1h1a3 3 0 0 1 3 3v1a2 2 0 0 1 2 2 2 2 0 0 1-2 2v1a3 3 0 0 1-3 3H8a3 3 0 0 1-3-3v-1a2 2 0 0 1-2-2 2 2 0 0 1 2-2V9a3 3 0 0 1 3-3h1V5a3 3 0 0 1 3-3z"/><circle cx="9" cy="12" r="1"/><circle cx="15" cy="12" r="1"/></svg>
+</button>
+
+<div class="wm-panel admin-only hidden" id="wmPanel" role="dialog" aria-label="Wasteman assistant">
+  <div class="wm-head">
+    <div class="wm-head-id">
+      <span class="wm-dot"></span>
+      <div>
+        <div class="wm-title">Wasteman</div>
+        <div class="wm-sub">Ask about salaries, staff, expenses…</div>
+      </div>
+    </div>
+    <div class="wm-head-actions">
+      <button class="wm-icon-btn" id="wmSpeakToggle" onclick="wmToggleSpeak()" title="Read answers aloud" aria-label="Toggle voice answers">🔊</button>
+      <button class="wm-icon-btn" onclick="wmClear()" title="Clear conversation" aria-label="Clear conversation">🗑</button>
+      <button class="wm-icon-btn" onclick="wmToggle()" title="Close" aria-label="Close">✕</button>
+    </div>
+  </div>
+  <div class="wm-body" id="wmBody">
+    <div class="wm-empty" id="wmEmpty">
+      <div class="wm-empty-icon">💬</div>
+      <p>Hi, I'm <strong>Wasteman</strong>. Ask me things like:</p>
+      <button class="wm-chip" onclick="wmAsk(this.textContent)">How much does Ali have left to be paid this year?</button>
+      <button class="wm-chip" onclick="wmAsk(this.textContent)">Who hasn't been paid this month?</button>
+      <button class="wm-chip" onclick="wmAsk(this.textContent)">What's outstanding on hotel expenses?</button>
+    </div>
+  </div>
+  <div class="wm-input-row">
+    <button class="wm-mic" id="wmMic" onclick="wmToggleMic()" title="Voice input" aria-label="Voice input">🎤</button>
+    <input type="text" id="wmInput" placeholder="Ask Wasteman…" autocomplete="off"
+           onkeydown="if(event.key==='Enter'){wmSend();}" />
+    <button class="wm-send" id="wmSend" onclick="wmSend()" title="Send" aria-label="Send">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+    </button>
+  </div>
+</div>
 
 <!-- ══ MODAL: Subscription ══ -->
 <div class="modal-overlay" id="subModal">

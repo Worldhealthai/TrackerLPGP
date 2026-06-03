@@ -1,24 +1,55 @@
 {
+  "id": "/",
   "name": "LPGP Tracker",
   "short_name": "LPGP",
   "description": "Employee & Event Management for LPGP Connect",
-  "start_url": "/",
+  "start_url": "/?source=pwa",
+  "scope": "/",
   "display": "standalone",
+  "display_override": ["standalone", "minimal-ui"],
   "orientation": "portrait-primary",
-  "background_color": "#0f1117",
-  "theme_color": "#4f6ef7",
+  "lang": "en-GB",
+  "dir": "ltr",
+  "background_color": "#1e2235",
+  "theme_color": "#4f46e5",
   "icons": [
     {
       "src": "/icon-192.png",
       "sizes": "192x192",
       "type": "image/png",
-      "purpose": "any maskable"
+      "purpose": "any"
     },
     {
       "src": "/icon-512.png",
       "sizes": "512x512",
       "type": "image/png",
-      "purpose": "any maskable"
+      "purpose": "any"
+    },
+    {
+      "src": "/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "Salary",
+      "short_name": "Salary",
+      "url": "/?page=salary",
+      "description": "Open the salary tracker"
+    },
+    {
+      "name": "Calendar",
+      "short_name": "Calendar",
+      "url": "/?page=calendar",
+      "description": "View days off & reminders"
+    },
+    {
+      "name": "Hotel Expenses",
+      "short_name": "Hotels",
+      "url": "/?page=hotels",
+      "description": "Track hotel & event costs"
     }
   ],
   "categories": ["business", "productivity"],

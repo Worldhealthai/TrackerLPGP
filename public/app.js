@@ -117,6 +117,17 @@ document.addEventListener('DOMContentLoaded', async () => {
   loadDashboard();
   refreshCalendarBadge();
 
+  // Deep-link / PWA shortcut support: /?page=salary opens that page directly
+  try {
+    const startPage = new URLSearchParams(window.location.search).get('page');
+    const validPages = ['dashboard','tracking','salary','employees','reports','calendar','admins','hotels','subscriptions','portfolio','deals','eventkit'];
+    if (startPage && validPages.includes(startPage)) {
+      navigate(startPage);
+      // tidy the URL so a manual refresh doesn't re-trigger
+      window.history.replaceState({}, '', '/');
+    }
+  } catch (e) { /* no-op */ }
+
   // Notification bell — admin only
   if (currentUser.role === 'admin') {
     document.getElementById('notifBellWrap').style.display = 'block';
@@ -172,7 +183,7 @@ function navigate(page) {
   if (page === 'employees') loadEmpTable();
   if (page === 'admins') loadAdmins();
   if (page === 'calendar') loadCalendar();
-  if (page === 'salary') { loadSalaryPage(); renderSalaryReminderPanel(); }
+  if (page === 'salary') { loadSalaryPage(); }
   if (page === 'hotels') loadHotelExpenses();
   if (page === 'subscriptions') loadSubscriptions();
   if (page === 'portfolio') { loadPortfolio(); }
@@ -246,17 +257,11 @@ function renderEmpTable() {
     const terminated = !emp.active && emp.termination_date;
     const statusBadge = emp.active ? 'badge-green' : (terminated ? 'badge-red' : 'badge-grey');
     const statusLabel = emp.active ? 'Active' : (terminated ? `Terminated ${emp.termination_date.slice(0,10)}` : 'Inactive');
-    const initials = (emp.name || '?').split(' ').filter(Boolean).slice(0,2).map(w => w[0]).join('').toUpperCase();
     const tr = document.createElement('tr');
     tr.innerHTML = `
       <td>
-        <div style="display:flex;align-items:center;gap:10px">
-          <div style="width:28px;height:28px;border-radius:7px;background:var(--accent-soft);border:1px solid var(--accent-line);color:var(--accent);font:700 10px/1 var(--font-mono);display:grid;place-items:center;flex-shrink:0">${initials}</div>
-          <div>
-            <div style="font-weight:600;color:var(--text);font-size:12.5px">${esc(emp.name)}</div>
-            <div style="font-size:10.5px;color:var(--muted);font-family:var(--font-mono)">${esc(emp.job_title||emp.department||'')}</div>
-          </div>
-        </div>
+        <div style="font-weight:600;color:var(--text);font-size:12.5px">${esc(emp.name)}</div>
+        <div style="font-size:10.5px;color:var(--muted);font-family:var(--font-mono)">${esc(emp.job_title||emp.department||'')}</div>
       </td>
       <td>
         ${emp.department ? `<div style="font-weight:600;font-size:0.83rem">${esc(emp.department)}</div>` : ''}
@@ -481,44 +486,32 @@ async function loadDashboard() {
   const hotelPaidTotal   = hotelData.reduce((a, h) => a + (parseFloat(h.paid_amount) || 0), 0);
 
   document.getElementById('dashStats').innerHTML = `
-    <div class="dash-bento dash-bento--3col">
-      <div class="dash-hero-card dash-hero-card--compact">
-        <div class="dash-hero-glow"></div>
-        <div class="dash-hero-label">Active Headcount</div>
-        <div class="dash-hero-value dash-hero-value--sm">${totalHeadcount}</div>
-        <div class="dash-hero-pills">
-          <span class="dash-hero-pill dash-hero-pill--blue">${payrollCount} Payroll</span>
-          <span class="dash-hero-pill dash-hero-pill--amber">${seCount} Self-Emp</span>
+    <div class="dash-stat-strip">
+      <div class="dss-card dss-card--accent" onclick="navigate('employees')" title="View employees">
+        <div class="dss-label">Active Headcount</div>
+        <div class="dss-value">${totalHeadcount}</div>
+        <div class="dss-row">
+          <span class="dss-pill dss-pill--blue">${payrollCount} Payroll</span>
+          <span class="dss-pill dss-pill--amber">${seCount} Self-Emp</span>
         </div>
-        <div style="margin-top:auto;padding-top:12px;border-top:1px solid rgba(255,255,255,0.08);cursor:pointer" onclick="navigate('salary')">
-          <div style="font:600 9px/1 var(--font-mono);text-transform:uppercase;letter-spacing:1px;color:var(--muted);margin-bottom:6px">Unpaid This Month</div>
-          <div style="display:flex;align-items:center;gap:8px">
-            <span style="font:700 24px/1 var(--font-mono);color:${unpaidCount > 0 ? 'var(--warning)' : 'var(--positive)'}">${unpaidCount}</span>
-            <span style="font:500 11px/1.3 var(--font-mono);color:var(--muted)">${unpaidCount > 0 ? 'Action required →' : 'All paid up'}</span>
-          </div>
-        </div>
-        <div class="dash-hero-footer">Total workforce · ${year}</div>
       </div>
-      <div id="headcountPanel"></div>
-      <div class="dash-mini-grid">
-        <div class="dash-mini-card dash-mini--indigo" style="cursor:pointer" onclick="navigate('salary')" title="Go to salary page">
-          <div class="dash-mini-icon">💷</div>
-          <div class="dash-mini-body">
-            <div class="dash-mini-label">Salaries Remaining</div>
-            <div class="dash-mini-value">£${fmtK(totalGBPRemaining)}</div>
-            <div class="dash-mini-sub">GBP outstanding · ${year}</div>
-          </div>
-        </div>
-        <div class="dash-mini-card ${hotelUnpaidCount > 0 ? 'dash-mini--alert' : 'dash-mini--green'}" style="cursor:pointer" onclick="navigate('hotels')" title="View hotel expenses">
-          <div class="dash-mini-icon">🏨</div>
-          <div class="dash-mini-body">
-            <div class="dash-mini-label">Hotel Fees Remaining</div>
-            <div class="dash-mini-value">${hotelUnpaidCount} event${hotelUnpaidCount !== 1 ? 's' : ''}</div>
-            <div class="dash-mini-sub">${hotelUnpaidCount > 0 ? `${hotelUnpaidCount} unpaid / partial →` : 'All settled'}</div>
-          </div>
-        </div>
+      <div class="dss-card ${unpaidCount > 0 ? 'dss-card--warn' : 'dss-card--ok'}" onclick="navigate('salary')" title="Go to salary">
+        <div class="dss-label">Unpaid This Month</div>
+        <div class="dss-value" style="color:${unpaidCount > 0 ? 'var(--warning)' : 'var(--positive)'}">${unpaidCount}</div>
+        <div class="dss-sub">${unpaidCount > 0 ? 'Needs attention →' : 'All paid up ✓'}</div>
+      </div>
+      <div class="dss-card dss-card--neutral" onclick="navigate('salary')" title="Go to salary">
+        <div class="dss-label">Year Salary Remaining</div>
+        <div class="dss-value" style="color:var(--negative)">£${fmtK(totalGBPRemaining)}</div>
+        <div class="dss-sub">GBP equiv · ${year}</div>
+      </div>
+      <div class="dss-card ${hotelUnpaidCount > 0 ? 'dss-card--warn' : 'dss-card--ok'}" onclick="navigate('hotels')" title="View hotels">
+        <div class="dss-label">Hotel Events Pending</div>
+        <div class="dss-value" style="color:${hotelUnpaidCount > 0 ? 'var(--warning)' : 'var(--positive)'}">${hotelUnpaidCount}</div>
+        <div class="dss-sub">${hotelUnpaidCount > 0 ? `${hotelUnpaidCount} unpaid / partial →` : 'All settled ✓'}</div>
       </div>
     </div>
+    <div id="headcountPanel"></div>
   `;
 
   // Revenue Intelligence + contract expiry panel
@@ -570,18 +563,26 @@ async function loadDashboard() {
         <div class="es-prog-lbl">${pctPaid != null ? pctPaid : 0}% paid</div>`;
     }
 
-    // Last payment recorded this year (most recent month)
+    // Last payment recorded (most recent by year+month)
     const pays = Array.isArray(sal.payments) ? sal.payments : [];
     let lastCell = '<span style="color:var(--muted)">—</span>';
     if (pays.length) {
-      const last = pays.reduce((a, b) => (Number(b.payment_month) > Number(a.payment_month) ? b : a), pays[0]);
+      const last = pays.reduce((a, b) => {
+        const aKey = (Number(a.payment_year) || 0) * 100 + (Number(a.payment_month) || 0);
+        const bKey = (Number(b.payment_year) || 0) * 100 + (Number(b.payment_month) || 0);
+        return bKey > aKey ? b : a;
+      }, pays[0]);
       const m = MONTHS[Number(last.payment_month)] || '';
-      lastCell = `<div style="font-weight:700">${fmtMoney(last.amount, last.currency || currency)}</div>
-        <div style="font-size:0.72rem;color:var(--muted)">${m}${last.payment_year ? ' ' + last.payment_year : ''}</div>`;
+      const yr = last.payment_year ? ` ${last.payment_year}` : '';
+      lastCell = `<div class="es-last-pay">
+        <span class="es-last-pay-amt">${fmtMoney(last.amount, last.currency || currency)}</span>
+        <span class="es-last-pay-date">${m}${yr}</span>
+      </div>`;
     }
 
     const tr = document.createElement('tr');
     tr.dataset.group = group;
+    tr.dataset.name = `${row.name || ''} ${emp?.department || ''} ${emp?.job_title || ''}`.toLowerCase();
     tr.innerHTML = `
       <td>
         <div style="font-weight:700">${esc(row.name)}</div>
@@ -612,17 +613,32 @@ async function loadDashboard() {
 
 // Tab filter for the dashboard Employee Summary table (all / se / payroll / intl)
 function filterEmpSummary(tab, btn) {
-  window._esFilter = tab;
+  if (tab) window._esFilter = tab;
+  applyEmpSummaryFilters();
+}
+
+function searchEmpSummary() {
+  applyEmpSummaryFilters();
+}
+
+function applyEmpSummaryFilters() {
+  const tab = window._esFilter || 'all';
+  const q = (document.getElementById('esSearch')?.value || '').trim().toLowerCase();
   document.querySelectorAll('#esTabs .es-tab').forEach(t =>
     t.classList.toggle('es-tab--active', t.dataset.tab === tab));
   let visible = 0;
   document.querySelectorAll('#dashTable tr').forEach(r => {
-    const show = tab === 'all' || r.dataset.group === tab;
+    const matchTab = tab === 'all' || r.dataset.group === tab;
+    const matchSearch = !q || (r.dataset.name || '').includes(q);
+    const show = matchTab && matchSearch;
     r.style.display = show ? '' : 'none';
     if (show) visible++;
   });
   const empty = document.getElementById('dashTableEmpty');
-  if (empty) empty.style.display = visible === 0 ? '' : 'none';
+  if (empty) {
+    empty.style.display = visible === 0 ? '' : 'none';
+    empty.textContent = q ? 'No employees match your search.' : 'No employees in this group.';
+  }
 }
 
 function renderRevenueIntelPanel(deals, expiring, evtRevData) {
@@ -1822,7 +1838,6 @@ function initSalaryYearSelect() {
 
 async function loadSalaryPage() {
   const container = document.getElementById('salaryCards');
-  renderSalaryReminderPanel();
   try {
     initSalaryYearSelect();
     const year       = document.getElementById('salaryYear').value || new Date().getFullYear();
@@ -1844,6 +1859,17 @@ async function loadSalaryPage() {
     }
     const data = await res.json();
     if (!Array.isArray(data)) throw new Error('Unexpected response from server');
+
+    // Unpaid-this-month set (current year only) — powers the expandable "to pay"
+    // lists inside the summary table, replacing the standalone reminder panel.
+    const _now = new Date();
+    const curY = _now.getFullYear(), curM = _now.getMonth() + 1;
+    const isCurrentYear = parseInt(year) === curY;
+    const unpaidList = isCurrentYear ? getUnpaidThisMonth(data, curY, curM) : [];
+    const unpaidSet  = new Set(unpaidList.map(e => e.employee_id));
+    const monthShort = MONTHS[curM].slice(0, 3);
+    updateSalaryBadge(unpaidList.length);
+
     // Update tab counts
     const base = empFilter ? data.filter(e => String(e.employee_id) === empFilter) : data;
     const searched = searchTerm
@@ -1903,12 +1929,11 @@ async function loadSalaryPage() {
     const gtDeduct  = allActive.reduce((s, e) => s + salFxToGBP((parseFloat(e.excess_deduction)||0)+(parseFloat(e.total_office_deductions)||0), e.currency || 'GBP'), 0);
     const gtRemain  = allActive.reduce((s, e) => s + Math.max(0, salFxToGBP(parseFloat(e.net_remaining) || 0, e.currency || 'GBP')), 0);
     const hasMultiCurrency = groups.some(g => g.currency !== 'GBP');
-    const phpGroups = groups.filter(g => g.currency === 'PHP');
-    const phpRemain = phpGroups.reduce((s, g) => s + g.rows.reduce((a, e) => a + Math.max(0, parseFloat(e.net_remaining) || 0), 0), 0);
     const gtPaidPct = gtTarget > 0 ? Math.min(100, Math.round(gtPaid / gtTarget * 100)) : 0;
     const fmtN = (v, sym) => sym + v.toLocaleString('en-GB', {maximumFractionDigits:0});
     const fmtGBP = v => '£' + v.toLocaleString('en-GB', {maximumFractionDigits:0});
 
+    window._salGrpOpen = window._salGrpOpen || {};
     const tableRows = groups.map(g => {
       const s       = currencySymbol(g.currency);
       const tTarget = g.rows.reduce((a, b) => a + (parseFloat(b.salary_target ?? b.annual_salary) || 0), 0);
@@ -1918,10 +1943,44 @@ async function loadSalaryPage() {
       const pct     = tTarget > 0 ? Math.min(100, Math.round(tPaid / tTarget * 100)) : 0;
       const isNonGBP = g.currency !== 'GBP';
       const groupLabel = `${TYPE_LABEL[g.type]}${g.currency !== 'GBP' ? ' · ' + g.currency : ''}`;
-      return `<tr>
+
+      // Employees in this group still needing payment this month
+      const groupUnpaid = g.rows.filter(r => unpaidSet.has(r.employee_id));
+      const key = `${g.type}_${g.currency}`;
+      const canExpand = groupUnpaid.length > 0;
+      const isOpen = canExpand && !!window._salGrpOpen[key];
+
+      const detailRows = canExpand ? groupUnpaid.map(r => {
+        const sym = currencySymbol(r.currency || 'GBP');
+        const grossMo = (parseFloat(r.annual_salary) || 0) / 12;
+        const netMo = r.net_monthly ? parseFloat(r.net_monthly) : null;
+        const amt = netMo ?? grossMo;
+        const remain = parseFloat(r.net_remaining);
+        const remainHtml = isFinite(remain)
+          ? (remain > 0
+              ? `<span class="sal-grp-payleft">${sym}${remain.toLocaleString('en-GB',{maximumFractionDigits:0})} left this year</span>`
+              : `<span class="sal-grp-payleft sal-grp-payleft--done">Fully paid</span>`)
+          : '';
+        return `<div class="sal-grp-payitem">
+          <span class="sal-grp-payname">${esc(r.name)}${remainHtml}</span>
+          <span class="sal-grp-payamt">${sym}${amt.toLocaleString('en-GB',{minimumFractionDigits:2})}/mo${netMo ? '<span class="srr-net">net</span>' : ''}</span>
+          <span class="sal-grp-payactions">
+            <button class="srr-skip" onclick="skipGroupReminder(${r.employee_id})">Skip ${monthShort}</button>
+            <button class="srr-pay" onclick="openSalaryPaymentModal(${r.employee_id})">Log Payment</button>
+          </span>
+        </div>`;
+      }).join('') : '';
+
+      const headRow = `<tr class="sal-grp-row${canExpand ? ' sal-grp-clickable' : ''}${isOpen ? ' sal-grp-open' : ''}" id="salgrp-head-${key}"${canExpand ? ` onclick="toggleSalaryGroup('${key}')"` : ''}>
         <td>
-          <div style="font-weight:600;font-size:0.85rem">${groupLabel}</div>
-          <div style="font-size:0.72rem;color:var(--muted)">${g.rows.length} employee${g.rows.length !== 1 ? 's' : ''}</div>
+          <div class="sal-grp-label">
+            <span class="sal-grp-chevron">${canExpand ? (isOpen ? '▼' : '▶') : ''}</span>
+            <div>
+              <div style="font-weight:600;font-size:0.85rem">${groupLabel}</div>
+              <div style="font-size:0.72rem;color:var(--muted)">${g.rows.length} employee${g.rows.length !== 1 ? 's' : ''}</div>
+            </div>
+            ${canExpand ? `<span class="sal-grp-topay">${groupUnpaid.length} to pay</span>` : ''}
+          </div>
         </td>
         <td>
           <div>${fmtN(tTarget, s)}</div>
@@ -1945,6 +2004,12 @@ async function loadSalaryPage() {
           </div>
         </td>
       </tr>`;
+
+      const detailRow = canExpand ? `<tr class="sal-grp-detail" id="salgrp-detail-${key}" style="display:${isOpen ? '' : 'none'}">
+        <td colspan="6"><div class="sal-grp-paylist">${detailRows}</div></td>
+      </tr>` : '';
+
+      return headRow + detailRow;
     }).join('');
 
     document.getElementById('salaryTotals').innerHTML = `
@@ -1964,7 +2029,7 @@ async function loadSalaryPage() {
             <td><div style="font-weight:700">${fmtGBP(gtTarget)}</div></td>
             <td><div style="font-weight:700;color:var(--positive)">${fmtGBP(gtPaid)}</div></td>
             <td>${gtDeduct > 0 ? `<div style="color:var(--warning)">−${fmtGBP(gtDeduct)}</div>` : '<span style="color:var(--muted)">—</span>'}</td>
-            <td><div style="font-weight:700;color:var(--negative)">${fmtGBP(gtRemain)}</div>${phpRemain > 0 ? `<div class="sal-tbl-sub">₱${phpRemain.toLocaleString('en-GB',{maximumFractionDigits:0})} PHP</div>` : ''}</td>
+            <td><div style="font-weight:700;color:var(--negative)">${fmtGBP(gtRemain)}</div></td>
             <td>
               <div style="display:flex;align-items:center;gap:8px">
                 <div style="flex:1;height:6px;background:var(--border);border-radius:3px;min-width:48px">
@@ -2110,13 +2175,25 @@ async function loadSalaryPage() {
               (monthlySub ? '<div style="font-size:0.7rem;color:var(--muted);margin-top:3px">' + monthlySub + '</div>' : '') +
             '</div>' +
             '<div style="padding:14px 20px' + (firstMonthUnpaid ? ';background:rgba(251,191,36,0.05)' : '') + '">' +
-              '<div style="font-size:0.68rem;text-transform:uppercase;letter-spacing:0.5px;color:var(--muted);margin-bottom:6px">' + (firstMonthUnpaid ? 'Pay This Month' : 'Year Balance') + '</div>' +
-              '<div style="font-size:1.3rem;font-weight:700;color:' + (firstMonthUnpaid ? '#f59e0b' : outColor) + '">' +
-                (firstMonthUnpaid
-                  ? sym + Math.round(suggestedFirstMonthNet).toLocaleString('en-GB')
-                  : (isOverpaid ? '−' : '') + sym + Math.abs(netRemaining).toLocaleString('en-GB',{maximumFractionDigits:0})) +
-              '</div>' +
-              (firstMonthUnpaid && fmMeta ? '<div style="font-size:0.7rem;color:var(--muted);margin-top:3px">' + fmMeta.daysWorked + ' of ' + fmMeta.daysTotal + ' days · ' + (fmMeta.monthName||'') + '</div>' : '') +
+              (firstMonthUnpaid
+                ? '<div style="font-size:0.68rem;text-transform:uppercase;letter-spacing:0.5px;color:var(--muted);margin-bottom:6px">Pay This Month</div>' +
+                  '<div style="font-size:1.3rem;font-weight:700;color:#f59e0b">' + sym + Math.round(suggestedFirstMonthNet).toLocaleString('en-GB') + '</div>' +
+                  (fmMeta ? '<div style="font-size:0.7rem;color:var(--muted);margin-top:3px">' + fmMeta.daysWorked + ' of ' + fmMeta.daysTotal + ' days · ' + (fmMeta.monthName||'') + '</div>' : '')
+                : (() => {
+                    const lastPay = payments.length
+                      ? payments.reduce((a,b) => ((Number(b.payment_year)||0)*100+(Number(b.payment_month)||0)) > ((Number(a.payment_year)||0)*100+(Number(a.payment_month)||0)) ? b : a, payments[0])
+                      : null;
+                    if (!lastPay) return '<div style="font-size:0.68rem;text-transform:uppercase;letter-spacing:0.5px;color:var(--muted);margin-bottom:6px">Last Payment</div>' +
+                      '<div style="font-size:1.3rem;font-weight:700;color:var(--muted)">—</div>' +
+                      '<div style="font-size:0.7rem;color:var(--muted);margin-top:3px">No payments yet</div>';
+                    const lpMonth = MONTHS[Number(lastPay.payment_month) - 1] || '';
+                    const lpYear  = lastPay.payment_year || '';
+                    const lpAmt   = sym + parseFloat(lastPay.amount||0).toLocaleString('en-GB',{maximumFractionDigits:0});
+                    return '<div style="font-size:0.68rem;text-transform:uppercase;letter-spacing:0.5px;color:var(--muted);margin-bottom:6px">Last Payment</div>' +
+                      '<div style="font-size:1.3rem;font-weight:700;color:var(--positive)">' + lpAmt + '</div>' +
+                      '<div style="font-size:0.7rem;color:var(--muted);margin-top:3px">' + lpMonth + (lpYear ? ' ' + lpYear : '') + '</div>';
+                  })()
+              ) +
             '</div>' +
           '</div>' +
           (!paye && excessDays > 0
@@ -3212,179 +3289,26 @@ function getUnpaidThisMonth(overview, year, month) {
   });
 }
 
-async function renderSalaryReminderPanel() {
-  const panel = document.getElementById('salaryReminderPanel');
-  if (!panel) return;
-  const now   = new Date();
-  const year  = now.getFullYear();
-  const month = now.getMonth() + 1;
-
-  try {
-    const res = await fetch(`/api/salary-overview?year=${year}`);
-    if (!res.ok) { panel.classList.add('hidden'); return; }
-    const overview = await res.json();
-    const unpaid   = getUnpaidThisMonth(overview, year, month);
-    updateSalaryBadge(unpaid.length);
-
-    if (!unpaid.length) { panel.classList.add('hidden'); return; }
-
-    panel.classList.remove('hidden');
-    const monthName = MONTHS[month];
-    const monthShort = monthName.slice(0, 3);
-
-    const seGBP      = unpaid.filter(e => e.employment_type === 'self_employed' && (e.currency || 'GBP') === 'GBP');
-    const seIntl     = unpaid.filter(e => e.employment_type === 'self_employed' && (e.currency || 'GBP') !== 'GBP');
-    const payrollGBP = unpaid.filter(e => e.employment_type === 'payroll'       && (e.currency || 'GBP') === 'GBP');
-    const payrollIntl= unpaid.filter(e => e.employment_type === 'payroll'       && (e.currency || 'GBP') !== 'GBP');
-
-    function buildReminderRow(emp) {
-      const sym = currencySymbol(emp.currency || 'GBP');
-      const grossMonthly = (parseFloat(emp.annual_salary) || 0) / 12;
-      const netMo = emp.net_monthly ? parseFloat(emp.net_monthly) : null;
-      const displayAmount = netMo ?? grossMonthly;
-      const isNet = !!netMo;
-      const isPayroll = emp.employment_type === 'payroll';
-      const avatarColor = isPayroll ? '#4f46e5' : '#d97706';
-      const initials = (emp.name || '').split(' ').map(w => w[0] || '').slice(0, 2).join('').toUpperCase();
-      const remaining = parseFloat(emp.net_remaining || 0);
-      const annual    = parseFloat(emp.annual_salary || 0);
-      const pct = emp.pct_paid != null
-        ? Math.min(100, Math.round(parseFloat(emp.pct_paid)))
-        : (annual > 0 && emp.total_paid ? Math.min(100, Math.round(parseFloat(emp.total_paid) / annual * 100)) : 0);
-      const showBar = annual > 0 && remaining > 0;
-      return `<div class="srr" id="srr_${emp.employee_id}">
-        <div class="srr-avatar" style="background:${avatarColor}18;color:${avatarColor}">${initials}</div>
-        <div class="srr-info">
-          <div class="srr-name">${esc(emp.name)}</div>
-          ${showBar ? `<div class="srr-prog">
-            <div class="srr-prog-track"><div class="srr-prog-fill" style="width:${pct}%;background:${avatarColor}"></div></div>
-            <span class="srr-prog-lbl">${pct}%&thinsp;paid &middot; ${sym}${remaining.toLocaleString('en-GB',{maximumFractionDigits:0})} left</span>
-          </div>` : ''}
-        </div>
-        <div class="srr-right">
-          <div class="srr-amount">${sym}${displayAmount.toLocaleString('en-GB',{minimumFractionDigits:2})}/mo${isNet ? '<span class="srr-net">net</span>' : ''}</div>
-          <div class="srr-actions">
-            <button class="srr-skip" onclick="skipSalaryReminder(${emp.employee_id},${year},${month})">Skip ${monthShort}</button>
-            <button class="srr-pay" onclick="openSalaryPaymentModal(${emp.employee_id})">Log Payment</button>
-          </div>
-        </div>
-      </div>`;
-    }
-
-    function buildSESection(gbpList, intlList) {
-      const totalCount = gbpList.length + intlList.length;
-      if (!totalCount) return '';
-      const collapseKey = 'srCollapse_se';
-      const isCollapsed = localStorage.getItem(collapseKey) === '1';
-      const gbpRows  = gbpList.map(buildReminderRow).join('');
-      const intlRows = intlList.map(buildReminderRow).join('');
-      const hasIntl  = intlList.length > 0;
-      return `<div class="sr-section sr-section--se${isCollapsed ? ' sr-collapsed' : ''}">
-        <div class="sr-section-hd" onclick="srToggleSection(this,'${collapseKey}')">
-          <span class="sr-chevron">${isCollapsed ? '▶' : '▼'}</span>
-          <span class="sr-section-dot" style="background:#d97706"></span>
-          <span class="sr-section-title">Self-Employed</span>
-          <span class="sr-section-count">${totalCount} to pay</span>
-        </div>
-        <div class="sr-section-body">
-          ${hasIntl ? `<div class="sr-tabs">
-            <button class="sr-tab sr-tab--active" data-tab="gbp" onclick="srSwitchTab(this,'gbp')">
-              GBP${gbpList.length ? ` <span class="sr-tab-badge">${gbpList.length}</span>` : ''}
-            </button>
-            <button class="sr-tab" data-tab="intl" onclick="srSwitchTab(this,'intl')">
-              International${intlList.length ? ` <span class="sr-tab-badge sr-tab-badge--intl">${intlList.length}</span>` : ''}
-            </button>
-          </div>
-          <div class="sr-tab-pane" data-pane="gbp">${gbpRows || '<div class="srr-empty">All paid ✓</div>'}</div>
-          <div class="sr-tab-pane sr-tab-pane--hidden" data-pane="intl">${intlRows}</div>` :
-          gbpRows}
-        </div>
-      </div>`;
-    }
-
-    function buildPayrollSection(gbpList, intlList) {
-      const totalCount = gbpList.length + intlList.length;
-      if (!totalCount) return '';
-      const collapseKey = 'srCollapse_payroll';
-      const isCollapsed = localStorage.getItem(collapseKey) === '1';
-      const allRows = [...gbpList, ...intlList].map(buildReminderRow).join('');
-      return `<div class="sr-section${isCollapsed ? ' sr-collapsed' : ''}">
-        <div class="sr-section-hd" onclick="srToggleSection(this,'${collapseKey}')">
-          <span class="sr-chevron">${isCollapsed ? '▶' : '▼'}</span>
-          <span class="sr-section-dot" style="background:#4f46e5"></span>
-          <span class="sr-section-title">Payroll</span>
-          <span class="sr-section-count">${totalCount} to pay</span>
-        </div>
-        <div class="sr-section-body">${allRows}</div>
-      </div>`;
-    }
-
-    panel.innerHTML = `<div class="srp">
-      <div class="srp-hd">
-        <div class="srp-hd-left">
-          <span class="srp-icon">💳</span>
-          <div>
-            <div class="srp-title">${unpaid.length} employee${unpaid.length > 1 ? 's' : ''} unpaid</div>
-            <div class="srp-sub">${monthName} ${year}</div>
-          </div>
-        </div>
-        <button class="srp-dismiss" onclick="dismissAllReminders()" title="Skip all for this month">Dismiss all</button>
-      </div>
-      ${buildSESection(seGBP, seIntl)}
-      ${buildPayrollSection(payrollGBP, payrollIntl)}
-    </div>`;
-  } catch(e) {
-    panel.classList.add('hidden');
+// Expand/collapse a group's "to pay" list inside the salary summary table
+function toggleSalaryGroup(key) {
+  window._salGrpOpen = window._salGrpOpen || {};
+  const open = !window._salGrpOpen[key];
+  window._salGrpOpen[key] = open;
+  const detail = document.getElementById('salgrp-detail-' + key);
+  const head   = document.getElementById('salgrp-head-' + key);
+  if (detail) detail.style.display = open ? '' : 'none';
+  if (head) {
+    head.classList.toggle('sal-grp-open', open);
+    const chev = head.querySelector('.sal-grp-chevron');
+    if (chev) chev.textContent = open ? '▼' : '▶';
   }
 }
 
-function skipSalaryReminder(empId, year, month) {
-  localStorage.setItem(`paySkip_${year}_${month}_${empId}`, '1');
-  const row = document.getElementById(`srr_${empId}`);
-  if (row) {
-    row.style.transition = 'opacity 0.25s, max-height 0.3s, padding 0.3s';
-    row.style.overflow = 'hidden';
-    row.style.opacity = '0';
-    row.style.maxHeight = '0';
-    row.style.paddingTop = '0';
-    row.style.paddingBottom = '0';
-    setTimeout(() => renderSalaryReminderPanel(), 320);
-  } else {
-    renderSalaryReminderPanel();
-  }
-}
-
-function toggleSalaryReminder() {
-  const body = document.getElementById('salaryReminderBody');
-  const btn  = document.getElementById('salaryReminderToggleBtn');
-  if (!body) return;
-  const opening = body.style.display === 'none';
-  body.style.display = opening ? '' : 'none';
-  if (btn) btn.innerHTML = opening ? '&#9650; Hide' : '&#9660; Show';
-  localStorage.setItem('salaryReminderOpen', opening ? '1' : '0');
-}
-
-function dismissAllReminders() {
-  const now   = new Date();
-  const year  = now.getFullYear();
-  const month = now.getMonth() + 1;
-  const panel = document.getElementById('salaryReminderPanel');
-  if (!panel) return;
-  panel.querySelectorAll('.srr-skip').forEach(btn => btn.click());
-}
-
-function srToggleSection(hd, key) {
-  const section = hd.closest('.sr-section');
-  const chevron = hd.querySelector('.sr-chevron');
-  const collapsed = section.classList.toggle('sr-collapsed');
-  if (chevron) chevron.textContent = collapsed ? '▶' : '▼';
-  localStorage.setItem(key, collapsed ? '1' : '0');
-}
-
-function srSwitchTab(btn, tab) {
-  const section = btn.closest('.sr-section');
-  section.querySelectorAll('.sr-tab').forEach(t => t.classList.toggle('sr-tab--active', t.dataset.tab === tab));
-  section.querySelectorAll('.sr-tab-pane').forEach(p => p.classList.toggle('sr-tab-pane--hidden', p.dataset.pane !== tab));
+// Skip a single employee for the current month from the merged summary list
+function skipGroupReminder(empId) {
+  const now = new Date();
+  localStorage.setItem(`paySkip_${now.getFullYear()}_${now.getMonth() + 1}_${empId}`, '1');
+  loadSalaryPage();
 }
 
 // ─── CALENDAR REMINDERS ───────────────────────────────────────────────────────
@@ -3533,27 +3457,26 @@ function renderHotelSummary() {
 
   const currencyCards = Object.entries(byCur).map(([cur, sums]) => {
     const sym = hotelCurrencySymbol(cur);
-    const total_spent = sums.paid + sums.av;
     const outstanding = sums.cost > 0 ? Math.max(0, sums.cost - sums.paid) : null;
     return `
       <div class="hotel-fin-card">
         <div class="hotel-fin-currency">${cur}</div>
         <div class="hotel-fin-row">
-          <span class="hotel-fin-lbl">Venue / Hotel Paid</span>
-          <span class="hotel-fin-val hotel-fin-green">${sym}${fmtN(sums.paid)}</span>
+          <span class="hotel-fin-lbl">Hotel Cost</span>
+          <span class="hotel-fin-val">${sums.cost > 0 ? sym+fmtN(sums.cost) : '<span class="hotel-fin-na">—</span>'}</span>
         </div>
         <div class="hotel-fin-row">
-          <span class="hotel-fin-lbl">AV (separate charges)</span>
+          <span class="hotel-fin-lbl">AV Cost</span>
           <span class="hotel-fin-val hotel-fin-blue">${sym}${fmtN(sums.av)}</span>
         </div>
-        <div class="hotel-fin-row hotel-fin-total-row">
-          <span class="hotel-fin-lbl">Total Spent</span>
-          <span class="hotel-fin-val">${sym}${fmtN(total_spent)}</span>
+        <div class="hotel-fin-row">
+          <span class="hotel-fin-lbl">Paid towards</span>
+          <span class="hotel-fin-val hotel-fin-green">${sym}${fmtN(sums.paid)}</span>
         </div>
-        ${outstanding !== null ? `<div class="hotel-fin-row" style="margin-top:6px;border-top:1px solid var(--border);padding-top:6px">
+        <div class="hotel-fin-row hotel-fin-total-row">
           <span class="hotel-fin-lbl">Outstanding</span>
-          <span class="hotel-fin-val ${outstanding > 0 ? 'hotel-fin-red' : 'hotel-fin-green'}">${outstanding > 0 ? sym+fmtN(outstanding) : '✓ Settled'}</span>
-        </div>` : ''}
+          <span class="hotel-fin-val ${outstanding === null ? '' : outstanding > 0 ? 'hotel-fin-red' : 'hotel-fin-green'}">${outstanding === null ? '<span class="hotel-fin-na">—</span>' : outstanding > 0 ? sym+fmtN(outstanding) : '✓ Settled'}</span>
+        </div>
       </div>`;
   }).join('');
 
@@ -3570,10 +3493,10 @@ function renderHotelSummary() {
   const gbpOutstanding = gbpCost > 0 ? Math.max(0, gbpCost - gbpPaid) : null;
   const gbpCard = `<div class="hotel-fin-card hotel-fin-card--gbp">
     <div class="hotel-fin-currency" style="color:var(--accent)">≈ GBP TOTAL <span style="font-size:9px;font-weight:400;opacity:0.7">estimated</span></div>
-    <div class="hotel-fin-row"><span class="hotel-fin-lbl">Venue / Hotel</span><span class="hotel-fin-val hotel-fin-green">£${fmtN(gbpPaid)}</span></div>
-    <div class="hotel-fin-row"><span class="hotel-fin-lbl">AV Charges</span><span class="hotel-fin-val hotel-fin-blue">£${fmtN(gbpAv)}</span></div>
-    <div class="hotel-fin-row hotel-fin-total-row"><span class="hotel-fin-lbl">Total Spent</span><span class="hotel-fin-val">£${fmtN(gbpTotal)}</span></div>
-    ${gbpOutstanding !== null ? `<div class="hotel-fin-row" style="margin-top:6px;border-top:1px solid var(--border);padding-top:6px"><span class="hotel-fin-lbl">Outstanding</span><span class="hotel-fin-val ${gbpOutstanding > 0 ? 'hotel-fin-red' : 'hotel-fin-green'}">${gbpOutstanding > 0 ? '£'+fmtN(gbpOutstanding) : '✓ Settled'}</span></div>` : ''}
+    <div class="hotel-fin-row"><span class="hotel-fin-lbl">Hotel Cost</span><span class="hotel-fin-val">${gbpCost > 0 ? '£'+fmtN(gbpCost) : '<span class="hotel-fin-na">—</span>'}</span></div>
+    <div class="hotel-fin-row"><span class="hotel-fin-lbl">AV Cost</span><span class="hotel-fin-val hotel-fin-blue">£${fmtN(gbpAv)}</span></div>
+    <div class="hotel-fin-row"><span class="hotel-fin-lbl">Paid towards</span><span class="hotel-fin-val hotel-fin-green">£${fmtN(gbpPaid)}</span></div>
+    <div class="hotel-fin-row hotel-fin-total-row"><span class="hotel-fin-lbl">Outstanding</span><span class="hotel-fin-val ${gbpOutstanding === null ? '' : gbpOutstanding > 0 ? 'hotel-fin-red' : 'hotel-fin-green'}">${gbpOutstanding === null ? '<span class="hotel-fin-na">—</span>' : gbpOutstanding > 0 ? '£'+fmtN(gbpOutstanding) : '✓ Settled'}</span></div>
     <div style="margin-top:8px;padding-top:6px;border-top:1px dashed var(--border);font:500 9px/1.5 var(--font-mono);color:var(--muted)">USD×0.787 · EUR×0.855<br>CHF×0.885 · AED×0.214</div>
   </div>`;
 
@@ -5313,11 +5236,18 @@ async function loadEmployeeDashboard(user) {
                   '<div style="font:500 10px/1 var(--font-mono);color:var(--muted);margin-top:6px">' + fmMeta2.daysWorked + ' of ' + fmMeta2.daysTotal + ' days · ' + fmMeta2.monthName + '</div>' +
                 '</div>'
               : '') +
-            '<div style="flex:1;padding:16px 20px">' +
-              '<div style="font:600 9px/1 var(--font-mono);text-transform:uppercase;letter-spacing:1px;color:var(--muted);margin-bottom:8px">Year Balance</div>' +
-              '<div style="font:700 22px/1 var(--font-mono);color:' + outColor + '">' + (isOverpaid ? '−' : '') + sSym + Math.abs(netRemaining).toLocaleString('en-GB',{maximumFractionDigits:0}) + '</div>' +
-              '<div style="font:500 10px/1 var(--font-mono);color:var(--muted);margin-top:6px">' + (isOverpaid ? 'overpaid' : s.year + ' balance') + '</div>' +
-            '</div>' +
+            (() => {
+              const lastPay2 = payments.length
+                ? payments.reduce((a,b) => ((Number(b.payment_year)||0)*100+(Number(b.payment_month)||0)) > ((Number(a.payment_year)||0)*100+(Number(a.payment_month)||0)) ? b : a, payments[0])
+                : null;
+              const lp2Amt   = lastPay2 ? sSym + parseFloat(lastPay2.amount||0).toLocaleString('en-GB',{maximumFractionDigits:0}) : '—';
+              const lp2Date  = lastPay2 ? (MONTHS[Number(lastPay2.payment_month)-1]||'') + (lastPay2.payment_year ? ' '+lastPay2.payment_year : '') : 'No payments yet';
+              return '<div style="flex:1;padding:16px 20px">' +
+                '<div style="font:600 9px/1 var(--font-mono);text-transform:uppercase;letter-spacing:1px;color:var(--muted);margin-bottom:8px">Last Payment</div>' +
+                '<div style="font:700 22px/1 var(--font-mono);color:' + (lastPay2 ? 'var(--positive)' : 'var(--muted)') + '">' + lp2Amt + '</div>' +
+                '<div style="font:500 10px/1 var(--font-mono);color:var(--muted);margin-top:6px">' + lp2Date + '</div>' +
+              '</div>';
+            })() +
           '</div>' +
           // PAYE breakdown (if applicable)
           (paye ? '<div style="padding:16px 20px;border-bottom:1px solid var(--border);display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px">' +
@@ -7809,4 +7739,131 @@ async function generateInvoice() {
     closeInvoiceGenModal();
   } catch { showToast('Generation failed', 'error'); }
   finally { btn.disabled = false; btn.textContent = 'Generate & Download'; }
+}
+
+// ══════════════════════════════════════════
+//  WASTEMAN — AI assistant (admin only)
+// ══════════════════════════════════════════
+window._wmHistory = window._wmHistory || [];   // [{role, content}]
+window._wmSpeak = false;                        // read answers aloud
+window._wmBusy = false;
+let _wmRecognition = null;
+let _wmListening = false;
+
+function wmToggle() {
+  const panel = document.getElementById('wmPanel');
+  const launcher = document.getElementById('wmLauncher');
+  if (!panel) return;
+  const open = panel.classList.toggle('wm-open');
+  if (launcher) launcher.classList.toggle('wm-hidden', open);
+  if (open) setTimeout(() => document.getElementById('wmInput')?.focus(), 80);
+}
+
+function wmClear() {
+  window._wmHistory = [];
+  const body = document.getElementById('wmBody');
+  if (body) body.querySelectorAll('.wm-msg').forEach(m => m.remove());
+  const empty = document.getElementById('wmEmpty');
+  if (empty) empty.style.display = '';
+  if (window.speechSynthesis) window.speechSynthesis.cancel();
+}
+
+function wmToggleSpeak() {
+  window._wmSpeak = !window._wmSpeak;
+  const btn = document.getElementById('wmSpeakToggle');
+  if (btn) { btn.textContent = window._wmSpeak ? '🔊' : '🔇'; btn.classList.toggle('wm-on', window._wmSpeak); }
+  if (!window._wmSpeak && window.speechSynthesis) window.speechSynthesis.cancel();
+}
+
+function wmAppend(role, text) {
+  const body = document.getElementById('wmBody');
+  const empty = document.getElementById('wmEmpty');
+  if (empty) empty.style.display = 'none';
+  const el = document.createElement('div');
+  el.className = `wm-msg wm-msg--${role}`;
+  el.textContent = text;
+  body.appendChild(el);
+  body.scrollTop = body.scrollHeight;
+  return el;
+}
+
+function wmAsk(text) {
+  const input = document.getElementById('wmInput');
+  if (input) input.value = text;
+  wmSend();
+}
+
+async function wmSend() {
+  const input = document.getElementById('wmInput');
+  if (!input || window._wmBusy) return;
+  const q = input.value.trim();
+  if (!q) return;
+  input.value = '';
+  wmAppend('user', q);
+  window._wmHistory.push({ role: 'user', content: q });
+
+  window._wmBusy = true;
+  const sendBtn = document.getElementById('wmSend');
+  if (sendBtn) sendBtn.disabled = true;
+  const thinking = wmAppend('bot', '…');
+  thinking.classList.add('wm-thinking');
+
+  try {
+    const res = await fetch('/api/wasteman', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ messages: window._wmHistory })
+    });
+    const data = await res.json();
+    thinking.remove();
+    if (!res.ok) {
+      wmAppend('bot', data.error || 'Something went wrong.');
+    } else {
+      wmAppend('bot', data.reply);
+      window._wmHistory.push({ role: 'assistant', content: data.reply });
+      if (window._wmSpeak) wmSpeak(data.reply);
+    }
+  } catch (e) {
+    thinking.remove();
+    wmAppend('bot', 'Could not reach Wasteman. Check your connection.');
+  } finally {
+    window._wmBusy = false;
+    if (sendBtn) sendBtn.disabled = false;
+    document.getElementById('wmInput')?.focus();
+  }
+}
+
+function wmSpeak(text) {
+  if (!window.speechSynthesis) return;
+  window.speechSynthesis.cancel();
+  const u = new SpeechSynthesisUtterance(text);
+  u.rate = 1.05; u.pitch = 1;
+  window.speechSynthesis.speak(u);
+}
+
+function wmToggleMic() {
+  const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+  const micBtn = document.getElementById('wmMic');
+  if (!SR) { showToast('Voice input not supported in this browser', 'error'); return; }
+
+  if (_wmListening && _wmRecognition) { _wmRecognition.stop(); return; }
+
+  _wmRecognition = new SR();
+  _wmRecognition.lang = 'en-GB';
+  _wmRecognition.interimResults = true;
+  _wmRecognition.continuous = false;
+
+  _wmRecognition.onstart = () => { _wmListening = true; micBtn?.classList.add('wm-mic--live'); };
+  _wmRecognition.onend = () => { _wmListening = false; micBtn?.classList.remove('wm-mic--live'); };
+  _wmRecognition.onerror = () => { _wmListening = false; micBtn?.classList.remove('wm-mic--live'); };
+  _wmRecognition.onresult = (ev) => {
+    const transcript = Array.from(ev.results).map(r => r[0].transcript).join('');
+    const input = document.getElementById('wmInput');
+    if (input) input.value = transcript;
+    // Auto-send once we have a final result
+    if (ev.results[ev.results.length - 1].isFinal) {
+      setTimeout(() => wmSend(), 150);
+    }
+  };
+  _wmRecognition.start();
 }

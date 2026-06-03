@@ -8,6 +8,7 @@ const nodemailer = require('nodemailer');
 const PizZip = require('pizzip');
 const Docxtemplater = require('docxtemplater');
 const { sql, initDb } = require('./database');
+const { registerWasteman } = require('./wasteman');
 
 // Email transporter — configured via env vars; silently disabled if not set
 function createMailTransport() {
@@ -152,8 +153,9 @@ app.use(cookieParser());
 const publicDir = path.join(__dirname, 'public');
 app.get('/manifest.json', (req, res) => res.sendFile(path.join(publicDir, 'manifest.json')));
 app.get('/sw.js',         (req, res) => res.sendFile(path.join(publicDir, 'sw.js')));
-app.get('/icon-192.png',  (req, res) => { res.setHeader('Content-Type','image/svg+xml'); res.send(makePwaIcon(192)); });
-app.get('/icon-512.png',  (req, res) => { res.setHeader('Content-Type','image/svg+xml'); res.send(makePwaIcon(512)); });
+// Real PNG icons (required for iOS apple-touch-icon & Android maskable install)
+app.get('/icon-192.png',  (req, res) => { res.setHeader('Cache-Control','public, max-age=604800'); res.sendFile(path.join(publicDir, 'icon-192.png')); });
+app.get('/icon-512.png',  (req, res) => { res.setHeader('Cache-Control','public, max-age=604800'); res.sendFile(path.join(publicDir, 'icon-512.png')); });
 app.get('/favicon.ico',   (req, res) => { res.setHeader('Content-Type','image/svg+xml'); res.send(makePwaIcon(32)); });
 
 app.get('/', async (req, res, next) => {
@@ -437,7 +439,7 @@ function makePwaIcon(size) {
   const r = Math.round(size * 0.18);
   const fontSize = Math.round(size * 0.38);
   return `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 ${size} ${size}">
-    <rect width="${size}" height="${size}" rx="${r}" fill="#4f6ef7"/>
+    <rect width="${size}" height="${size}" rx="${r}" fill="#4f46e5"/>
     <text x="50%" y="54%" font-family="system-ui,Arial,sans-serif" font-weight="700" font-size="${fontSize}" fill="white" text-anchor="middle" dominant-baseline="middle">L</text>
   </svg>`;
 }
@@ -2534,6 +2536,9 @@ app.put('/api/event-kits/:eventId', requireAuth, requireAdminOrManager, async (r
     res.json({ ok: true, id: rows[0]?.id });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
+
+// ── Wasteman AI assistant (read-only, admin-only) ──────────────────────────
+registerWasteman(app, { requireAuth, requireAdmin, port: PORT });
 
 module.exports = app;
 
