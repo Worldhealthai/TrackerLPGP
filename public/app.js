@@ -7841,10 +7841,23 @@ function wmSpeak(text) {
   window.speechSynthesis.speak(u);
 }
 
-function wmToggleMic() {
+async function wmToggleMic() {
   const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
   const micBtn = document.getElementById('wmMic');
-  if (!SR) { showToast('Voice input not supported in this browser', 'error'); return; }
+  // Firefox and others simply don't implement the API
+  if (!SR) {
+    showToast('Voice input isn\'t supported in this browser. Use Chrome, Edge or Safari, or type your question.', 'error', 6000);
+    return;
+  }
+
+  // Brave exposes SpeechRecognition but disables Google's speech service for
+  // privacy, so it never returns a transcript. Detect it and tell the user.
+  try {
+    if (navigator.brave && await navigator.brave.isBrave()) {
+      showToast('Brave blocks voice recognition for privacy, so it can\'t convert speech here. Type your question, or use Chrome/Edge/Safari for voice.', 'error', 7000);
+      return;
+    }
+  } catch { /* isBrave() unavailable — carry on */ }
 
   if (_wmListening && _wmRecognition) { _wmRecognition.stop(); return; }
 
@@ -7894,7 +7907,7 @@ function wmToggleMic() {
       'service-not-allowed': 'Microphone blocked — allow mic access for this site in browser settings.',
       'audio-capture':       'No microphone found. Check your mic is connected and enabled.',
       'no-speech':           'No speech detected — try again and speak clearly.',
-      'network':             'Voice recognition needs an internet connection.',
+      'network':             'This browser couldn\'t reach a speech service (Brave and some browsers block it). Type your question, or use Chrome/Edge/Safari for voice.',
       'aborted':             null
     };
     const msg = reasons[ev?.error] ?? `Voice input error: ${ev?.error || 'unknown'}`;
