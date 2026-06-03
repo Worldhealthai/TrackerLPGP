@@ -1,63 +1,55 @@
 // ── Wasteman — read-only AI assistant for the LPGP Tracker ──────────────────
-// Admins ask questions in plain English / voice; Wasteman queries the live
-// system (via the existing computed GET endpoints, so salary deductions etc.
-// are already accounted for) and answers. Read-only: it only ever reads data.
+// Admins ask questions in plain English / voice; Wasteman calls the provided
+// database functions directly (no HTTP round-trip) and answers. Read-only.
 
 let Anthropic = null;
 try { Anthropic = require('@anthropic-ai/sdk'); } catch { /* dep not installed */ }
 
-const MODEL = 'claude-opus-4-8';
+const MODEL = 'claude-sonnet-4-6';
 
-// Read-only tools. Each maps to an existing GET endpoint; we forward the
-// admin's auth cookie so all permission checks and computed logic are reused.
-const TOOLS = [
+const TOOL_DEFS = [
   {
     name: 'get_salary_overview',
-    description: 'Get the full salary overview for all employees for a given year. Returns each employee with: name, employment_type, currency, annual_salary, net_monthly, total_paid, net_remaining (how much is still owed for the year, AFTER all deductions), pct_paid (percent of the year\'s net target already paid), excess_deduction and total_office_deductions, and a payments[] list. Use this to answer anything about salaries, what is left to pay someone this year, who is unpaid, deductions, or payment history.',
+    description: 'Get the full salary overview for all employees for a given year. Returns each employee with: name, employment_type, currency, annual_salary, net_monthly, total_paid, net_remaining (how much is still owed for the year, AFTER all deductions), pct_paid (percent of the year\'s net target already paid), excess_deduction, total_office_deductions, and a payments[] list. Use this to answer anything about salaries, what is left to pay someone, who is unpaid, deductions, or payment history.',
     input_schema: {
       type: 'object',
       properties: {
-        year: { type: 'integer', description: 'Calendar year, e.g. 2026. Defaults to the current year if omitted.' }
+        year: { type: 'integer', description: 'Calendar year, e.g. 2026. Defaults to current year if omitted.' }
       }
-    },
-    _path: (input) => `/api/salary-overview?year=${encodeURIComponent(input.year || new Date().getFullYear())}`
+    }
   },
   {
     name: 'get_employees',
-    description: 'List all employees with their core details: id, name, job_title, department, employment_type (payroll or self_employed), currency, start_date, active/terminated status, annual_salary and allowance_days. Use for questions about headcount, departments, roles, who works here, contract types, or to find an employee.',
-    input_schema: { type: 'object', properties: {} },
-    _path: () => `/api/employees/all`
+    description: 'List all employees with core details: id, name, job_title, department, employment_type (payroll or self_employed), currency, start_date, active status, annual_salary. Use for questions about headcount, departments, roles, who works here, or to look up an employee.',
+    input_schema: { type: 'object', properties: {} }
   },
   {
     name: 'get_hotel_expenses',
-    description: 'List hotel / venue / event expenses: event_name, hotel, event_year, currency, paid_amount, av_amount, cost (hotel cost estimate, may be text), and status (paid / partial / unpaid). Use for questions about hotel costs, what is outstanding on events, AV charges, or event spend.',
-    input_schema: { type: 'object', properties: {} },
-    _path: () => `/api/hotel-expenses`
+    description: 'List hotel / venue / event expenses: event_name, hotel, event_year, currency, paid_amount, av_amount, cost (estimate, may be text), and status (paid / partial / unpaid). Use for questions about hotel costs, outstanding event spend, AV charges.',
+    input_schema: { type: 'object', properties: {} }
   },
   {
     name: 'get_deals',
-    description: 'List sales deals / revenue: amount, paid_inc_vat, tax_vat, status, client/event info. Use for questions about revenue, deals, what clients owe, or outstanding invoices.',
-    input_schema: { type: 'object', properties: {} },
-    _path: () => `/api/deals`
+    description: 'List sales deals / revenue: amount, paid_inc_vat, tax_vat, status, client / event info. Use for questions about revenue, deals, outstanding invoices.',
+    input_schema: { type: 'object', properties: {} }
   },
   {
     name: 'get_attendance_summary',
-    description: 'Get the attendance / days-off summary for every employee over a date range: days worked, days off, half days, and any deductions in that window. Use for questions about attendance, who took time off, or days-off counts.',
+    description: 'Get the attendance / days-off summary for every active employee over a date range: days worked, days off, excess days, and deductions in that window. Use for questions about attendance, who took time off, or days-off counts.',
     input_schema: {
       type: 'object',
       properties: {
         from: { type: 'string', description: 'Start date YYYY-MM-DD' },
-        to: { type: 'string', description: 'End date YYYY-MM-DD' }
+        to:   { type: 'string', description: 'End date YYYY-MM-DD' }
       },
       required: ['from', 'to']
-    },
-    _path: (input) => `/api/summary?from=${encodeURIComponent(input.from)}&to=${encodeURIComponent(input.to)}`
+    }
   }
 ];
 
 function systemPrompt() {
   const today = new Date().toISOString().slice(0, 10);
-  return `You are "Wasteman", the built-in AI assistant for LPGP Connect's internal management system (the LPGP Tracker). You help administrators by answering questions about the company's employees, salaries, attendance, hotel/event expenses, and deals.
+  return `You are "Wasteman", the built-in AI assistant for LPGP Connect's internal management system. You help administrators answer questions about employees, salaries, attendance, hotel/event expenses, and deals.
 
 Today's date is ${today}.
 
@@ -74,51 +66,37 @@ Style:
 - If a person's name is ambiguous (two matches), ask which one, or briefly give both.`;
 }
 
-// Call an internal GET endpoint, forwarding the admin's cookie.
-async function callInternal(path, cookie, port) {
-  const res = await fetch(`http://127.0.0.1:${port}${path}`, {
-    headers: cookie ? { cookie } : {}
-  });
-  const text = await res.text();
-  if (!res.ok) return { error: `Request failed (${res.status})`, detail: text.slice(0, 300) };
-  try { return JSON.parse(text); } catch { return { raw: text.slice(0, 2000) }; }
-}
-
-function registerWasteman(app, { requireAuth, requireAdmin, port }) {
+function registerWasteman(app, { requireAuth, requireAdmin, db }) {
   app.post('/api/wasteman', requireAuth, requireAdmin, async (req, res) => {
     if (!Anthropic) {
-      return res.status(503).json({ error: 'Wasteman is not installed. Run "npm install" to add the @anthropic-ai/sdk dependency.' });
+      return res.status(503).json({ error: 'Wasteman needs the @anthropic-ai/sdk package. Run "npm install" on the server.' });
     }
     if (!process.env.ANTHROPIC_API_KEY) {
-      return res.status(503).json({ error: 'Wasteman needs an Anthropic API key. Set the ANTHROPIC_API_KEY environment variable on the server.' });
+      return res.status(503).json({ error: 'Wasteman needs an ANTHROPIC_API_KEY environment variable set on the server.' });
     }
 
-    const cookie = req.headers.cookie || '';
-    const history = Array.isArray(req.body?.messages) ? req.body.messages : null;
+    const history  = Array.isArray(req.body?.messages) ? req.body.messages : null;
     const question = (req.body?.question || '').toString();
     if (!history && !question.trim()) {
       return res.status(400).json({ error: 'Ask Wasteman a question.' });
     }
 
-    // Build the message list: accept prior turns for context, else a single question.
     const messages = history
-      ? history.filter(m => m && (m.role === 'user' || m.role === 'assistant') && m.content)
-               .map(m => ({ role: m.role, content: typeof m.content === 'string' ? m.content : JSON.stringify(m.content) }))
+      ? history
+          .filter(m => m && (m.role === 'user' || m.role === 'assistant') && m.content)
+          .map(m => ({ role: m.role, content: typeof m.content === 'string' ? m.content : JSON.stringify(m.content) }))
       : [{ role: 'user', content: question }];
 
     const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
-    const toolDefs = TOOLS.map(t => ({ name: t.name, description: t.description, input_schema: t.input_schema }));
-    const toolByName = Object.fromEntries(TOOLS.map(t => [t.name, t]));
 
     try {
       let reply = '';
       for (let step = 0; step < 6; step++) {
         const response = await client.messages.create({
           model: MODEL,
-          max_tokens: 2048,
-          thinking: { type: 'adaptive' },
+          max_tokens: 1024,
           system: [{ type: 'text', text: systemPrompt(), cache_control: { type: 'ephemeral' } }],
-          tools: toolDefs,
+          tools: TOOL_DEFS,
           messages
         });
 
@@ -128,13 +106,24 @@ function registerWasteman(app, { requireAuth, requireAdmin, port }) {
           const toolResults = [];
           for (const block of response.content) {
             if (block.type !== 'tool_use') continue;
-            const tool = toolByName[block.name];
             let result;
             try {
-              result = tool
-                ? await callInternal(tool._path(block.input || {}), cookie, port)
-                : { error: 'Unknown tool' };
+              const year = block.input?.year || new Date().getFullYear();
+              if (block.name === 'get_salary_overview') {
+                result = await db.getSalaryOverview(year);
+              } else if (block.name === 'get_employees') {
+                result = await db.getEmployees();
+              } else if (block.name === 'get_hotel_expenses') {
+                result = await db.getHotelExpenses();
+              } else if (block.name === 'get_deals') {
+                result = await db.getDeals();
+              } else if (block.name === 'get_attendance_summary') {
+                result = await db.getAttendanceSummary(block.input?.from, block.input?.to);
+              } else {
+                result = { error: 'Unknown tool: ' + block.name };
+              }
             } catch (e) {
+              console.error('Wasteman tool error:', block.name, e.message);
               result = { error: e.message };
             }
             toolResults.push({
@@ -144,10 +133,9 @@ function registerWasteman(app, { requireAuth, requireAdmin, port }) {
             });
           }
           messages.push({ role: 'user', content: toolResults });
-          continue; // let the model read the results and continue
+          continue;
         }
 
-        // Terminal — collect text answer
         reply = response.content.filter(b => b.type === 'text').map(b => b.text).join('\n').trim();
         break;
       }

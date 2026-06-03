@@ -7853,15 +7853,26 @@ function wmToggleMic() {
   _wmRecognition.interimResults = true;
   _wmRecognition.continuous = false;
 
-  _wmRecognition.onstart = () => { _wmListening = true; micBtn?.classList.add('wm-mic--live'); };
-  _wmRecognition.onend = () => { _wmListening = false; micBtn?.classList.remove('wm-mic--live'); };
+  let _sentThisTurn = false;
+
+  _wmRecognition.onstart = () => { _wmListening = true; _sentThisTurn = false; micBtn?.classList.add('wm-mic--live'); };
+  _wmRecognition.onend = () => {
+    _wmListening = false;
+    micBtn?.classList.remove('wm-mic--live');
+    // Fallback: some browsers fire onend without a final isFinal result (e.g. mobile Safari).
+    // If we have transcript in the box and haven't sent yet, send now.
+    if (!_sentThisTurn) {
+      const input = document.getElementById('wmInput');
+      if (input?.value.trim()) { _sentThisTurn = true; setTimeout(() => wmSend(), 50); }
+    }
+  };
   _wmRecognition.onerror = () => { _wmListening = false; micBtn?.classList.remove('wm-mic--live'); };
   _wmRecognition.onresult = (ev) => {
     const transcript = Array.from(ev.results).map(r => r[0].transcript).join('');
     const input = document.getElementById('wmInput');
     if (input) input.value = transcript;
-    // Auto-send once we have a final result
-    if (ev.results[ev.results.length - 1].isFinal) {
+    if (ev.results[ev.results.length - 1].isFinal && !_sentThisTurn) {
+      _sentThisTurn = true;
       setTimeout(() => wmSend(), 150);
     }
   };
