@@ -7740,3 +7740,130 @@ async function generateInvoice() {
   } catch { showToast('Generation failed', 'error'); }
   finally { btn.disabled = false; btn.textContent = 'Generate & Download'; }
 }
+
+// ══════════════════════════════════════════
+//  WASTEMAN — AI assistant (admin only)
+// ══════════════════════════════════════════
+window._wmHistory = window._wmHistory || [];   // [{role, content}]
+window._wmSpeak = false;                        // read answers aloud
+window._wmBusy = false;
+let _wmRecognition = null;
+let _wmListening = false;
+
+function wmToggle() {
+  const panel = document.getElementById('wmPanel');
+  const launcher = document.getElementById('wmLauncher');
+  if (!panel) return;
+  const open = panel.classList.toggle('wm-open');
+  if (launcher) launcher.classList.toggle('wm-hidden', open);
+  if (open) setTimeout(() => document.getElementById('wmInput')?.focus(), 80);
+}
+
+function wmClear() {
+  window._wmHistory = [];
+  const body = document.getElementById('wmBody');
+  if (body) body.querySelectorAll('.wm-msg').forEach(m => m.remove());
+  const empty = document.getElementById('wmEmpty');
+  if (empty) empty.style.display = '';
+  if (window.speechSynthesis) window.speechSynthesis.cancel();
+}
+
+function wmToggleSpeak() {
+  window._wmSpeak = !window._wmSpeak;
+  const btn = document.getElementById('wmSpeakToggle');
+  if (btn) { btn.textContent = window._wmSpeak ? '🔊' : '🔇'; btn.classList.toggle('wm-on', window._wmSpeak); }
+  if (!window._wmSpeak && window.speechSynthesis) window.speechSynthesis.cancel();
+}
+
+function wmAppend(role, text) {
+  const body = document.getElementById('wmBody');
+  const empty = document.getElementById('wmEmpty');
+  if (empty) empty.style.display = 'none';
+  const el = document.createElement('div');
+  el.className = `wm-msg wm-msg--${role}`;
+  el.textContent = text;
+  body.appendChild(el);
+  body.scrollTop = body.scrollHeight;
+  return el;
+}
+
+function wmAsk(text) {
+  const input = document.getElementById('wmInput');
+  if (input) input.value = text;
+  wmSend();
+}
+
+async function wmSend() {
+  const input = document.getElementById('wmInput');
+  if (!input || window._wmBusy) return;
+  const q = input.value.trim();
+  if (!q) return;
+  input.value = '';
+  wmAppend('user', q);
+  window._wmHistory.push({ role: 'user', content: q });
+
+  window._wmBusy = true;
+  const sendBtn = document.getElementById('wmSend');
+  if (sendBtn) sendBtn.disabled = true;
+  const thinking = wmAppend('bot', '…');
+  thinking.classList.add('wm-thinking');
+
+  try {
+    const res = await fetch('/api/wasteman', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ messages: window._wmHistory })
+    });
+    const data = await res.json();
+    thinking.remove();
+    if (!res.ok) {
+      wmAppend('bot', data.error || 'Something went wrong.');
+    } else {
+      wmAppend('bot', data.reply);
+      window._wmHistory.push({ role: 'assistant', content: data.reply });
+      if (window._wmSpeak) wmSpeak(data.reply);
+    }
+  } catch (e) {
+    thinking.remove();
+    wmAppend('bot', 'Could not reach Wasteman. Check your connection.');
+  } finally {
+    window._wmBusy = false;
+    if (sendBtn) sendBtn.disabled = false;
+    document.getElementById('wmInput')?.focus();
+  }
+}
+
+function wmSpeak(text) {
+  if (!window.speechSynthesis) return;
+  window.speechSynthesis.cancel();
+  const u = new SpeechSynthesisUtterance(text);
+  u.rate = 1.05; u.pitch = 1;
+  window.speechSynthesis.speak(u);
+}
+
+function wmToggleMic() {
+  const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+  const micBtn = document.getElementById('wmMic');
+  if (!SR) { showToast('Voice input not supported in this browser', 'error'); return; }
+
+  if (_wmListening && _wmRecognition) { _wmRecognition.stop(); return; }
+
+  _wmRecognition = new SR();
+  _wmRecognition.lang = 'en-GB';
+  _wmRecognition.interimResults = true;
+  _wmRecognition.continuous = false;
+
+  _wmRecognition.onstart = () => { _wmListening = true; micBtn?.classList.add('wm-mic--live'); };
+  _wmRecognition.onend = () => { _wmListening = false; micBtn?.classList.remove('wm-mic--live'); };
+  _wmRecognition.onerror = () => { _wmListening = false; micBtn?.classList.remove('wm-mic--live'); };
+  _wmRecognition.onresult = (ev) => {
+    const transcript = Array.from(ev.results).map(r => r[0].transcript).join('');
+    const input = document.getElementById('wmInput');
+    if (input) input.value = transcript;
+    // Auto-send once we have a final result
+    if (ev.results[ev.results.length - 1].isFinal) {
+      setTimeout(() => wmSend(), 150);
+    }
+  };
+  _wmRecognition.start();
+}

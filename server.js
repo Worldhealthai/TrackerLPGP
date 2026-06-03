@@ -8,6 +8,7 @@ const nodemailer = require('nodemailer');
 const PizZip = require('pizzip');
 const Docxtemplater = require('docxtemplater');
 const { sql, initDb } = require('./database');
+const { registerWasteman } = require('./wasteman');
 
 // Email transporter — configured via env vars; silently disabled if not set
 function createMailTransport() {
@@ -2535,6 +2536,9 @@ app.put('/api/event-kits/:eventId', requireAuth, requireAdminOrManager, async (r
     res.json({ ok: true, id: rows[0]?.id });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
+
+// ── Wasteman AI assistant (read-only, admin-only) ──────────────────────────
+registerWasteman(app, { requireAuth, requireAdmin, port: PORT });
 
 module.exports = app;
 

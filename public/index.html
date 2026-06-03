@@ -1368,6 +1368,45 @@
 <!-- Toast container -->
 <div id="toastContainer" aria-live="polite" aria-atomic="false"></div>
 
+<!-- ══ WASTEMAN — AI assistant (admin only) ══ -->
+<button class="wm-launcher admin-only hidden" id="wmLauncher" onclick="wmToggle()" title="Ask Wasteman" aria-label="Ask Wasteman">
+  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2a3 3 0 0 1 3 3v1h1a3 3 0 0 1 3 3v1a2 2 0 0 1 2 2 2 2 0 0 1-2 2v1a3 3 0 0 1-3 3H8a3 3 0 0 1-3-3v-1a2 2 0 0 1-2-2 2 2 0 0 1 2-2V9a3 3 0 0 1 3-3h1V5a3 3 0 0 1 3-3z"/><circle cx="9" cy="12" r="1"/><circle cx="15" cy="12" r="1"/></svg>
+</button>
+
+<div class="wm-panel admin-only hidden" id="wmPanel" role="dialog" aria-label="Wasteman assistant">
+  <div class="wm-head">
+    <div class="wm-head-id">
+      <span class="wm-dot"></span>
+      <div>
+        <div class="wm-title">Wasteman</div>
+        <div class="wm-sub">Ask about salaries, staff, expenses…</div>
+      </div>
+    </div>
+    <div class="wm-head-actions">
+      <button class="wm-icon-btn" id="wmSpeakToggle" onclick="wmToggleSpeak()" title="Read answers aloud" aria-label="Toggle voice answers">🔊</button>
+      <button class="wm-icon-btn" onclick="wmClear()" title="Clear conversation" aria-label="Clear conversation">🗑</button>
+      <button class="wm-icon-btn" onclick="wmToggle()" title="Close" aria-label="Close">✕</button>
+    </div>
+  </div>
+  <div class="wm-body" id="wmBody">
+    <div class="wm-empty" id="wmEmpty">
+      <div class="wm-empty-icon">💬</div>
+      <p>Hi, I'm <strong>Wasteman</strong>. Ask me things like:</p>
+      <button class="wm-chip" onclick="wmAsk(this.textContent)">How much does Ali have left to be paid this year?</button>
+      <button class="wm-chip" onclick="wmAsk(this.textContent)">Who hasn't been paid this month?</button>
+      <button class="wm-chip" onclick="wmAsk(this.textContent)">What's outstanding on hotel expenses?</button>
+    </div>
+  </div>
+  <div class="wm-input-row">
+    <button class="wm-mic" id="wmMic" onclick="wmToggleMic()" title="Voice input" aria-label="Voice input">🎤</button>
+    <input type="text" id="wmInput" placeholder="Ask Wasteman…" autocomplete="off"
+           onkeydown="if(event.key==='Enter'){wmSend();}" />
+    <button class="wm-send" id="wmSend" onclick="wmSend()" title="Send" aria-label="Send">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+    </button>
+  </div>
+</div>
+
 <!-- ══ MODAL: Subscription ══ -->
 <div class="modal-overlay" id="subModal">
   <div class="modal">
