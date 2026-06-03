@@ -2549,15 +2549,15 @@ async function wmFetchSalaryOverview(year) {
     const annualSal  = parseFloat(emp.annual_salary) || 0;
     const dayCalc    = await calcExcessDeductions(emp.id, year, annualSal, allowance);
     const { rows: officeRows } = await q(
-      'SELECT *, deduction_date::TEXT AS deduction_date FROM office_deductions WHERE employee_id = ? ORDER BY deduction_date DESC',
+      'SELECT *, deduction_date::TEXT AS deduction_date FROM office_deductions WHERE employee_id = ? ORDER BY office_deductions.deduction_date DESC',
       [emp.id]
     );
     const { rows: bonusRows } = await q(
-      'SELECT *, bonus_date::TEXT AS bonus_date FROM bonuses WHERE employee_id = ? ORDER BY bonus_date DESC',
+      'SELECT *, bonus_date::TEXT AS bonus_date FROM bonuses WHERE employee_id = ? ORDER BY bonuses.bonus_date DESC',
       [emp.id]
     );
     const { rows: salaryHistory } = await q(
-      'SELECT *, effective_from::TEXT AS effective_from FROM salary_history WHERE employee_id = ? ORDER BY effective_from DESC, created_at DESC',
+      'SELECT *, effective_from::TEXT AS effective_from FROM salary_history WHERE employee_id = ? ORDER BY salary_history.effective_from DESC, created_at DESC',
       [emp.id]
     );
     const startDateStr       = emp.start_date       ? emp.start_date.toISOString().slice(0,10)       : null;
