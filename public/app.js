@@ -475,44 +475,32 @@ async function loadDashboard() {
   const hotelPaidTotal   = hotelData.reduce((a, h) => a + (parseFloat(h.paid_amount) || 0), 0);
 
   document.getElementById('dashStats').innerHTML = `
-    <div class="dash-bento dash-bento--3col">
-      <div class="dash-hero-card dash-hero-card--compact">
-        <div class="dash-hero-glow"></div>
-        <div class="dash-hero-label">Active Headcount</div>
-        <div class="dash-hero-value dash-hero-value--sm">${totalHeadcount}</div>
-        <div class="dash-hero-pills">
-          <span class="dash-hero-pill dash-hero-pill--blue">${payrollCount} Payroll</span>
-          <span class="dash-hero-pill dash-hero-pill--amber">${seCount} Self-Emp</span>
+    <div class="dash-stat-strip">
+      <div class="dss-card dss-card--accent" onclick="navigate('employees')" title="View employees">
+        <div class="dss-label">Active Headcount</div>
+        <div class="dss-value">${totalHeadcount}</div>
+        <div class="dss-row">
+          <span class="dss-pill dss-pill--blue">${payrollCount} Payroll</span>
+          <span class="dss-pill dss-pill--amber">${seCount} Self-Emp</span>
         </div>
-        <div style="margin-top:auto;padding-top:12px;border-top:1px solid rgba(255,255,255,0.08);cursor:pointer" onclick="navigate('salary')">
-          <div style="font:600 9px/1 var(--font-mono);text-transform:uppercase;letter-spacing:1px;color:var(--muted);margin-bottom:6px">Unpaid This Month</div>
-          <div style="display:flex;align-items:center;gap:8px">
-            <span style="font:700 24px/1 var(--font-mono);color:${unpaidCount > 0 ? 'var(--warning)' : 'var(--positive)'}">${unpaidCount}</span>
-            <span style="font:500 11px/1.3 var(--font-mono);color:var(--muted)">${unpaidCount > 0 ? 'Action required →' : 'All paid up'}</span>
-          </div>
-        </div>
-        <div class="dash-hero-footer">Total workforce · ${year}</div>
       </div>
-      <div id="headcountPanel"></div>
-      <div class="dash-mini-grid">
-        <div class="dash-mini-card dash-mini--indigo" style="cursor:pointer" onclick="navigate('salary')" title="Go to salary page">
-          <div class="dash-mini-icon">💷</div>
-          <div class="dash-mini-body">
-            <div class="dash-mini-label">Salaries Remaining</div>
-            <div class="dash-mini-value">£${fmtK(totalGBPRemaining)}</div>
-            <div class="dash-mini-sub">GBP outstanding · ${year}</div>
-          </div>
-        </div>
-        <div class="dash-mini-card ${hotelUnpaidCount > 0 ? 'dash-mini--alert' : 'dash-mini--green'}" style="cursor:pointer" onclick="navigate('hotels')" title="View hotel expenses">
-          <div class="dash-mini-icon">🏨</div>
-          <div class="dash-mini-body">
-            <div class="dash-mini-label">Hotel Fees Remaining</div>
-            <div class="dash-mini-value">${hotelUnpaidCount} event${hotelUnpaidCount !== 1 ? 's' : ''}</div>
-            <div class="dash-mini-sub">${hotelUnpaidCount > 0 ? `${hotelUnpaidCount} unpaid / partial →` : 'All settled'}</div>
-          </div>
-        </div>
+      <div class="dss-card ${unpaidCount > 0 ? 'dss-card--warn' : 'dss-card--ok'}" onclick="navigate('salary')" title="Go to salary">
+        <div class="dss-label">Unpaid This Month</div>
+        <div class="dss-value" style="color:${unpaidCount > 0 ? 'var(--warning)' : 'var(--positive)'}">${unpaidCount}</div>
+        <div class="dss-sub">${unpaidCount > 0 ? 'Needs attention →' : 'All paid up ✓'}</div>
+      </div>
+      <div class="dss-card dss-card--neutral" onclick="navigate('salary')" title="Go to salary">
+        <div class="dss-label">Year Salary Remaining</div>
+        <div class="dss-value" style="color:var(--negative)">£${fmtK(totalGBPRemaining)}</div>
+        <div class="dss-sub">GBP equiv · ${year}</div>
+      </div>
+      <div class="dss-card ${hotelUnpaidCount > 0 ? 'dss-card--warn' : 'dss-card--ok'}" onclick="navigate('hotels')" title="View hotels">
+        <div class="dss-label">Hotel Events Pending</div>
+        <div class="dss-value" style="color:${hotelUnpaidCount > 0 ? 'var(--warning)' : 'var(--positive)'}">${hotelUnpaidCount}</div>
+        <div class="dss-sub">${hotelUnpaidCount > 0 ? `${hotelUnpaidCount} unpaid / partial →` : 'All settled ✓'}</div>
       </div>
     </div>
+    <div id="headcountPanel"></div>
   `;
 
   // Revenue Intelligence + contract expiry panel
@@ -564,14 +552,21 @@ async function loadDashboard() {
         <div class="es-prog-lbl">${pctPaid != null ? pctPaid : 0}% paid</div>`;
     }
 
-    // Last payment recorded this year (most recent month)
+    // Last payment recorded (most recent by year+month)
     const pays = Array.isArray(sal.payments) ? sal.payments : [];
     let lastCell = '<span style="color:var(--muted)">—</span>';
     if (pays.length) {
-      const last = pays.reduce((a, b) => (Number(b.payment_month) > Number(a.payment_month) ? b : a), pays[0]);
+      const last = pays.reduce((a, b) => {
+        const aKey = (Number(a.payment_year) || 0) * 100 + (Number(a.payment_month) || 0);
+        const bKey = (Number(b.payment_year) || 0) * 100 + (Number(b.payment_month) || 0);
+        return bKey > aKey ? b : a;
+      }, pays[0]);
       const m = MONTHS[Number(last.payment_month)] || '';
-      lastCell = `<div style="font-weight:700">${fmtMoney(last.amount, last.currency || currency)}</div>
-        <div style="font-size:0.72rem;color:var(--muted)">${m}${last.payment_year ? ' ' + last.payment_year : ''}</div>`;
+      const yr = last.payment_year ? ` ${last.payment_year}` : '';
+      lastCell = `<div class="es-last-pay">
+        <span class="es-last-pay-amt">${fmtMoney(last.amount, last.currency || currency)}</span>
+        <span class="es-last-pay-date">${m}${yr}</span>
+      </div>`;
     }
 
     const tr = document.createElement('tr');
@@ -2147,13 +2142,25 @@ async function loadSalaryPage() {
               (monthlySub ? '<div style="font-size:0.7rem;color:var(--muted);margin-top:3px">' + monthlySub + '</div>' : '') +
             '</div>' +
             '<div style="padding:14px 20px' + (firstMonthUnpaid ? ';background:rgba(251,191,36,0.05)' : '') + '">' +
-              '<div style="font-size:0.68rem;text-transform:uppercase;letter-spacing:0.5px;color:var(--muted);margin-bottom:6px">' + (firstMonthUnpaid ? 'Pay This Month' : 'Year Balance') + '</div>' +
-              '<div style="font-size:1.3rem;font-weight:700;color:' + (firstMonthUnpaid ? '#f59e0b' : outColor) + '">' +
-                (firstMonthUnpaid
-                  ? sym + Math.round(suggestedFirstMonthNet).toLocaleString('en-GB')
-                  : (isOverpaid ? '−' : '') + sym + Math.abs(netRemaining).toLocaleString('en-GB',{maximumFractionDigits:0})) +
-              '</div>' +
-              (firstMonthUnpaid && fmMeta ? '<div style="font-size:0.7rem;color:var(--muted);margin-top:3px">' + fmMeta.daysWorked + ' of ' + fmMeta.daysTotal + ' days · ' + (fmMeta.monthName||'') + '</div>' : '') +
+              (firstMonthUnpaid
+                ? '<div style="font-size:0.68rem;text-transform:uppercase;letter-spacing:0.5px;color:var(--muted);margin-bottom:6px">Pay This Month</div>' +
+                  '<div style="font-size:1.3rem;font-weight:700;color:#f59e0b">' + sym + Math.round(suggestedFirstMonthNet).toLocaleString('en-GB') + '</div>' +
+                  (fmMeta ? '<div style="font-size:0.7rem;color:var(--muted);margin-top:3px">' + fmMeta.daysWorked + ' of ' + fmMeta.daysTotal + ' days · ' + (fmMeta.monthName||'') + '</div>' : '')
+                : (() => {
+                    const lastPay = payments.length
+                      ? payments.reduce((a,b) => ((Number(b.payment_year)||0)*100+(Number(b.payment_month)||0)) > ((Number(a.payment_year)||0)*100+(Number(a.payment_month)||0)) ? b : a, payments[0])
+                      : null;
+                    if (!lastPay) return '<div style="font-size:0.68rem;text-transform:uppercase;letter-spacing:0.5px;color:var(--muted);margin-bottom:6px">Last Payment</div>' +
+                      '<div style="font-size:1.3rem;font-weight:700;color:var(--muted)">—</div>' +
+                      '<div style="font-size:0.7rem;color:var(--muted);margin-top:3px">No payments yet</div>';
+                    const lpMonth = MONTHS[Number(lastPay.payment_month) - 1] || '';
+                    const lpYear  = lastPay.payment_year || '';
+                    const lpAmt   = sym + parseFloat(lastPay.amount||0).toLocaleString('en-GB',{maximumFractionDigits:0});
+                    return '<div style="font-size:0.68rem;text-transform:uppercase;letter-spacing:0.5px;color:var(--muted);margin-bottom:6px">Last Payment</div>' +
+                      '<div style="font-size:1.3rem;font-weight:700;color:var(--positive)">' + lpAmt + '</div>' +
+                      '<div style="font-size:0.7rem;color:var(--muted);margin-top:3px">' + lpMonth + (lpYear ? ' ' + lpYear : '') + '</div>';
+                  })()
+              ) +
             '</div>' +
           '</div>' +
           (!paye && excessDays > 0
@@ -5196,11 +5203,18 @@ async function loadEmployeeDashboard(user) {
                   '<div style="font:500 10px/1 var(--font-mono);color:var(--muted);margin-top:6px">' + fmMeta2.daysWorked + ' of ' + fmMeta2.daysTotal + ' days · ' + fmMeta2.monthName + '</div>' +
                 '</div>'
               : '') +
-            '<div style="flex:1;padding:16px 20px">' +
-              '<div style="font:600 9px/1 var(--font-mono);text-transform:uppercase;letter-spacing:1px;color:var(--muted);margin-bottom:8px">Year Balance</div>' +
-              '<div style="font:700 22px/1 var(--font-mono);color:' + outColor + '">' + (isOverpaid ? '−' : '') + sSym + Math.abs(netRemaining).toLocaleString('en-GB',{maximumFractionDigits:0}) + '</div>' +
-              '<div style="font:500 10px/1 var(--font-mono);color:var(--muted);margin-top:6px">' + (isOverpaid ? 'overpaid' : s.year + ' balance') + '</div>' +
-            '</div>' +
+            (() => {
+              const lastPay2 = payments.length
+                ? payments.reduce((a,b) => ((Number(b.payment_year)||0)*100+(Number(b.payment_month)||0)) > ((Number(a.payment_year)||0)*100+(Number(a.payment_month)||0)) ? b : a, payments[0])
+                : null;
+              const lp2Amt   = lastPay2 ? sSym + parseFloat(lastPay2.amount||0).toLocaleString('en-GB',{maximumFractionDigits:0}) : '—';
+              const lp2Date  = lastPay2 ? (MONTHS[Number(lastPay2.payment_month)-1]||'') + (lastPay2.payment_year ? ' '+lastPay2.payment_year : '') : 'No payments yet';
+              return '<div style="flex:1;padding:16px 20px">' +
+                '<div style="font:600 9px/1 var(--font-mono);text-transform:uppercase;letter-spacing:1px;color:var(--muted);margin-bottom:8px">Last Payment</div>' +
+                '<div style="font:700 22px/1 var(--font-mono);color:' + (lastPay2 ? 'var(--positive)' : 'var(--muted)') + '">' + lp2Amt + '</div>' +
+                '<div style="font:500 10px/1 var(--font-mono);color:var(--muted);margin-top:6px">' + lp2Date + '</div>' +
+              '</div>';
+            })() +
           '</div>' +
           // PAYE breakdown (if applicable)
           (paye ? '<div style="padding:16px 20px;border-bottom:1px solid var(--border);display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px">' +
