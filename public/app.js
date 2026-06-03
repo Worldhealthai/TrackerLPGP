@@ -7854,43 +7854,51 @@ function wmToggleMic() {
   _wmRecognition.continuous = false;
 
   let _sentThisTurn = false;
-  let _gotSpeech = false;
+  let _lastTranscript = '';
 
-  _wmRecognition.onstart = () => { _wmListening = true; _sentThisTurn = false; _gotSpeech = false; micBtn?.classList.add('wm-mic--live'); };
+  function _doSend() {
+    if (_sentThisTurn) return;
+    _sentThisTurn = true;
+    const input = document.getElementById('wmInput');
+    if (input && _lastTranscript) input.value = _lastTranscript;
+    setTimeout(() => wmSend(), 80);
+  }
+
+  _wmRecognition.onstart = () => { _wmListening = true; _sentThisTurn = false; _lastTranscript = ''; micBtn?.classList.add('wm-mic--live'); };
+
+  _wmRecognition.onresult = (ev) => {
+    _lastTranscript = Array.from(ev.results).map(r => r[0].transcript).join('');
+    const input = document.getElementById('wmInput');
+    if (input) input.value = _lastTranscript;
+    // Send as soon as we get a final result; onend will catch it if isFinal never fires
+    if (ev.results[ev.results.length - 1].isFinal) _doSend();
+  };
+
   _wmRecognition.onend = () => {
     _wmListening = false;
     micBtn?.classList.remove('wm-mic--live');
-    // Fallback: some browsers fire onend without a final isFinal result (e.g. mobile Safari).
-    // If we have transcript in the box and haven't sent yet, send now.
-    if (!_sentThisTurn) {
-      const input = document.getElementById('wmInput');
-      if (input?.value.trim()) { _sentThisTurn = true; setTimeout(() => wmSend(), 50); }
-      else if (!_gotSpeech) showToast('Didn\'t catch that — try speaking again', 'info');
+    // Chrome desktop can fire onend before onresult delivers the final transcript.
+    // _lastTranscript holds whatever was captured regardless of ordering.
+    if (_lastTranscript.trim()) {
+      _doSend();
+    } else if (!_sentThisTurn) {
+      showToast('Didn\'t catch that — try speaking again', 'info');
     }
   };
+
   _wmRecognition.onerror = (ev) => {
     _wmListening = false;
     micBtn?.classList.remove('wm-mic--live');
     const reasons = {
-      'not-allowed':   'Microphone blocked. Allow mic access for this site in your browser settings (click the padlock in the address bar).',
-      'service-not-allowed': 'Microphone blocked. Allow mic access for this site in your browser settings.',
-      'audio-capture': 'No microphone found. Check your mic is connected and enabled.',
-      'no-speech':     'No speech detected — try again and speak clearly.',
-      'network':       'Voice recognition needs an internet connection.',
-      'aborted':       null
+      'not-allowed':         'Microphone blocked — click the padlock in the address bar and allow microphone access, then reload.',
+      'service-not-allowed': 'Microphone blocked — allow mic access for this site in browser settings.',
+      'audio-capture':       'No microphone found. Check your mic is connected and enabled.',
+      'no-speech':           'No speech detected — try again and speak clearly.',
+      'network':             'Voice recognition needs an internet connection.',
+      'aborted':             null
     };
     const msg = reasons[ev?.error] ?? `Voice input error: ${ev?.error || 'unknown'}`;
     if (msg) showToast(msg, 'error');
-  };
-  _wmRecognition.onresult = (ev) => {
-    _gotSpeech = true;
-    const transcript = Array.from(ev.results).map(r => r[0].transcript).join('');
-    const input = document.getElementById('wmInput');
-    if (input) input.value = transcript;
-    if (ev.results[ev.results.length - 1].isFinal && !_sentThisTurn) {
-      _sentThisTurn = true;
-      setTimeout(() => wmSend(), 150);
-    }
   };
   try {
     _wmRecognition.start();
