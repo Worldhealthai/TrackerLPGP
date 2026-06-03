@@ -1943,7 +1943,9 @@ tbody tr:last-child td { border-bottom: none; }
   display: flex; align-items: center; gap: 14px;
   padding: 10px 16px 10px 42px; border-top: 1px solid var(--border);
 }
-.sal-grp-payname { flex: 1; font-weight: 600; font-size: 0.84rem; color: var(--text); }
+.sal-grp-payname { flex: 1; display: flex; flex-direction: column; gap: 3px; font-weight: 600; font-size: 0.84rem; color: var(--text); }
+.sal-grp-payleft { font: 500 0.7rem/1 var(--font-mono); color: var(--negative); }
+.sal-grp-payleft--done { color: var(--positive); }
 .sal-grp-payamt { font: 600 0.8rem/1 var(--font-mono); color: var(--muted); white-space: nowrap; }
 .sal-grp-payactions { display: flex; gap: 6px; align-items: center; flex-shrink: 0; }
 
@@ -2301,7 +2303,32 @@ tbody tr:last-child td { border-bottom: none; }
 
 /* ── Dashboard Employee Summary: tabs, mini progress, last payment ── */
 .es-header { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.es-controls { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
 .es-tabs { display: flex; gap: 6px; flex-wrap: wrap; }
+
+.es-search {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 0 10px;
+  background: var(--surface);
+  border: 1.5px solid var(--border);
+  border-radius: 9px;
+  transition: border-color .18s var(--ease), box-shadow .18s var(--ease);
+}
+.es-search:focus-within { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+.es-search svg { color: var(--muted); flex-shrink: 0; }
+.es-search input {
+  border: none;
+  outline: none;
+  background: transparent;
+  color: var(--text);
+  font: 500 12.5px/1 var(--font-sans);
+  padding: 9px 0;
+  width: 150px;
+}
+.es-search input::placeholder { color: var(--dim); }
+[data-theme="dark"] .es-search { background: rgba(255,255,255,0.04); border-color: var(--border); }
 .es-tab {
   padding: 5px 12px; border-radius: 20px; border: 1px solid var(--border);
   background: transparent; font: 600 11px/1 var(--font-mono); color: var(--muted);

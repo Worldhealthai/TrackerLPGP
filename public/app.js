@@ -582,6 +582,7 @@ async function loadDashboard() {
 
     const tr = document.createElement('tr');
     tr.dataset.group = group;
+    tr.dataset.name = `${row.name || ''} ${emp?.department || ''} ${emp?.job_title || ''}`.toLowerCase();
     tr.innerHTML = `
       <td>
         <div style="font-weight:700">${esc(row.name)}</div>
@@ -612,17 +613,32 @@ async function loadDashboard() {
 
 // Tab filter for the dashboard Employee Summary table (all / se / payroll / intl)
 function filterEmpSummary(tab, btn) {
-  window._esFilter = tab;
+  if (tab) window._esFilter = tab;
+  applyEmpSummaryFilters();
+}
+
+function searchEmpSummary() {
+  applyEmpSummaryFilters();
+}
+
+function applyEmpSummaryFilters() {
+  const tab = window._esFilter || 'all';
+  const q = (document.getElementById('esSearch')?.value || '').trim().toLowerCase();
   document.querySelectorAll('#esTabs .es-tab').forEach(t =>
     t.classList.toggle('es-tab--active', t.dataset.tab === tab));
   let visible = 0;
   document.querySelectorAll('#dashTable tr').forEach(r => {
-    const show = tab === 'all' || r.dataset.group === tab;
+    const matchTab = tab === 'all' || r.dataset.group === tab;
+    const matchSearch = !q || (r.dataset.name || '').includes(q);
+    const show = matchTab && matchSearch;
     r.style.display = show ? '' : 'none';
     if (show) visible++;
   });
   const empty = document.getElementById('dashTableEmpty');
-  if (empty) empty.style.display = visible === 0 ? '' : 'none';
+  if (empty) {
+    empty.style.display = visible === 0 ? '' : 'none';
+    empty.textContent = q ? 'No employees match your search.' : 'No employees in this group.';
+  }
 }
 
 function renderRevenueIntelPanel(deals, expiring, evtRevData) {
@@ -1939,8 +1955,14 @@ async function loadSalaryPage() {
         const grossMo = (parseFloat(r.annual_salary) || 0) / 12;
         const netMo = r.net_monthly ? parseFloat(r.net_monthly) : null;
         const amt = netMo ?? grossMo;
+        const remain = parseFloat(r.net_remaining);
+        const remainHtml = isFinite(remain)
+          ? (remain > 0
+              ? `<span class="sal-grp-payleft">${sym}${remain.toLocaleString('en-GB',{maximumFractionDigits:0})} left this year</span>`
+              : `<span class="sal-grp-payleft sal-grp-payleft--done">Fully paid</span>`)
+          : '';
         return `<div class="sal-grp-payitem">
-          <span class="sal-grp-payname">${esc(r.name)}</span>
+          <span class="sal-grp-payname">${esc(r.name)}${remainHtml}</span>
           <span class="sal-grp-payamt">${sym}${amt.toLocaleString('en-GB',{minimumFractionDigits:2})}/mo${netMo ? '<span class="srr-net">net</span>' : ''}</span>
           <span class="sal-grp-payactions">
             <button class="srr-skip" onclick="skipGroupReminder(${r.employee_id})">Skip ${monthShort}</button>

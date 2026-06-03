@@ -156,11 +156,17 @@
         <div class="card">
           <div class="card-header es-header">
             <span class="card-title">Employee Summary</span>
-            <div class="es-tabs" id="esTabs">
-              <button class="es-tab es-tab--active" data-tab="all"     onclick="filterEmpSummary('all', this)">All <span class="es-tab-count" data-count="all">0</span></button>
-              <button class="es-tab"                data-tab="se"      onclick="filterEmpSummary('se', this)">Self-Employed <span class="es-tab-count" data-count="se">0</span></button>
-              <button class="es-tab"                data-tab="payroll" onclick="filterEmpSummary('payroll', this)">Payroll <span class="es-tab-count" data-count="payroll">0</span></button>
-              <button class="es-tab"                data-tab="intl"    onclick="filterEmpSummary('intl', this)">International <span class="es-tab-count es-tab-count--intl" data-count="intl">0</span></button>
+            <div class="es-controls">
+              <div class="es-search">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+                <input type="search" id="esSearch" placeholder="Search name…" oninput="searchEmpSummary()" autocomplete="off" />
+              </div>
+              <div class="es-tabs" id="esTabs">
+                <button class="es-tab es-tab--active" data-tab="all"     onclick="filterEmpSummary('all', this)">All <span class="es-tab-count" data-count="all">0</span></button>
+                <button class="es-tab"                data-tab="se"      onclick="filterEmpSummary('se', this)">Self-Employed <span class="es-tab-count" data-count="se">0</span></button>
+                <button class="es-tab"                data-tab="payroll" onclick="filterEmpSummary('payroll', this)">Payroll <span class="es-tab-count" data-count="payroll">0</span></button>
+                <button class="es-tab"                data-tab="intl"    onclick="filterEmpSummary('intl', this)">International <span class="es-tab-count es-tab-count--intl" data-count="intl">0</span></button>
+              </div>
             </div>
           </div>
           <div class="table-wrap">
