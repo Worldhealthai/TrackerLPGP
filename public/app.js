@@ -3417,27 +3417,26 @@ function renderHotelSummary() {
 
   const currencyCards = Object.entries(byCur).map(([cur, sums]) => {
     const sym = hotelCurrencySymbol(cur);
-    const total_spent = sums.paid + sums.av;
     const outstanding = sums.cost > 0 ? Math.max(0, sums.cost - sums.paid) : null;
     return `
       <div class="hotel-fin-card">
         <div class="hotel-fin-currency">${cur}</div>
         <div class="hotel-fin-row">
-          <span class="hotel-fin-lbl">Venue / Hotel Paid</span>
-          <span class="hotel-fin-val hotel-fin-green">${sym}${fmtN(sums.paid)}</span>
+          <span class="hotel-fin-lbl">Hotel Cost</span>
+          <span class="hotel-fin-val">${sums.cost > 0 ? sym+fmtN(sums.cost) : '<span class="hotel-fin-na">—</span>'}</span>
         </div>
         <div class="hotel-fin-row">
-          <span class="hotel-fin-lbl">AV (separate charges)</span>
+          <span class="hotel-fin-lbl">AV Cost</span>
           <span class="hotel-fin-val hotel-fin-blue">${sym}${fmtN(sums.av)}</span>
         </div>
-        <div class="hotel-fin-row hotel-fin-total-row">
-          <span class="hotel-fin-lbl">Total Spent</span>
-          <span class="hotel-fin-val">${sym}${fmtN(total_spent)}</span>
+        <div class="hotel-fin-row">
+          <span class="hotel-fin-lbl">Paid towards</span>
+          <span class="hotel-fin-val hotel-fin-green">${sym}${fmtN(sums.paid)}</span>
         </div>
-        ${outstanding !== null ? `<div class="hotel-fin-row" style="margin-top:6px;border-top:1px solid var(--border);padding-top:6px">
+        <div class="hotel-fin-row hotel-fin-total-row">
           <span class="hotel-fin-lbl">Outstanding</span>
-          <span class="hotel-fin-val ${outstanding > 0 ? 'hotel-fin-red' : 'hotel-fin-green'}">${outstanding > 0 ? sym+fmtN(outstanding) : '✓ Settled'}</span>
-        </div>` : ''}
+          <span class="hotel-fin-val ${outstanding === null ? '' : outstanding > 0 ? 'hotel-fin-red' : 'hotel-fin-green'}">${outstanding === null ? '<span class="hotel-fin-na">—</span>' : outstanding > 0 ? sym+fmtN(outstanding) : '✓ Settled'}</span>
+        </div>
       </div>`;
   }).join('');
 
@@ -3454,10 +3453,10 @@ function renderHotelSummary() {
   const gbpOutstanding = gbpCost > 0 ? Math.max(0, gbpCost - gbpPaid) : null;
   const gbpCard = `<div class="hotel-fin-card hotel-fin-card--gbp">
     <div class="hotel-fin-currency" style="color:var(--accent)">≈ GBP TOTAL <span style="font-size:9px;font-weight:400;opacity:0.7">estimated</span></div>
-    <div class="hotel-fin-row"><span class="hotel-fin-lbl">Venue / Hotel</span><span class="hotel-fin-val hotel-fin-green">£${fmtN(gbpPaid)}</span></div>
-    <div class="hotel-fin-row"><span class="hotel-fin-lbl">AV Charges</span><span class="hotel-fin-val hotel-fin-blue">£${fmtN(gbpAv)}</span></div>
-    <div class="hotel-fin-row hotel-fin-total-row"><span class="hotel-fin-lbl">Total Spent</span><span class="hotel-fin-val">£${fmtN(gbpTotal)}</span></div>
-    ${gbpOutstanding !== null ? `<div class="hotel-fin-row" style="margin-top:6px;border-top:1px solid var(--border);padding-top:6px"><span class="hotel-fin-lbl">Outstanding</span><span class="hotel-fin-val ${gbpOutstanding > 0 ? 'hotel-fin-red' : 'hotel-fin-green'}">${gbpOutstanding > 0 ? '£'+fmtN(gbpOutstanding) : '✓ Settled'}</span></div>` : ''}
+    <div class="hotel-fin-row"><span class="hotel-fin-lbl">Hotel Cost</span><span class="hotel-fin-val">${gbpCost > 0 ? '£'+fmtN(gbpCost) : '<span class="hotel-fin-na">—</span>'}</span></div>
+    <div class="hotel-fin-row"><span class="hotel-fin-lbl">AV Cost</span><span class="hotel-fin-val hotel-fin-blue">£${fmtN(gbpAv)}</span></div>
+    <div class="hotel-fin-row"><span class="hotel-fin-lbl">Paid towards</span><span class="hotel-fin-val hotel-fin-green">£${fmtN(gbpPaid)}</span></div>
+    <div class="hotel-fin-row hotel-fin-total-row"><span class="hotel-fin-lbl">Outstanding</span><span class="hotel-fin-val ${gbpOutstanding === null ? '' : gbpOutstanding > 0 ? 'hotel-fin-red' : 'hotel-fin-green'}">${gbpOutstanding === null ? '<span class="hotel-fin-na">—</span>' : gbpOutstanding > 0 ? '£'+fmtN(gbpOutstanding) : '✓ Settled'}</span></div>
     <div style="margin-top:8px;padding-top:6px;border-top:1px dashed var(--border);font:500 9px/1.5 var(--font-mono);color:var(--muted)">USD×0.787 · EUR×0.855<br>CHF×0.885 · AED×0.214</div>
   </div>`;
 

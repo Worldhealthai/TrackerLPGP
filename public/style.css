@@ -1513,6 +1513,7 @@ tbody tr:last-child td { border-bottom: none; }
 .hotel-fin-green { color: var(--success); }
 .hotel-fin-blue  { color: var(--primary); }
 .hotel-fin-red   { color: var(--danger); }
+.hotel-fin-na    { color: var(--muted); font-style: italic; }
 .hotel-fin-total-row .hotel-fin-val { font-size: 1.05rem; }
 
 [data-theme="dark"] .hotel-fin-card { background: var(--card); border-color: var(--border); }
