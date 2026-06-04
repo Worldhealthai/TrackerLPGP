@@ -29,30 +29,43 @@ function addRowLimit(sql, cap = 150) {
 // ── Web helpers ───────────────────────────────────────────────────────────────
 async function searchWeb(query) {
   try {
-    // DuckDuckGo Instant Answer API — free, no key needed
     const iaUrl = `https://api.duckduckgo.com/?q=${encodeURIComponent(query)}&format=json&no_html=1&skip_disambig=1`;
-    const iaRes = await fetch(iaUrl, {
-      headers: { 'User-Agent': 'LPGP-Wasteman/1.0' },
-      signal: AbortSignal.timeout(9000)
-    });
-    const ia = await iaRes.json();
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 5000);
+    let ia;
+    try {
+      const iaRes = await fetch(iaUrl, {
+        headers: { 'User-Agent': 'LPGP-Wasteman/1.0' },
+        signal: controller.signal
+      });
+      ia = await iaRes.json();
+    } finally {
+      clearTimeout(timer);
+    }
     const results = [];
     if (ia.Answer) results.push({ type: 'answer', text: ia.Answer });
     if (ia.AbstractText) results.push({ type: 'summary', source: ia.AbstractSource, text: ia.AbstractText, url: ia.AbstractURL });
     (ia.RelatedTopics || []).slice(0, 6).forEach(t => {
       if (t.Text) results.push({ type: 'related', text: t.Text, url: t.FirstURL });
     });
-    return { query, results, note: results.length ? undefined : 'No instant answer found. Try fetch_url on a specific relevant page (e.g. a Wikipedia URL or official site).' };
+    if (!results.length) {
+      return { query, note: 'No instant answer found. Use fetch_url to read a specific relevant page — e.g. a Wikipedia URL, news site, or official source.' };
+    }
+    return { query, results };
   } catch (e) {
-    return { query, error: e.message };
+    // DuckDuckGo may be blocked or slow from the server environment.
+    // Return a clear error so Claude can acknowledge it and suggest alternatives.
+    return { query, error: 'Web search unavailable right now (' + e.message + '). Suggest the user searches manually, or try fetch_url with a known URL instead.' };
   }
 }
 
 async function fetchUrl(url) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 8000);
   try {
     const res = await fetch(url, {
       headers: { 'User-Agent': 'Mozilla/5.0 (compatible; LPGP-Wasteman/1.0)' },
-      signal: AbortSignal.timeout(12000)
+      signal: controller.signal
     });
     if (!res.ok) return { url, error: `HTTP ${res.status} ${res.statusText}` };
     const html = await res.text();
@@ -68,6 +81,8 @@ async function fetchUrl(url) {
     return { url, text };
   } catch (e) {
     return { url, error: e.message };
+  } finally {
+    clearTimeout(timer);
   }
 }
 
@@ -175,9 +190,10 @@ GBP = £, AED = "AED ", PHP = ₱. Always display in the employee's own currency
 
 ## Style — casual & friendly
 - Talk like a mate, not a corporate bot. Be relaxed, warm, and a bit funny when it fits.
-- Open replies casually — "Bro, here's the answer...", "Alright so...", "Yeah so...", "Gotcha —". Mix it up, don't say the exact same opener every time.
-- Still be accurate and clear: casual tone, but the actual figures and facts must be spot on. Lead with the answer.
-- Keep it concise. Replies may be read aloud, so use clean prose: no markdown tables or bullet symbols for simple answers. For detailed multi-part answers, short numbered steps or bullets are fine.
+- Open replies casually — "Bro, here's the answer...", "Alright so...", "Yeah so...", "Gotcha —". Mix it up, don't use the same opener every time.
+- Still be accurate and clear: casual tone, but figures and facts must be spot on. Lead with the answer.
+- ZERO markdown formatting. No asterisks, no **bold**, no _italic_, no # headers, no bullet dashes, no backticks. Plain sentences only. If you need a list, just write "First... Second... Third..." inline, or number them like "1. ... 2. ...".
+- If web search fails or is unavailable, just say so casually and give your best answer from what you know, or suggest the user Google it themselves.
 - Confident and helpful — you can do a lot, so be generous with what you offer.`;
 }
 
