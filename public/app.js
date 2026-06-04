@@ -575,7 +575,7 @@ async function loadDashboard() {
       const m = MONTHS[Number(last.payment_month)] || '';
       const yr = last.payment_year ? ` ${last.payment_year}` : '';
       lastCell = `<div class="es-last-pay">
-        <span class="es-last-pay-amt">${fmtMoney(last.amount, last.currency || currency)}</span>
+        <span class="es-last-pay-amt">${fmtMoney(last.amount, currency)}</span>
         <span class="es-last-pay-date">${m}${yr}</span>
       </div>`;
     }
@@ -2186,7 +2186,7 @@ async function loadSalaryPage() {
                     if (!lastPay) return '<div style="font-size:0.68rem;text-transform:uppercase;letter-spacing:0.5px;color:var(--muted);margin-bottom:6px">Last Payment</div>' +
                       '<div style="font-size:1.3rem;font-weight:700;color:var(--muted)">—</div>' +
                       '<div style="font-size:0.7rem;color:var(--muted);margin-top:3px">No payments yet</div>';
-                    const lpMonth = MONTHS[Number(lastPay.payment_month) - 1] || '';
+                    const lpMonth = MONTHS[Number(lastPay.payment_month)] || '';
                     const lpYear  = lastPay.payment_year || '';
                     const lpAmt   = sym + parseFloat(lastPay.amount||0).toLocaleString('en-GB',{maximumFractionDigits:0});
                     return '<div style="font-size:0.68rem;text-transform:uppercase;letter-spacing:0.5px;color:var(--muted);margin-bottom:6px">Last Payment</div>' +
@@ -5241,7 +5241,7 @@ async function loadEmployeeDashboard(user) {
                 ? payments.reduce((a,b) => ((Number(b.payment_year)||0)*100+(Number(b.payment_month)||0)) > ((Number(a.payment_year)||0)*100+(Number(a.payment_month)||0)) ? b : a, payments[0])
                 : null;
               const lp2Amt   = lastPay2 ? sSym + parseFloat(lastPay2.amount||0).toLocaleString('en-GB',{maximumFractionDigits:0}) : '—';
-              const lp2Date  = lastPay2 ? (MONTHS[Number(lastPay2.payment_month)-1]||'') + (lastPay2.payment_year ? ' '+lastPay2.payment_year : '') : 'No payments yet';
+              const lp2Date  = lastPay2 ? (MONTHS[Number(lastPay2.payment_month)]||'') + (lastPay2.payment_year ? ' '+lastPay2.payment_year : '') : 'No payments yet';
               return '<div style="flex:1;padding:16px 20px">' +
                 '<div style="font:600 9px/1 var(--font-mono);text-transform:uppercase;letter-spacing:1px;color:var(--muted);margin-bottom:8px">Last Payment</div>' +
                 '<div style="font:700 22px/1 var(--font-mono);color:' + (lastPay2 ? 'var(--positive)' : 'var(--muted)') + '">' + lp2Amt + '</div>' +
