@@ -575,7 +575,7 @@ async function loadDashboard() {
       const m = MONTHS[Number(last.payment_month)] || '';
       const yr = last.payment_year ? ` ${last.payment_year}` : '';
       lastCell = `<div class="es-last-pay">
-        <span class="es-last-pay-amt">${fmtMoney(last.amount, last.currency || currency)}</span>
+        <span class="es-last-pay-amt">${fmtMoney(last.amount, currency)}</span>
         <span class="es-last-pay-date">${m}${yr}</span>
       </div>`;
     }
@@ -2186,7 +2186,7 @@ async function loadSalaryPage() {
                     if (!lastPay) return '<div style="font-size:0.68rem;text-transform:uppercase;letter-spacing:0.5px;color:var(--muted);margin-bottom:6px">Last Payment</div>' +
                       '<div style="font-size:1.3rem;font-weight:700;color:var(--muted)">—</div>' +
                       '<div style="font-size:0.7rem;color:var(--muted);margin-top:3px">No payments yet</div>';
-                    const lpMonth = MONTHS[Number(lastPay.payment_month) - 1] || '';
+                    const lpMonth = MONTHS[Number(lastPay.payment_month)] || '';
                     const lpYear  = lastPay.payment_year || '';
                     const lpAmt   = sym + parseFloat(lastPay.amount||0).toLocaleString('en-GB',{maximumFractionDigits:0});
                     return '<div style="font-size:0.68rem;text-transform:uppercase;letter-spacing:0.5px;color:var(--muted);margin-bottom:6px">Last Payment</div>' +
@@ -5241,7 +5241,7 @@ async function loadEmployeeDashboard(user) {
                 ? payments.reduce((a,b) => ((Number(b.payment_year)||0)*100+(Number(b.payment_month)||0)) > ((Number(a.payment_year)||0)*100+(Number(a.payment_month)||0)) ? b : a, payments[0])
                 : null;
               const lp2Amt   = lastPay2 ? sSym + parseFloat(lastPay2.amount||0).toLocaleString('en-GB',{maximumFractionDigits:0}) : '—';
-              const lp2Date  = lastPay2 ? (MONTHS[Number(lastPay2.payment_month)-1]||'') + (lastPay2.payment_year ? ' '+lastPay2.payment_year : '') : 'No payments yet';
+              const lp2Date  = lastPay2 ? (MONTHS[Number(lastPay2.payment_month)]||'') + (lastPay2.payment_year ? ' '+lastPay2.payment_year : '') : 'No payments yet';
               return '<div style="flex:1;padding:16px 20px">' +
                 '<div style="font:600 9px/1 var(--font-mono);text-transform:uppercase;letter-spacing:1px;color:var(--muted);margin-bottom:8px">Last Payment</div>' +
                 '<div style="font:700 22px/1 var(--font-mono);color:' + (lastPay2 ? 'var(--positive)' : 'var(--muted)') + '">' + lp2Amt + '</div>' +
@@ -7800,7 +7800,6 @@ async function wmSend() {
   if (!q) return;
   input.value = '';
   wmAppend('user', q);
-  window._wmHistory.push({ role: 'user', content: q });
 
   window._wmBusy = true;
   const sendBtn = document.getElementById('wmSend');
@@ -7808,15 +7807,25 @@ async function wmSend() {
   const thinking = wmAppend('bot', '…');
   thinking.classList.add('wm-thinking');
 
+  // Abort if the server doesn't respond within 90 seconds
+  const ctrl = new AbortController();
+  const tmOut = setTimeout(() => ctrl.abort(), 90000);
+
+  // Only add to history now — after we know we're actually sending
+  window._wmHistory.push({ role: 'user', content: q });
+
   try {
     const res = await fetch('/api/wasteman', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ messages: window._wmHistory })
+      body: JSON.stringify({ messages: window._wmHistory }),
+      signal: ctrl.signal
     });
+    clearTimeout(tmOut);
     const data = await res.json();
     thinking.remove();
     if (!res.ok) {
+      window._wmHistory.pop(); // remove the failed user message so history stays clean
       wmAppend('bot', data.error || 'Something went wrong.');
     } else {
       wmAppend('bot', data.reply);
@@ -7824,8 +7833,12 @@ async function wmSend() {
       if (window._wmSpeak) wmSpeak(data.reply);
     }
   } catch (e) {
+    clearTimeout(tmOut);
     thinking.remove();
-    wmAppend('bot', 'Could not reach Wasteman. Check your connection.');
+    window._wmHistory.pop(); // remove failed user message
+    wmAppend('bot', e.name === 'AbortError'
+      ? 'Wasteman took too long to respond — try again or ask a simpler question.'
+      : 'Could not reach Wasteman. Check your connection.');
   } finally {
     window._wmBusy = false;
     if (sendBtn) sendBtn.disabled = false;
