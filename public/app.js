@@ -7800,7 +7800,6 @@ async function wmSend() {
   if (!q) return;
   input.value = '';
   wmAppend('user', q);
-  window._wmHistory.push({ role: 'user', content: q });
 
   window._wmBusy = true;
   const sendBtn = document.getElementById('wmSend');
@@ -7808,15 +7807,25 @@ async function wmSend() {
   const thinking = wmAppend('bot', '…');
   thinking.classList.add('wm-thinking');
 
+  // Abort if the server doesn't respond within 90 seconds
+  const ctrl = new AbortController();
+  const tmOut = setTimeout(() => ctrl.abort(), 90000);
+
+  // Only add to history now — after we know we're actually sending
+  window._wmHistory.push({ role: 'user', content: q });
+
   try {
     const res = await fetch('/api/wasteman', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ messages: window._wmHistory })
+      body: JSON.stringify({ messages: window._wmHistory }),
+      signal: ctrl.signal
     });
+    clearTimeout(tmOut);
     const data = await res.json();
     thinking.remove();
     if (!res.ok) {
+      window._wmHistory.pop(); // remove the failed user message so history stays clean
       wmAppend('bot', data.error || 'Something went wrong.');
     } else {
       wmAppend('bot', data.reply);
@@ -7824,8 +7833,12 @@ async function wmSend() {
       if (window._wmSpeak) wmSpeak(data.reply);
     }
   } catch (e) {
+    clearTimeout(tmOut);
     thinking.remove();
-    wmAppend('bot', 'Could not reach Wasteman. Check your connection.');
+    window._wmHistory.pop(); // remove failed user message
+    wmAppend('bot', e.name === 'AbortError'
+      ? 'Wasteman took too long to respond — try again or ask a simpler question.'
+      : 'Could not reach Wasteman. Check your connection.');
   } finally {
     window._wmBusy = false;
     if (sendBtn) sendBtn.disabled = false;

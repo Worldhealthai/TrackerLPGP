@@ -89,16 +89,21 @@ function registerWasteman(app, { requireAuth, requireAdmin, db }) {
 
     const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
+    const withTimeout = (promise, ms) => Promise.race([
+      promise,
+      new Promise((_, reject) => setTimeout(() => reject(new Error('AI response timed out after ' + (ms/1000) + 's')), ms))
+    ]);
+
     try {
       let reply = '';
       for (let step = 0; step < 6; step++) {
-        const response = await client.messages.create({
+        const response = await withTimeout(client.messages.create({
           model: MODEL,
           max_tokens: 1024,
           system: [{ type: 'text', text: systemPrompt(), cache_control: { type: 'ephemeral' } }],
           tools: TOOL_DEFS,
           messages
-        });
+        }), 80000);
 
         messages.push({ role: 'assistant', content: response.content });
 
