@@ -123,6 +123,13 @@ async function runLateMigrations() {
       created_by INT,
       created_at TIMESTAMPTZ DEFAULT NOW()
     )`,
+    `CREATE TABLE IF NOT EXISTS wasteman_memory (
+      id SERIAL PRIMARY KEY,
+      key TEXT NOT NULL,
+      value TEXT NOT NULL,
+      updated_at TIMESTAMPTZ DEFAULT NOW(),
+      UNIQUE(key)
+    )`,
   ];
   for (const step of steps) {
     try { await sql(step); } catch(e) { console.warn('Migration step skipped:', e.message); }
@@ -2537,6 +2544,21 @@ app.put('/api/event-kits/:eventId', requireAuth, requireAdminOrManager, async (r
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+// ── Wasteman memory helpers ───────────────────────────────────────────────────
+async function wmGetMemories() {
+  try {
+    const { rows } = await q('SELECT key, value FROM wasteman_memory ORDER BY updated_at DESC');
+    return rows;
+  } catch { return []; }
+}
+async function wmSaveMemory(key, value) {
+  await q(
+    `INSERT INTO wasteman_memory (key, value, updated_at) VALUES (?, ?, NOW())
+     ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = NOW()`,
+    [String(key).slice(0, 100), String(value).slice(0, 2000)]
+  );
+}
+
 // ── Shared data access functions — used by Wasteman directly (no HTTP round-trip) ──
 async function wmFetchSalaryOverview(year) {
   const { rows: employees } = await q('SELECT * FROM employees ORDER BY active DESC, name');
@@ -2648,13 +2670,12 @@ async function wmFetchAttendanceSummary(from, to) {
   }));
 }
 
-// ── Wasteman AI assistant (read-only, admin-only) ──────────────────────────
+// ── Wasteman AI assistant (admin-only) ────────────────────────────────────
 registerWasteman(app, { requireAuth, requireAdmin, db: {
-  getSalaryOverview: wmFetchSalaryOverview,
-  getEmployees:      wmFetchEmployees,
-  getHotelExpenses:  wmFetchHotelExpenses,
-  getDeals:          wmFetchDeals,
-  getAttendanceSummary: wmFetchAttendanceSummary
+  q,
+  getSalaryOverview:    wmFetchSalaryOverview,
+  getMemories:          wmGetMemories,
+  saveMemory:           wmSaveMemory,
 }});
 
 module.exports = app;
