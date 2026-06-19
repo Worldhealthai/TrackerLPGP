@@ -365,16 +365,18 @@
 
       <!-- ══ CALENDAR ══ -->
       <div class="page" id="page-calendar">
-        <div class="filter-bar" style="align-items:center">
-          <button class="btn btn-ghost" onclick="calPrevMonth()">‹ Prev</button>
-          <h2 id="calMonthLabel" style="flex:1;text-align:center;font-size:1.1rem;margin:0"></h2>
-          <button class="btn btn-ghost" onclick="calNextMonth()">Next ›</button>
-          <div class="form-group" style="margin:0;min-width:160px">
+        <div class="cal-page-header">
+          <div class="cal-nav">
+            <button class="btn btn-ghost btn-sm" onclick="calPrevMonth()">‹</button>
+            <h2 id="calMonthLabel"></h2>
+            <button class="btn btn-ghost btn-sm" onclick="calNextMonth()">›</button>
+          </div>
+          <div class="cal-controls">
             <select id="calEmpFilter" onchange="loadCalendar()">
               <option value="">All Employees</option>
             </select>
+            <button class="btn btn-primary btn-sm" onclick="openCalReminderModal()">+ Reminder</button>
           </div>
-          <button class="btn btn-primary btn-sm" onclick="openCalReminderModal()">+ Add Reminder</button>
         </div>
 
         <!-- Legend -->
