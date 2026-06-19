@@ -4224,11 +4224,15 @@ async function savePortfolioEvent() {
   };
   const method = id ? 'PUT' : 'POST';
   const url = id ? `/api/portfolio-events/${id}` : '/api/portfolio-events';
-  const res = await fetch(url, { method, headers: {'Content-Type':'application/json'}, body: JSON.stringify(body) });
-  if (!res.ok) { const e = await res.json(); showToast(e.error || 'Save failed', 'error'); return; }
-  showToast(id ? 'Event updated' : 'Event added', 'success');
-  closeModal('portfolioModal');
-  loadPortfolio();
+  try {
+    const res = await fetch(url, { method, headers: {'Content-Type':'application/json'}, body: JSON.stringify(body) });
+    if (!res.ok) { const e = await res.json().catch(() => ({})); showToast(e.error || 'Save failed', 'error'); return; }
+    showToast(id ? 'Event updated' : 'Event added', 'success');
+    closeModal('portfolioModal');
+    loadPortfolio();
+  } catch (e) {
+    showToast('Could not save event: ' + e.message, 'error');
+  }
 }
 
 async function deletePortfolioEvent(id) {
