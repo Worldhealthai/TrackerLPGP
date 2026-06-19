@@ -4072,7 +4072,9 @@ let portfolioData = [];
 async function loadPortfolio() {
   try {
     const res = await fetch('/api/portfolio-events');
+    if (!res.ok) { showToast('Failed to load portfolio events', 'error'); return; }
     portfolioData = await res.json();
+    if (!Array.isArray(portfolioData)) portfolioData = [];
     renderPortfolioGrid();
   } catch { showToast('Failed to load portfolio', 'error'); }
 }
@@ -4217,6 +4219,8 @@ async function savePortfolioEvent() {
   const id = document.getElementById('portEditId').value;
   const name = document.getElementById('portName').value.trim();
   if (!name) { showToast('Event name is required', 'error'); return; }
+  const saveBtn = document.querySelector('#portfolioModal .btn-primary');
+  if (saveBtn) { saveBtn.disabled = true; saveBtn.textContent = 'Saving…'; }
   const body = {
     name, event_date: document.getElementById('portDate').value || null,
     location: document.getElementById('portLocation').value.trim(),
@@ -4232,6 +4236,8 @@ async function savePortfolioEvent() {
     loadPortfolio();
   } catch (e) {
     showToast('Could not save event: ' + e.message, 'error');
+  } finally {
+    if (saveBtn) { saveBtn.disabled = false; saveBtn.textContent = 'Save'; }
   }
 }
 
