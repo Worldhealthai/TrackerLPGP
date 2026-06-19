@@ -3898,8 +3898,9 @@ function setSubFilter(cycle) {
 function subToGBPPerMonth(s) {
   const rate = SUB_FX[s.currency] || 1;
   const months = CYCLE_MONTHS[s.billing_cycle];
+  const qty = Math.max(1, parseInt(s.quantity) || 1);
   if (!months) return 0;
-  return (parseFloat(s.amount) * rate) / months;
+  return (parseFloat(s.amount) * qty * rate) / months;
 }
 
 async function loadSubscriptions() {
@@ -3920,7 +3921,8 @@ function renderSubTotals() {
   const perYear = active.reduce((a, s) => {
     const rate = SUB_FX[s.currency] || 1;
     const months = CYCLE_MONTHS[s.billing_cycle];
-    return a + (months ? parseFloat(s.amount) * rate * (12 / months) : parseFloat(s.amount) * rate);
+    const qty = Math.max(1, parseInt(s.quantity) || 1);
+    return a + (months ? parseFloat(s.amount) * qty * rate * (12 / months) : parseFloat(s.amount) * qty * rate);
   }, 0);
   document.getElementById('subTotals').innerHTML = `
     <div style="display:flex;gap:14px;flex-wrap:wrap">
@@ -3955,9 +3957,12 @@ function renderSubTable() {
   const in30 = new Date(now); in30.setDate(in30.getDate() + 30);
   tbody.innerHTML = filtered.map(s => {
     const sym = symMap[s.currency] || '';
+    const qty = Math.max(1, parseInt(s.quantity) || 1);
+    const unitAmt = parseFloat(s.amount);
+    const totalAmt = unitAmt * qty;
     const perMonth = subToGBPPerMonth(s);
     const months = CYCLE_MONTHS[s.billing_cycle];
-    const perYear = months ? perMonth * 12 : parseFloat(s.amount) * (SUB_FX[s.currency] || 1);
+    const perYear = months ? perMonth * 12 : totalAmt * (SUB_FX[s.currency] || 1);
     const cycleLabel = { monthly:'Monthly', quarterly:'Quarterly', annually:'Annually', one_off:'One-Off' }[s.billing_cycle] || s.billing_cycle;
     let renewalHtml = '—';
     if (s.renewal_date) {
@@ -3977,7 +3982,7 @@ function renderSubTable() {
     const rowCycleClass = `sub-row-${s.billing_cycle}`;
     return `<tr class="${rowCycleClass}${s.active ? '' : ' sub-inactive'}">
       <td>${activeDot} ${esc(s.name)}</td>
-      <td>${sym}${fmt(parseFloat(s.amount))}</td>
+      <td>${qty > 1 ? `${sym}${fmt(unitAmt)} <span style="color:var(--muted);font-size:0.78rem">× ${qty}</span> = ${sym}${fmt(totalAmt)}` : `${sym}${fmt(unitAmt)}`}</td>
       <td>${cycleLabel}</td>
       <td>£${fmt(perMonth)}</td>
       <td>£${fmt(perYear)}</td>
@@ -4003,6 +4008,7 @@ function openSubModal(id) {
     document.getElementById('subName').value = s.name;
     document.getElementById('subCurrency').value = s.currency;
     document.getElementById('subAmount').value = s.amount;
+    document.getElementById('subQty').value = Math.max(1, parseInt(s.quantity) || 1);
     document.getElementById('subCycle').value = s.billing_cycle;
     document.getElementById('subRenewal').value = s.renewal_date ? s.renewal_date.split('T')[0] : '';
     document.getElementById('subNotes').value = s.notes || '';
@@ -4010,6 +4016,7 @@ function openSubModal(id) {
     document.getElementById('subName').value = '';
     document.getElementById('subCurrency').value = 'GBP';
     document.getElementById('subAmount').value = '';
+    document.getElementById('subQty').value = '1';
     document.getElementById('subCycle').value = 'monthly';
     document.getElementById('subRenewal').value = '';
     document.getElementById('subNotes').value = '';
@@ -4023,10 +4030,12 @@ async function saveSub() {
   if (!name) { showToast('Name is required', 'error'); return; }
   const amount = parseFloat(document.getElementById('subAmount').value);
   if (isNaN(amount) || amount < 0) { showToast('Enter a valid amount', 'error'); return; }
+  const quantity = Math.max(1, parseInt(document.getElementById('subQty').value) || 1);
   const body = {
     name, vendor: '',
     currency: document.getElementById('subCurrency').value,
-    amount, billing_cycle: document.getElementById('subCycle').value,
+    amount, quantity,
+    billing_cycle: document.getElementById('subCycle').value,
     renewal_date: document.getElementById('subRenewal').value || null,
     notes: document.getElementById('subNotes').value.trim()
   };

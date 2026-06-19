@@ -130,6 +130,7 @@ async function runLateMigrations() {
       updated_at TIMESTAMPTZ DEFAULT NOW(),
       UNIQUE(key)
     )`,
+    `ALTER TABLE subscriptions ADD COLUMN IF NOT EXISTS quantity INTEGER NOT NULL DEFAULT 1`,
   ];
   for (const step of steps) {
     try { await sql(step); } catch(e) { console.warn('Migration step skipped:', e.message); }
@@ -1610,21 +1611,21 @@ app.get('/api/subscriptions', requireAuth, requireAdminOrManager, async (req, re
 });
 app.post('/api/subscriptions', requireAuth, requireAdminOrManager, async (req, res) => {
   try {
-    const { name, vendor, amount, currency, billing_cycle, renewal_date, notes } = req.body;
+    const { name, vendor, amount, currency, billing_cycle, renewal_date, notes, quantity } = req.body;
     const { rows } = await q(
-      `INSERT INTO subscriptions (name, vendor, amount, currency, billing_cycle, renewal_date, notes, created_by)
-       VALUES (?,?,?,?,?,?,?,?) RETURNING *`,
-      [name, vendor||'', parseFloat(amount)||0, currency||'GBP', billing_cycle||'monthly', renewal_date||null, notes||'', req.admin.id]
+      `INSERT INTO subscriptions (name, vendor, amount, currency, billing_cycle, renewal_date, notes, quantity, created_by)
+       VALUES (?,?,?,?,?,?,?,?,?) RETURNING *`,
+      [name, vendor||'', parseFloat(amount)||0, currency||'GBP', billing_cycle||'monthly', renewal_date||null, notes||'', Math.max(1, parseInt(quantity)||1), req.admin.id]
     );
     res.json(rows[0]);
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 app.put('/api/subscriptions/:id', requireAuth, requireAdminOrManager, async (req, res) => {
   try {
-    const { name, vendor, amount, currency, billing_cycle, renewal_date, notes, active } = req.body;
+    const { name, vendor, amount, currency, billing_cycle, renewal_date, notes, active, quantity } = req.body;
     const { rows } = await q(
-      `UPDATE subscriptions SET name=?, vendor=?, amount=?, currency=?, billing_cycle=?, renewal_date=?, notes=?, active=? WHERE id=? RETURNING *`,
-      [name, vendor||'', parseFloat(amount)||0, currency||'GBP', billing_cycle||'monthly', renewal_date||null, notes||'', active !== false, req.params.id]
+      `UPDATE subscriptions SET name=?, vendor=?, amount=?, currency=?, billing_cycle=?, renewal_date=?, notes=?, active=?, quantity=? WHERE id=? RETURNING *`,
+      [name, vendor||'', parseFloat(amount)||0, currency||'GBP', billing_cycle||'monthly', renewal_date||null, notes||'', active !== false, Math.max(1, parseInt(quantity)||1), req.params.id]
     );
     if (!rows.length) return res.status(404).json({ error: 'Not found' });
     res.json(rows[0]);
