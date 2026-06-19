@@ -1,7 +1,7 @@
-// ─── THEME (data-theme system) ───────────────────────────────────────────────
+// ─── THEME (data-theme system) — dark is the default brand experience ─────────
 (function applyStoredTheme() {
   const saved = localStorage.getItem('emptracker-theme');
-  if (saved === 'dark') {
+  if (saved !== 'light') {
     document.documentElement.setAttribute('data-theme', 'dark');
     document.addEventListener('DOMContentLoaded', () => _updateThemeBtn('dark'));
   }
@@ -23,7 +23,7 @@ function fmt(n) { return Number(n||0).toLocaleString('en-GB', {minimumFractionDi
 // ─── THEME ───────────────────────────────────────────────────────────────────
 (function applyStoredTheme() {
   const saved = localStorage.getItem('emptracker-theme');
-  if (saved === 'dark') {
+  if (saved !== 'light') {
     document.documentElement.setAttribute('data-theme', 'dark');
     // update button once DOM is ready
     document.addEventListener('DOMContentLoaded', () => _updateThemeBtn('dark'));
