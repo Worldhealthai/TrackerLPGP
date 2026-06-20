@@ -4895,8 +4895,11 @@ async function initEmployeePortal(user) {
     window.location.href = '/login.html';
   });
 
+  // Reveal employee-only nav items (e.g. My Profile)
+  document.querySelectorAll('.employee-only').forEach(el => el.classList.remove('hidden'));
+
   // Hide non-allowed nav items
-  const EMP_PAGES = ['dashboard', 'calendar', 'portfolio', 'eventkit'];
+  const EMP_PAGES = ['dashboard', 'calendar', 'portfolio', 'eventkit', 'profile'];
   document.querySelectorAll('.nav-item').forEach(el => {
     if (!EMP_PAGES.includes(el.dataset.page)) el.style.display = 'none';
   });
@@ -4920,6 +4923,7 @@ async function initEmployeePortal(user) {
     if (page === 'calendar')   loadEmployeeCalendar();
     if (page === 'portfolio')  loadEmployeePortfolio();
     if (page === 'eventkit')   loadEmployeeKitPage();
+    if (page === 'profile')    loadEmployeeProfile();
   };
 
   // Attach click handlers since admin init was skipped
@@ -5219,10 +5223,26 @@ async function loadEmployeeDashboard(user) {
       const payments = Array.isArray(s.payments) ? s.payments : [];
       const paymentsHtml = payments.length
         ? payments.map(p => '<div style="display:flex;justify-content:space-between;padding:9px 0;border-bottom:1px solid var(--border);font:500 12px/1 var(--font-mono);color:var(--muted)">' +
-            '<span>' + (MONTHS[p.payment_month - 1] || p.payment_month) + ' ' + p.payment_year + '</span>' +
+            '<span>' + (MONTHS[p.payment_month] || p.payment_month) + ' ' + p.payment_year + '</span>' +
             '<span style="color:var(--positive)">+' + sSym + parseFloat(p.amount||0).toLocaleString('en-GB',{minimumFractionDigits:2}) + '</span>' +
           '</div>').join('')
         : '<div style="color:var(--muted);font:500 12px/1 var(--font-mono);padding:12px 0">No payments yet this year.</div>';
+
+      const bonuses = Array.isArray(s.bonuses) ? s.bonuses : [];
+      const totalBonuses = parseFloat(s.total_bonuses) || 0;
+      const fmtBonusDate = d => { if (!d) return ''; const dt = new Date(d + 'T12:00:00'); return dt.toLocaleDateString('en-GB',{day:'numeric',month:'short',year:'numeric'}); };
+      const bonusesHtml = bonuses.length
+        ? '<div style="padding:16px 20px;border-top:1px solid var(--border)">' +
+            '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">' +
+              '<span style="font:600 10px/1 var(--font-mono);text-transform:uppercase;letter-spacing:1px;color:var(--muted)">🎁 Bonuses (' + bonuses.length + ')</span>' +
+              '<span style="font:700 12px/1 var(--font-mono);color:var(--positive)">+' + sSym + totalBonuses.toLocaleString('en-GB',{minimumFractionDigits:2}) + '</span>' +
+            '</div>' +
+            bonuses.map(b => '<div style="display:flex;justify-content:space-between;padding:9px 0;border-bottom:1px solid var(--border);font:500 12px/1 var(--font-mono);color:var(--muted)">' +
+              '<span style="min-width:0"><span style="color:var(--text)">' + esc(b.reason || 'Bonus') + '</span><br><span style="font-size:10px">' + fmtBonusDate(b.bonus_date) + '</span></span>' +
+              '<span style="color:var(--positive);white-space:nowrap">+' + sSym + parseFloat(b.amount||0).toLocaleString('en-GB',{minimumFractionDigits:2}) + '</span>' +
+            '</div>').join('') +
+          '</div>'
+        : '';
 
       salHtml =
         '<div class="card" style="margin-top:16px">' +
@@ -5293,6 +5313,7 @@ async function loadEmployeeDashboard(user) {
             '<div style="font:600 10px/1 var(--font-mono);text-transform:uppercase;letter-spacing:1px;color:var(--muted);margin-bottom:12px">Payments (' + payments.length + ')</div>' +
             paymentsHtml +
           '</div>' +
+          bonusesHtml +
         '</div>';
     }
 
@@ -5354,6 +5375,91 @@ async function loadEmployeeDashboard(user) {
   } catch(e) {
     el.innerHTML = '<div class="alert alert-error">Failed to load profile: ' + e.message + '</div>';
   }
+}
+
+// ─── EMPLOYEE PROFILE (staff portal) ──────────────────────────────────────────
+async function loadEmployeeProfile() {
+  const el = document.getElementById('profileContent');
+  if (!el) return;
+  el.innerHTML = '<div class="skeleton" style="height:300px;border-radius:16px"></div>';
+  try {
+    const res = await fetch('/api/employee/profile');
+    const p = res.ok ? await res.json() : {};
+    const initials = (p.name || '?').split(' ').map(w => w[0]).join('').slice(0,2).toUpperCase();
+    const detail = (label, val) =>
+      '<div style="display:flex;justify-content:space-between;padding:11px 0;border-bottom:1px solid var(--border);font:500 13px/1.3 var(--font-sans)">' +
+        '<span style="color:var(--muted)">' + label + '</span>' +
+        '<span style="color:var(--text);text-align:right">' + (val ? esc(String(val)) : '—') + '</span>' +
+      '</div>';
+
+    el.innerHTML =
+      '<div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">' +
+        // Details card
+        '<div class="card" style="padding:24px">' +
+          '<div style="display:flex;align-items:center;gap:16px;margin-bottom:20px">' +
+            '<div style="width:56px;height:56px;border-radius:50%;background:var(--primary);display:flex;align-items:center;justify-content:center;font:800 20px/1 var(--font-mono);color:#1a1a1f;flex-shrink:0">' + initials + '</div>' +
+            '<div><div style="font:700 18px/1 var(--font-sans);color:var(--text)">' + esc(p.name || '') + '</div>' +
+              '<div style="font:500 12px/1 var(--font-mono);color:var(--muted);margin-top:5px">' + esc([p.job_title, p.department].filter(Boolean).join(' · ')) + '</div></div>' +
+          '</div>' +
+          '<div style="font:600 10px/1 var(--font-mono);text-transform:uppercase;letter-spacing:1px;color:var(--muted);margin-bottom:6px">My Details</div>' +
+          detail('Email', p.email) +
+          detail('Job title', p.job_title) +
+          detail('Department', p.department) +
+          detail('Start date', p.start_date ? formatDate(p.start_date.slice(0,10)) : '') +
+          '<div style="margin-top:18px">' +
+            '<label style="font:600 11px/1 var(--font-sans);color:var(--muted);display:block;margin-bottom:6px">Phone number</label>' +
+            '<div style="display:flex;gap:8px">' +
+              '<input id="profPhone" class="form-control" type="tel" style="flex:1" placeholder="Add your phone number" value="' + esc(p.phone || '') + '">' +
+              '<button class="btn btn-primary" onclick="saveProfilePhone()">Save</button>' +
+            '</div>' +
+          '</div>' +
+        '</div>' +
+        // Change PIN card
+        '<div class="card" style="padding:24px">' +
+          '<div style="font:700 15px/1 var(--font-sans);color:var(--text);margin-bottom:6px">🔒 Change PIN</div>' +
+          '<div style="font:500 12px/1.5 var(--font-mono);color:var(--muted);margin-bottom:18px">Your PIN is used to log in to the staff portal. Use 4–6 digits.</div>' +
+          (p.has_pin
+            ? '<div class="form-group" style="margin-bottom:14px"><label>Current PIN</label><input id="profCurrentPin" type="password" inputmode="numeric" maxlength="6" placeholder="••••" autocomplete="current-password"></div>'
+            : '<div style="margin-bottom:14px;padding:10px 12px;background:var(--warning-soft);border:1px solid var(--warning);border-radius:8px;font:500 11px/1.4 var(--font-mono);color:var(--warning)">No PIN set yet — set one below to secure your account.</div>') +
+          '<div class="form-group" style="margin-bottom:14px"><label>New PIN</label><input id="profNewPin" type="password" inputmode="numeric" maxlength="6" placeholder="4–6 digits" autocomplete="new-password"></div>' +
+          '<div class="form-group" style="margin-bottom:18px"><label>Confirm new PIN</label><input id="profNewPin2" type="password" inputmode="numeric" maxlength="6" placeholder="Re-enter new PIN" autocomplete="new-password"></div>' +
+          '<button class="btn btn-primary" style="width:100%" onclick="changeMyPin(' + (p.has_pin ? 'true' : 'false') + ')">Update PIN</button>' +
+        '</div>' +
+      '</div>';
+  } catch (e) {
+    el.innerHTML = '<div class="alert alert-error">Failed to load profile: ' + e.message + '</div>';
+  }
+}
+
+async function saveProfilePhone() {
+  const phone = document.getElementById('profPhone').value.trim();
+  try {
+    const res = await fetch('/api/employee/profile', {
+      method: 'PATCH', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ phone })
+    });
+    if (!res.ok) { const e = await res.json().catch(() => ({})); showToast(e.error || 'Could not save', 'error'); return; }
+    showToast('Phone number updated', 'success');
+  } catch (e) { showToast('Could not save: ' + e.message, 'error'); }
+}
+
+async function changeMyPin(hasPin) {
+  const current = document.getElementById('profCurrentPin')?.value || '';
+  const newPin  = document.getElementById('profNewPin').value;
+  const newPin2 = document.getElementById('profNewPin2').value;
+  if (hasPin && !current) { showToast('Enter your current PIN', 'error'); return; }
+  if (!/^\d{4,6}$/.test(newPin)) { showToast('New PIN must be 4–6 digits', 'error'); return; }
+  if (newPin !== newPin2) { showToast('New PINs do not match', 'error'); return; }
+  try {
+    const res = await fetch('/api/employee/change-pin', {
+      method: 'POST', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ current_pin: current, new_pin: newPin })
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) { showToast(data.error || 'Could not change PIN', 'error'); return; }
+    showToast('PIN updated successfully', 'success');
+    loadEmployeeProfile();
+  } catch (e) { showToast('Could not change PIN: ' + e.message, 'error'); }
 }
 
 // ─── DEAL TRACKER ─────────────────────────────────────────────────────────────

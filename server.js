@@ -623,13 +623,48 @@ app.put('/api/employees/:id/portal-pin', requireAuth, requireAdmin, async (req, 
 app.get('/api/employee/profile', requireAuth, async (req, res) => {
   if (req.user.role !== 'employee') return res.status(403).json({ error: 'Employees only' });
   const empId = req.user.employee_id;
-  const { rows } = await q('SELECT id, name, email, job_title, department, employment_type, annual_salary, currency, start_date FROM employees WHERE id = ?', [empId]);
+  const { rows } = await q('SELECT id, name, email, phone, job_title, department, employment_type, annual_salary, currency, start_date, portal_pin FROM employees WHERE id = ?', [empId]);
   if (!rows[0]) return res.status(404).json({ error: 'Not found' });
   const emp = rows[0];
+  const has_pin = !!emp.portal_pin;
+  delete emp.portal_pin;
   const year = new Date().getFullYear();
   const allowance = DAY_OFF_ALLOWANCE[emp.employment_type] || 20;
   const calc = await calcExcessDeductions(empId, year, parseFloat(emp.annual_salary) || 0, allowance);
-  res.json({ ...emp, year, days_used: calc.total_days_off, allowance_days: allowance, excess_days: calc.excess_days, excess_deduction: calc.excess_deduction });
+  res.json({ ...emp, has_pin, year, days_used: calc.total_days_off, allowance_days: allowance, excess_days: calc.excess_days, excess_deduction: calc.excess_deduction });
+});
+
+// Employee: update own editable details (phone)
+app.patch('/api/employee/profile', requireAuth, async (req, res) => {
+  if (req.user.role !== 'employee') return res.status(403).json({ error: 'Employees only' });
+  try {
+    const empId = req.user.employee_id;
+    const { phone } = req.body;
+    await q('UPDATE employees SET phone = ? WHERE id = ?', [String(phone || '').slice(0, 40), empId]);
+    res.json({ ok: true });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// Employee: change own portal PIN (requires current PIN)
+app.post('/api/employee/change-pin', requireAuth, async (req, res) => {
+  if (req.user.role !== 'employee') return res.status(403).json({ error: 'Employees only' });
+  try {
+    const empId = req.user.employee_id;
+    const { current_pin, new_pin } = req.body;
+    const newPin = String(new_pin || '').replace(/\D/g, '').slice(0, 6);
+    if (newPin.length < 4) return res.status(400).json({ error: 'New PIN must be 4–6 digits' });
+    const { rows } = await q('SELECT portal_pin FROM employees WHERE id = ?', [empId]);
+    if (!rows[0]) return res.status(404).json({ error: 'Not found' });
+    const stored = String(rows[0].portal_pin || '');
+    // Verify current PIN if one is already set (tolerate legacy bcrypt hashes)
+    if (stored) {
+      const given = String(current_pin || '').trim();
+      const ok = stored.startsWith('$2') ? bcrypt.compareSync(given, stored) : stored === given;
+      if (!ok) return res.status(401).json({ error: 'Current PIN is incorrect' });
+    }
+    await q('UPDATE employees SET portal_pin = ? WHERE id = ?', [newPin, empId]);
+    res.json({ ok: true });
+  } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
 // Employee: own calendar records for a month
@@ -749,6 +784,13 @@ app.get('/api/employee/salary', requireAuth, async (req, res) => {
       'SELECT * FROM monthly_payments WHERE employee_id = ? AND payment_year = ? ORDER BY payment_month',
       [empId, year]
     );
+    const { rows: bonusRows } = await q(
+      `SELECT id, amount, bonus_date::TEXT AS bonus_date, reason
+       FROM bonuses WHERE employee_id = ? AND EXTRACT(YEAR FROM bonus_date) = ?
+       ORDER BY bonus_date DESC`,
+      [empId, year]
+    );
+    const totalBonuses = parseFloat(bonusRows.reduce((a, b) => a + parseFloat(b.amount || 0), 0).toFixed(2));
     const allowance   = DAY_OFF_ALLOWANCE[emp.employment_type] || 20;
     const annualSal   = parseFloat(emp.annual_salary) || 0;
     const dayCalc     = await calcExcessDeductions(empId, year, annualSal, allowance);
@@ -802,6 +844,8 @@ app.get('/api/employee/salary', requireAuth, async (req, res) => {
       pro_rated:        !isTerminated ? earnedPay : null,
       first_month_full: firstMonthFull,
       payments,
+      bonuses:          bonusRows,
+      total_bonuses:    totalBonuses,
       total_paid:       parseFloat(totalPaid.toFixed(2)),
       total_days_off:   dayCalc.total_days_off,
       allowance_days:   allowance,
