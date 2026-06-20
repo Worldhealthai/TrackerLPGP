@@ -131,6 +131,7 @@ async function runLateMigrations() {
       UNIQUE(key)
     )`,
     `ALTER TABLE subscriptions ADD COLUMN IF NOT EXISTS quantity INTEGER NOT NULL DEFAULT 1`,
+    `ALTER TABLE event_kits ADD COLUMN IF NOT EXISTS agenda_uploader_name TEXT NOT NULL DEFAULT ''`,
   ];
   for (const step of steps) {
     try { await sql(step); } catch(e) { console.warn('Migration step skipped:', e.message); }
@@ -2496,11 +2497,12 @@ app.patch('/api/event-kits/:eventId/agenda', requireAuth, async (req, res) => {
   try {
     const eid = req.params.eventId;
     const { agenda_file, agenda_data } = req.body;
+    const uploaderName = req.admin.name || req.admin.username || '';
     const { rows: exist } = await q('SELECT id FROM event_kits WHERE event_id=?', [eid]);
     if (exist.length) {
-      await q('UPDATE event_kits SET agenda_file=?, agenda_data=?, updated_at=NOW() WHERE event_id=?', [agenda_file||'', agenda_data||'', eid]);
+      await q('UPDATE event_kits SET agenda_file=?, agenda_data=?, agenda_uploader_name=?, updated_at=NOW() WHERE event_id=?', [agenda_file||'', agenda_data||'', agenda_file ? uploaderName : '', eid]);
     } else {
-      await q('INSERT INTO event_kits (event_id, agenda_file, agenda_data, created_by) VALUES (?,?,?,?)', [eid, agenda_file||'', agenda_data||'', req.admin.id]);
+      await q('INSERT INTO event_kits (event_id, agenda_file, agenda_data, agenda_uploader_name, created_by) VALUES (?,?,?,?,?)', [eid, agenda_file||'', agenda_data||'', agenda_file ? uploaderName : '', req.admin.id]);
     }
     // Notify admins/managers if an employee uploaded (not clearing)
     if (agenda_file && req.admin.role === 'employee') {

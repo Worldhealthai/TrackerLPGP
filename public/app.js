@@ -7463,7 +7463,8 @@ async function loadEventKit() {
         banner.id = 'ekAgendaBanner';
         banner.className = 'card';
         banner.style.cssText = 'padding:16px 24px;margin-bottom:16px;display:flex;align-items:center;gap:12px';
-        banner.innerHTML = `<span style="font-size:1.1rem">📋</span><div style="flex:1"><div style="font-size:0.8rem;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:2px">Employee Uploaded Agenda</div><div style="font-size:0.88rem">${esc(kit.agenda_file)}</div></div><a class="btn btn-ghost btn-sm" href="/api/event-kits/${eid}/file/agenda" target="_blank">Download</a>`;
+        const uploaderLabel = kit.agenda_uploader_name ? `${esc(kit.agenda_uploader_name)} uploaded agenda` : 'Employee uploaded agenda';
+        banner.innerHTML = `<span style="font-size:1.1rem">📋</span><div style="flex:1"><div style="font-size:0.8rem;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:2px">${uploaderLabel}</div><div style="font-size:0.88rem">${esc(kit.agenda_file)}</div></div><a class="btn btn-ghost btn-sm" href="/api/event-kits/${eid}/file/agenda" target="_blank">Download</a>`;
         document.getElementById('ekKitEditor').insertBefore(banner, document.getElementById('ekKitEditor').firstChild);
       }
     }
