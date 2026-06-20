@@ -428,7 +428,11 @@ app.post('/api/employee-login', async (req, res) => {
     const { rows } = await q(`SELECT * FROM employees WHERE LOWER(email) = LOWER(?) AND active = 1`, [email.trim()]);
     const emp = rows[0];
     if (!emp || !emp.portal_pin) return res.status(401).json({ error: 'Invalid email or PIN' });
-    if (!bcrypt.compareSync(String(pin), emp.portal_pin)) return res.status(401).json({ error: 'Invalid email or PIN' });
+    // PINs are stored as plaintext digits; tolerate legacy bcrypt-hashed PINs too
+    const stored = String(emp.portal_pin);
+    const given = String(pin).trim();
+    const pinOk = stored.startsWith('$2') ? bcrypt.compareSync(given, stored) : stored === given;
+    if (!pinOk) return res.status(401).json({ error: 'Invalid email or PIN' });
     const token = jwt.sign({ role: 'employee', employee_id: emp.id, name: emp.name, email: emp.email }, JWT_SECRET, { expiresIn: '12h' });
     res.cookie('token', token, { httpOnly: true, sameSite: 'strict', maxAge: 12 * 60 * 60 * 1000 });
     res.json({ success: true, role: 'employee', name: emp.name, employee_id: emp.id });
@@ -554,7 +558,7 @@ app.put('/api/employees/:id', requireAuth, async (req, res) => {
   await q(
     `UPDATE employees SET name=?, daily_rate=?, active=?, employment_type=?, annual_salary=?,
      currency=?, start_date=?, pension_rate=?,
-     job_title=?, department=?, phone=?, email=?, contract_end_date=?, portal_pin=?
+     job_title=?, department=?, phone=?, email=?, contract_end_date=?, portal_pin=COALESCE(?, portal_pin)
      WHERE id=?`,
     [name, daily_rate, active !== undefined ? active : 1, employment_type || 'payroll',
      annualSal, cur, start_date || null, pensionRate,
@@ -607,9 +611,10 @@ app.delete('/api/employees/:id/hard', requireAuth, requireAdmin, async (req, res
 // Admin: set portal PIN for employee
 app.put('/api/employees/:id/portal-pin', requireAuth, requireAdmin, async (req, res) => {
   const { pin } = req.body;
-  if (!pin || String(pin).length < 4) return res.status(400).json({ error: 'PIN must be at least 4 characters' });
-  const hash = bcrypt.hashSync(String(pin), 10);
-  await q('UPDATE employees SET portal_pin = ? WHERE id = ?', [hash, req.params.id]);
+  // Store plaintext digits, consistent with the employee edit form and staff login
+  const pinVal = String(pin || '').replace(/\D/g, '').slice(0, 6);
+  if (pinVal.length < 4) return res.status(400).json({ error: 'PIN must be at least 4 digits' });
+  await q('UPDATE employees SET portal_pin = ? WHERE id = ?', [pinVal, req.params.id]);
   res.json({ success: true });
 });
 

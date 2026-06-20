@@ -298,7 +298,8 @@ function openEmpModal(emp = null) {
   document.getElementById('empContractEnd').value = emp ? (emp.contract_end_date || '') : '';
   document.getElementById('empSalaryEffective').value = today();
   document.getElementById('empSalaryReason').value = '';
-  document.getElementById('empPin').value = emp ? (emp.portal_pin || '') : '';
+  // Don't prefill a legacy bcrypt-hashed PIN (starts with $2) — would mangle on save
+  document.getElementById('empPin').value = (emp && emp.portal_pin && !String(emp.portal_pin).startsWith('$2')) ? emp.portal_pin : '';
   document.getElementById('salaryChangeFields').classList.add('hidden');
   document.getElementById('empModalTitle').textContent = emp ? 'Edit Employee' : 'Add Employee';
 
