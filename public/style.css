@@ -3867,12 +3867,15 @@ tbody tr:last-child td { border-bottom: none; }
 
 /* Dark primary button — neon glow */
 [data-theme="dark"] .btn-primary {
-  background: linear-gradient(135deg, #d9a441, #d9a441);
-  box-shadow: 0 4px 16px rgba(217,164,65,0.4);
+  background: #d9a441;
+  color: #1a1a1f;
+  border-color: #d9a441;
+  box-shadow: none;
 }
 [data-theme="dark"] .btn-primary:hover {
-  background: linear-gradient(135deg, #d9a441, #a5b4fc);
-  box-shadow: 0 4px 24px rgba(217,164,65,0.55), 0 0 40px rgba(217,164,65,0.25);
+  background: #e3b357;
+  border-color: #e3b357;
+  box-shadow: none;
   transform: translateY(-1px);
 }
 [data-theme="dark"] .btn-ghost {
@@ -4087,16 +4090,11 @@ tbody tr:last-child td { border-bottom: none; }
 }
 .deal-add-btn {
   margin: 8px;
-  padding: 7px;
-  background: none;
-  border: 1.5px dashed var(--border);
-  border-radius: 9px;
-  color: var(--muted);
+  padding: 8px 14px;
   font-size: 0.8rem;
+  font-weight: 600;
   cursor: pointer;
-  transition: background .12s;
 }
-.deal-add-btn:hover { background: var(--bg); color: var(--text); }
 
 .deal-card {
   background: var(--bg);
