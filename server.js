@@ -131,6 +131,7 @@ async function runLateMigrations() {
       UNIQUE(key)
     )`,
     `ALTER TABLE subscriptions ADD COLUMN IF NOT EXISTS quantity INTEGER NOT NULL DEFAULT 1`,
+    `ALTER TABLE event_kits ADD COLUMN IF NOT EXISTS agenda_uploader_name TEXT NOT NULL DEFAULT ''`,
   ];
   for (const step of steps) {
     try { await sql(step); } catch(e) { console.warn('Migration step skipped:', e.message); }
@@ -428,7 +429,11 @@ app.post('/api/employee-login', async (req, res) => {
     const { rows } = await q(`SELECT * FROM employees WHERE LOWER(email) = LOWER(?) AND active = 1`, [email.trim()]);
     const emp = rows[0];
     if (!emp || !emp.portal_pin) return res.status(401).json({ error: 'Invalid email or PIN' });
-    if (!bcrypt.compareSync(String(pin), emp.portal_pin)) return res.status(401).json({ error: 'Invalid email or PIN' });
+    // PINs are stored as plaintext digits; tolerate legacy bcrypt-hashed PINs too
+    const stored = String(emp.portal_pin);
+    const given = String(pin).trim();
+    const pinOk = stored.startsWith('$2') ? bcrypt.compareSync(given, stored) : stored === given;
+    if (!pinOk) return res.status(401).json({ error: 'Invalid email or PIN' });
     const token = jwt.sign({ role: 'employee', employee_id: emp.id, name: emp.name, email: emp.email }, JWT_SECRET, { expiresIn: '12h' });
     res.cookie('token', token, { httpOnly: true, sameSite: 'strict', maxAge: 12 * 60 * 60 * 1000 });
     res.json({ success: true, role: 'employee', name: emp.name, employee_id: emp.id });
@@ -554,7 +559,7 @@ app.put('/api/employees/:id', requireAuth, async (req, res) => {
   await q(
     `UPDATE employees SET name=?, daily_rate=?, active=?, employment_type=?, annual_salary=?,
      currency=?, start_date=?, pension_rate=?,
-     job_title=?, department=?, phone=?, email=?, contract_end_date=?, portal_pin=?
+     job_title=?, department=?, phone=?, email=?, contract_end_date=?, portal_pin=COALESCE(?, portal_pin)
      WHERE id=?`,
     [name, daily_rate, active !== undefined ? active : 1, employment_type || 'payroll',
      annualSal, cur, start_date || null, pensionRate,
@@ -607,9 +612,10 @@ app.delete('/api/employees/:id/hard', requireAuth, requireAdmin, async (req, res
 // Admin: set portal PIN for employee
 app.put('/api/employees/:id/portal-pin', requireAuth, requireAdmin, async (req, res) => {
   const { pin } = req.body;
-  if (!pin || String(pin).length < 4) return res.status(400).json({ error: 'PIN must be at least 4 characters' });
-  const hash = bcrypt.hashSync(String(pin), 10);
-  await q('UPDATE employees SET portal_pin = ? WHERE id = ?', [hash, req.params.id]);
+  // Store plaintext digits, consistent with the employee edit form and staff login
+  const pinVal = String(pin || '').replace(/\D/g, '').slice(0, 6);
+  if (pinVal.length < 4) return res.status(400).json({ error: 'PIN must be at least 4 digits' });
+  await q('UPDATE employees SET portal_pin = ? WHERE id = ?', [pinVal, req.params.id]);
   res.json({ success: true });
 });
 
@@ -617,13 +623,51 @@ app.put('/api/employees/:id/portal-pin', requireAuth, requireAdmin, async (req, 
 app.get('/api/employee/profile', requireAuth, async (req, res) => {
   if (req.user.role !== 'employee') return res.status(403).json({ error: 'Employees only' });
   const empId = req.user.employee_id;
-  const { rows } = await q('SELECT id, name, email, job_title, department, employment_type, annual_salary, currency, start_date FROM employees WHERE id = ?', [empId]);
+  const { rows } = await q('SELECT id, name, email, phone, job_title, department, employment_type, annual_salary, currency, start_date, portal_pin FROM employees WHERE id = ?', [empId]);
   if (!rows[0]) return res.status(404).json({ error: 'Not found' });
   const emp = rows[0];
+  const has_pin = !!emp.portal_pin;
+  delete emp.portal_pin;
   const year = new Date().getFullYear();
   const allowance = DAY_OFF_ALLOWANCE[emp.employment_type] || 20;
   const calc = await calcExcessDeductions(empId, year, parseFloat(emp.annual_salary) || 0, allowance);
-  res.json({ ...emp, year, days_used: calc.total_days_off, allowance_days: allowance, excess_days: calc.excess_days, excess_deduction: calc.excess_deduction });
+  res.json({ ...emp, has_pin, year, days_used: calc.total_days_off, allowance_days: allowance, excess_days: calc.excess_days, excess_deduction: calc.excess_deduction });
+});
+
+// Employee: update own editable details (phone, job_title)
+app.patch('/api/employee/profile', requireAuth, async (req, res) => {
+  if (req.user.role !== 'employee') return res.status(403).json({ error: 'Employees only' });
+  try {
+    const empId = req.user.employee_id;
+    const { phone, job_title } = req.body;
+    await q(
+      'UPDATE employees SET phone = ?, job_title = COALESCE(NULLIF(?, \'\'), job_title) WHERE id = ?',
+      [String(phone || '').slice(0, 40), String(job_title || '').slice(0, 80), empId]
+    );
+    res.json({ ok: true });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// Employee: change own portal PIN (requires current PIN)
+app.post('/api/employee/change-pin', requireAuth, async (req, res) => {
+  if (req.user.role !== 'employee') return res.status(403).json({ error: 'Employees only' });
+  try {
+    const empId = req.user.employee_id;
+    const { current_pin, new_pin } = req.body;
+    const newPin = String(new_pin || '').replace(/\D/g, '').slice(0, 6);
+    if (newPin.length < 4) return res.status(400).json({ error: 'New PIN must be 4–6 digits' });
+    const { rows } = await q('SELECT portal_pin FROM employees WHERE id = ?', [empId]);
+    if (!rows[0]) return res.status(404).json({ error: 'Not found' });
+    const stored = String(rows[0].portal_pin || '');
+    // Verify current PIN if one is already set (tolerate legacy bcrypt hashes)
+    if (stored) {
+      const given = String(current_pin || '').trim();
+      const ok = stored.startsWith('$2') ? bcrypt.compareSync(given, stored) : stored === given;
+      if (!ok) return res.status(401).json({ error: 'Current PIN is incorrect' });
+    }
+    await q('UPDATE employees SET portal_pin = ? WHERE id = ?', [newPin, empId]);
+    res.json({ ok: true });
+  } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
 // Employee: own calendar records for a month
@@ -743,6 +787,13 @@ app.get('/api/employee/salary', requireAuth, async (req, res) => {
       'SELECT * FROM monthly_payments WHERE employee_id = ? AND payment_year = ? ORDER BY payment_month',
       [empId, year]
     );
+    const { rows: bonusRows } = await q(
+      `SELECT id, amount, bonus_date::TEXT AS bonus_date, reason
+       FROM bonuses WHERE employee_id = ? AND EXTRACT(YEAR FROM bonus_date) = ?
+       ORDER BY bonus_date DESC`,
+      [empId, year]
+    );
+    const totalBonuses = parseFloat(bonusRows.reduce((a, b) => a + parseFloat(b.amount || 0), 0).toFixed(2));
     const allowance   = DAY_OFF_ALLOWANCE[emp.employment_type] || 20;
     const annualSal   = parseFloat(emp.annual_salary) || 0;
     const dayCalc     = await calcExcessDeductions(empId, year, annualSal, allowance);
@@ -796,6 +847,8 @@ app.get('/api/employee/salary', requireAuth, async (req, res) => {
       pro_rated:        !isTerminated ? earnedPay : null,
       first_month_full: firstMonthFull,
       payments,
+      bonuses:          bonusRows,
+      total_bonuses:    totalBonuses,
       total_paid:       parseFloat(totalPaid.toFixed(2)),
       total_days_off:   dayCalc.total_days_off,
       allowance_days:   allowance,
@@ -2491,11 +2544,12 @@ app.patch('/api/event-kits/:eventId/agenda', requireAuth, async (req, res) => {
   try {
     const eid = req.params.eventId;
     const { agenda_file, agenda_data } = req.body;
+    const uploaderName = req.admin.name || req.admin.username || '';
     const { rows: exist } = await q('SELECT id FROM event_kits WHERE event_id=?', [eid]);
     if (exist.length) {
-      await q('UPDATE event_kits SET agenda_file=?, agenda_data=?, updated_at=NOW() WHERE event_id=?', [agenda_file||'', agenda_data||'', eid]);
+      await q('UPDATE event_kits SET agenda_file=?, agenda_data=?, agenda_uploader_name=?, updated_at=NOW() WHERE event_id=?', [agenda_file||'', agenda_data||'', agenda_file ? uploaderName : '', eid]);
     } else {
-      await q('INSERT INTO event_kits (event_id, agenda_file, agenda_data, created_by) VALUES (?,?,?,?)', [eid, agenda_file||'', agenda_data||'', req.admin.id]);
+      await q('INSERT INTO event_kits (event_id, agenda_file, agenda_data, agenda_uploader_name, created_by) VALUES (?,?,?,?,?)', [eid, agenda_file||'', agenda_data||'', agenda_file ? uploaderName : '', req.admin.id]);
     }
     // Notify admins/managers if an employee uploaded (not clearing)
     if (agenda_file && req.admin.role === 'employee') {

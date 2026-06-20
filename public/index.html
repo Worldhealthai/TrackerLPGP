@@ -3,8 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0, viewport-fit=cover">
-  <meta name="theme-color" content="#4f46e5" media="(prefers-color-scheme: light)">
-  <meta name="theme-color" content="#1e2235" media="(prefers-color-scheme: dark)">
+  <meta name="theme-color" content="#0a0a0c">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="apple-mobile-web-app-title" content="LPGP">
@@ -61,6 +60,10 @@
       <div class="nav-item" data-page="calendar" style="position:relative">
         <span class="icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg></span>
         <span class="nav-label">Calendar</span><span id="calNavBadge" class="nav-badge hidden"></span>
+      </div>
+      <div class="nav-item employee-only hidden" data-page="profile">
+        <span class="icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg></span>
+        <span class="nav-label">My Profile</span>
       </div>
       <div class="nav-section-label">Management</div>
       <div class="nav-item admin-only hidden" data-page="salary">
@@ -676,6 +679,11 @@
   <div id="ekEmployeeView" class="hidden">
     <div id="ekEmployeeKits"></div>
   </div>
+</div>
+
+<!-- ══ MY PROFILE (staff portal) ══ -->
+<div class="page" id="page-profile">
+  <div id="profileContent"></div>
 </div>
 
     </div>
@@ -1365,6 +1373,7 @@
   <div class="bottom-nav-item admin-only hidden" data-page="salary" style="position:relative"><span class="bottom-nav-icon">💰</span><span class="bottom-nav-label">Salary</span><span id="salaryBottomBadge" class="nav-badge nav-badge-bottom hidden"></span></div>
   <div class="bottom-nav-item admin-only hidden" data-page="employees"><span class="bottom-nav-icon">👥</span><span class="bottom-nav-label">Staff</span></div>
   <div class="bottom-nav-item" data-page="eventkit"><span class="bottom-nav-icon">📦</span><span class="bottom-nav-label">Event Kit</span></div>
+  <div class="bottom-nav-item employee-only hidden" data-page="profile"><span class="bottom-nav-icon">👤</span><span class="bottom-nav-label">Profile</span></div>
 </nav>
 
 <!-- Toast container -->

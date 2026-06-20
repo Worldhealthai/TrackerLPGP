@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-  <meta name="theme-color" content="#4f6ef7">
+  <meta name="theme-color" content="#0a0a0c">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="apple-mobile-web-app-title" content="LPGP">
@@ -18,7 +18,7 @@
   <style>
     .login-tabs { display:flex; gap:0; margin-bottom:24px; border:1px solid var(--border); border-radius:10px; overflow:hidden; }
     .login-tab { flex:1; padding:10px; text-align:center; font:600 13px/1 var(--font-mono); color:var(--muted); cursor:pointer; background:transparent; border:none; transition:all .2s; }
-    .login-tab.active { background: linear-gradient(135deg, #4f46e5, #7c3aed); color:#fff; }
+    .login-tab.active { background: linear-gradient(135deg, #d9a441, #c08d2e); color:#1a1a1f; }
     .login-tab-panel { display:none; }
     .login-tab-panel.active { display:block; }
   </style>
@@ -80,15 +80,15 @@
   </div>
 
   <script>
-    // Apply saved theme immediately
+    // Apply saved theme immediately — dark is the default brand experience
     (function() {
       const saved = localStorage.getItem('emptracker-theme');
-      if (saved === 'dark') {
+      if (saved !== 'light') {
         document.documentElement.setAttribute('data-theme', 'dark');
       }
       document.addEventListener('DOMContentLoaded', function() {
         const btn = document.getElementById('loginThemeBtn');
-        if (btn) btn.textContent = saved === 'dark' ? '☀️' : '🌙';
+        if (btn) btn.textContent = saved !== 'light' ? '☀️' : '🌙';
       });
     })();
 
