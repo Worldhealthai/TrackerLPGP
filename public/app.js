@@ -5407,10 +5407,12 @@ async function loadEmployeeProfile() {
           detail('Department', p.department) +
           detail('Start date', p.start_date ? formatDate(p.start_date.slice(0,10)) : '') +
           '<div style="margin-top:18px">' +
+            '<label style="font:600 11px/1 var(--font-sans);color:var(--muted);display:block;margin-bottom:6px">Job title</label>' +
+            '<input id="profJobTitle" class="form-control" type="text" style="margin-bottom:12px" placeholder="e.g. Event Coordinator" value="' + esc(p.job_title || '') + '">' +
             '<label style="font:600 11px/1 var(--font-sans);color:var(--muted);display:block;margin-bottom:6px">Phone number</label>' +
             '<div style="display:flex;gap:8px">' +
               '<input id="profPhone" class="form-control" type="tel" style="flex:1" placeholder="Add your phone number" value="' + esc(p.phone || '') + '">' +
-              '<button class="btn btn-primary" onclick="saveProfilePhone()">Save</button>' +
+              '<button class="btn btn-primary" onclick="saveProfileDetails()">Save</button>' +
             '</div>' +
           '</div>' +
         '</div>' +
@@ -5431,15 +5433,17 @@ async function loadEmployeeProfile() {
   }
 }
 
-async function saveProfilePhone() {
+async function saveProfileDetails() {
   const phone = document.getElementById('profPhone').value.trim();
+  const job_title = document.getElementById('profJobTitle').value.trim();
   try {
     const res = await fetch('/api/employee/profile', {
       method: 'PATCH', headers: {'Content-Type':'application/json'},
-      body: JSON.stringify({ phone })
+      body: JSON.stringify({ phone, job_title })
     });
     if (!res.ok) { const e = await res.json().catch(() => ({})); showToast(e.error || 'Could not save', 'error'); return; }
-    showToast('Phone number updated', 'success');
+    showToast('Details saved', 'success');
+    loadEmployeeProfile();
   } catch (e) { showToast('Could not save: ' + e.message, 'error'); }
 }
 

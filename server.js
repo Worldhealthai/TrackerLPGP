@@ -634,13 +634,16 @@ app.get('/api/employee/profile', requireAuth, async (req, res) => {
   res.json({ ...emp, has_pin, year, days_used: calc.total_days_off, allowance_days: allowance, excess_days: calc.excess_days, excess_deduction: calc.excess_deduction });
 });
 
-// Employee: update own editable details (phone)
+// Employee: update own editable details (phone, job_title)
 app.patch('/api/employee/profile', requireAuth, async (req, res) => {
   if (req.user.role !== 'employee') return res.status(403).json({ error: 'Employees only' });
   try {
     const empId = req.user.employee_id;
-    const { phone } = req.body;
-    await q('UPDATE employees SET phone = ? WHERE id = ?', [String(phone || '').slice(0, 40), empId]);
+    const { phone, job_title } = req.body;
+    await q(
+      'UPDATE employees SET phone = ?, job_title = COALESCE(NULLIF(?, \'\'), job_title) WHERE id = ?',
+      [String(phone || '').slice(0, 40), String(job_title || '').slice(0, 80), empId]
+    );
     res.json({ ok: true });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
