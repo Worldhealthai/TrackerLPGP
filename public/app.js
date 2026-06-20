@@ -6975,7 +6975,7 @@ function renderPortfolioPage() {
         </div>
         <div style="display:flex;gap:10px;justify-content:flex-end">
           <button class="btn btn-ghost" onclick="closePortfolioModal()">Cancel</button>
-          <button class="btn btn-primary" onclick="savePortfolioEvent()">Save Event</button>
+          <button class="btn btn-primary" onclick="saveEmpPortfolioEvent()">Save Event</button>
         </div>
       </div>
     </div>`;
@@ -6997,7 +6997,7 @@ function closePortfolioModal() {
   document.getElementById('portfolioModal').style.display = 'none';
 }
 
-async function savePortfolioEvent() {
+async function saveEmpPortfolioEvent() {
   const name  = document.getElementById('pfEventName').value.trim();
   const date  = document.getElementById('pfEventDate').value;
   const notes = document.getElementById('pfNotes').value.trim();
