@@ -2615,6 +2615,13 @@ app.put('/api/event-kits/:eventId', requireAuth, requireAdminOrManager, async (r
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+app.delete('/api/event-kits/:eventId', requireAuth, requireAdminOrManager, async (req, res) => {
+  try {
+    await q('DELETE FROM event_kits WHERE event_id=?', [req.params.eventId]);
+    res.json({ ok: true });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 // ── Wasteman memory helpers ───────────────────────────────────────────────────
 async function wmGetMemories() {
   try {

@@ -7525,7 +7525,7 @@ async function renderKitsList() {
     kits.map(k => {
       const materials = ['brochure','banner','roundtable','presentation','backdrop','name_badges']
         .filter(t => k[t+'_url'] || k[t+'_file']).length;
-      return `<div class="card" style="padding:14px 18px;margin-bottom:8px;display:flex;align-items:center;gap:14px;cursor:pointer" onclick="document.getElementById('ekEventSel').value='${k.event_id}';loadEventKit()">
+      return `<div class="card" style="padding:14px 18px;margin-bottom:8px;display:flex;align-items:center;gap:14px">
         <div style="flex:1;min-width:0">
           <div style="font:600 14px/1 var(--font-sans)">${esc(k.event_name)}</div>
           <div style="font-size:0.75rem;color:var(--muted);margin-top:3px">${k.event_date?k.event_date.slice(0,10):''}</div>
@@ -7535,9 +7535,60 @@ async function renderKitsList() {
           ${materials > 0 ? `<span class="ek-badge ek-badge--mat">🎨 ${materials} material${materials!==1?'s':''}</span>` : ''}
           <span class="ek-badge ek-badge--access">👥 ${k.access_emails.length} recipient${k.access_emails.length!==1?'s':''}</span>
         </div>
-        <button class="btn btn-ghost btn-sm" onclick="event.stopPropagation();document.getElementById('ekEventSel').value='${k.event_id}';loadEventKit()">Edit</button>
+        <div style="display:flex;gap:6px;flex-shrink:0">
+          <button class="sub-action-btn" onclick="editKit(${k.event_id}, '${esc(k.event_name)}')">✏️ Edit</button>
+          <button class="sub-action-btn sub-action-btn--danger" onclick="deleteKit(${k.event_id}, '${esc(k.event_name)}')">🗑 Delete</button>
+        </div>
       </div>`;
     }).join('');
+}
+
+async function editKit(eventId, eventName) {
+  const sel = document.getElementById('ekEventSel');
+  sel.value = String(eventId);
+  // If the option wasn't found, add a temporary one so the editor can open
+  if (sel.value !== String(eventId)) {
+    const opt = document.createElement('option');
+    opt.value = String(eventId);
+    opt.textContent = eventName;
+    sel.appendChild(opt);
+    sel.value = String(eventId);
+  }
+  await loadEventKit();
+  // Scroll the editor into view so the user can see it
+  const editor = document.getElementById('ekKitEditor');
+  if (editor && !editor.classList.contains('hidden')) {
+    editor.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
+}
+
+async function deleteKit(eventId, eventName) {
+  if (!confirm(`Delete the kit for "${eventName}"? This cannot be undone.`)) return;
+  const res = await fetch(`/api/event-kits/${eventId}`, { method: 'DELETE' });
+  if (!res.ok) { showToast('Delete failed', 'error'); return; }
+  showToast('Kit deleted', 'success');
+  // Hide editor if it was showing this kit
+  const sel = document.getElementById('ekEventSel');
+  if (sel.value === String(eventId)) closeKitEditor();
+  renderKitsList();
+}
+
+function closeKitEditor() {
+  document.getElementById('ekKitEditor').classList.add('hidden');
+  document.getElementById('ekEventSel').value = '';
+  document.getElementById('ekSaveStatus').textContent = '';
+}
+
+async function deleteCurrentKit() {
+  const eid = document.getElementById('ekEventSel').value;
+  const name = document.getElementById('ekEditorTitle').textContent.replace('Editing: ', '');
+  if (!eid) return;
+  if (!confirm(`Delete the kit for "${name}"? This cannot be undone.`)) return;
+  const res = await fetch(`/api/event-kits/${eid}`, { method: 'DELETE' });
+  if (!res.ok) { showToast('Delete failed', 'error'); return; }
+  showToast('Kit deleted', 'success');
+  closeKitEditor();
+  renderKitsList();
 }
 
 const EK_MATERIAL_TYPES = [
@@ -7555,6 +7606,10 @@ async function loadEventKit() {
   const editor = document.getElementById('ekKitEditor');
   if (!eid) { editor.classList.add('hidden'); return; }
   editor.classList.remove('hidden');
+  const selectedOption = sel.options[sel.selectedIndex];
+  const eventLabel = selectedOption ? selectedOption.textContent : eid;
+  const titleEl = document.getElementById('ekEditorTitle');
+  if (titleEl) titleEl.textContent = 'Editing: ' + eventLabel;
   document.getElementById('ekMaterialsList').innerHTML = EK_MATERIAL_TYPES.map(m => `
     <div class="ek-material-row" data-type="${m.key}">
       <span class="ek-type-label">${m.label}</span>
