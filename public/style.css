@@ -4009,8 +4009,32 @@ tbody tr:last-child td { border-bottom: none; }
 }
 
 /* ── Subscriptions ─────────────────────────────────────────────────────────── */
-.sub-inactive { opacity: 0.5; }
-.sub-inactive td { text-decoration: line-through; }
+.sub-inactive { opacity: 0.6; }
+.sub-inactive td:first-child { text-decoration: line-through; }
+.sub-inactive-tag {
+  display: inline-block; margin-top: 4px;
+  font: 600 9.5px/1 var(--font-mono); text-transform: uppercase; letter-spacing: 0.6px;
+  color: var(--muted); background: var(--surface-2);
+  border: 1px solid var(--border); border-radius: 5px; padding: 3px 7px;
+  text-decoration: none !important;
+}
+
+/* Subscription row action buttons */
+.sub-actions { display: flex; gap: 6px; flex-wrap: wrap; }
+.sub-action-btn {
+  display: inline-flex; align-items: center; gap: 4px;
+  font: 600 11px/1 var(--font-sans); white-space: nowrap;
+  padding: 6px 10px; border-radius: 7px; cursor: pointer;
+  border: 1px solid var(--border); background: var(--surface-2); color: var(--text-2);
+  transition: all 0.14s ease;
+}
+.sub-action-btn:hover {
+  border-color: var(--accent-line); color: var(--accent);
+  background: var(--accent-soft); transform: translateY(-1px);
+}
+.sub-action-btn--play:hover  { border-color: var(--success); color: var(--success); background: rgba(34,197,94,0.10); }
+.sub-action-btn--pause:hover { border-color: var(--warning); color: var(--warning); background: rgba(202,138,4,0.12); }
+.sub-action-btn--danger:hover { border-color: var(--negative); color: var(--negative); background: rgba(239,68,68,0.10); }
 .sub-row-monthly   td:first-child { border-left: 3px solid var(--accent); }
 .sub-row-quarterly td:first-child { border-left: 3px solid var(--positive); }
 .sub-row-annually  td:first-child { border-left: 3px solid #7c3aed; }
