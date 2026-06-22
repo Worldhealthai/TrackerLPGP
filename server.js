@@ -131,6 +131,7 @@ async function runLateMigrations() {
       UNIQUE(key)
     )`,
     `ALTER TABLE subscriptions ADD COLUMN IF NOT EXISTS quantity INTEGER NOT NULL DEFAULT 1`,
+    `ALTER TABLE subscriptions ADD COLUMN IF NOT EXISTS deactivated_at TIMESTAMPTZ`,
     `ALTER TABLE event_kits ADD COLUMN IF NOT EXISTS agenda_uploader_name TEXT NOT NULL DEFAULT ''`,
   ];
   for (const step of steps) {
@@ -1679,6 +1680,21 @@ app.put('/api/subscriptions/:id', requireAuth, requireAdminOrManager, async (req
     const { rows } = await q(
       `UPDATE subscriptions SET name=?, vendor=?, amount=?, currency=?, billing_cycle=?, renewal_date=?, notes=?, active=?, quantity=? WHERE id=? RETURNING *`,
       [name, vendor||'', parseFloat(amount)||0, currency||'GBP', billing_cycle||'monthly', renewal_date||null, notes||'', active !== false, Math.max(1, parseInt(quantity)||1), req.params.id]
+    );
+    if (!rows.length) return res.status(404).json({ error: 'Not found' });
+    res.json(rows[0]);
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+// Toggle active/inactive without touching the rest of the row; records when it was deactivated
+app.patch('/api/subscriptions/:id/active', requireAuth, requireAdminOrManager, async (req, res) => {
+  try {
+    const active = req.body.active !== false;
+    const { rows } = await q(
+      `UPDATE subscriptions
+         SET active = ?,
+             deactivated_at = CASE WHEN ? THEN NULL ELSE NOW() END
+       WHERE id = ? RETURNING *`,
+      [active, active, req.params.id]
     );
     if (!rows.length) return res.status(404).json({ error: 'Not found' });
     res.json(rows[0]);

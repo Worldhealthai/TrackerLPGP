@@ -3981,8 +3981,15 @@ function renderSubTable() {
       ? '<span style="color:var(--success);font-size:1.1em;vertical-align:middle">●</span>'
       : '<span style="color:var(--muted);font-size:1.1em;vertical-align:middle">●</span>';
     const rowCycleClass = `sub-row-${s.billing_cycle}`;
+    let nameCell = `${activeDot} ${esc(s.name)}`;
+    if (!s.active) {
+      const deDate = s.deactivated_at
+        ? new Date(s.deactivated_at).toLocaleDateString('en-GB',{day:'numeric',month:'short',year:'numeric'})
+        : null;
+      nameCell += `<div class="sub-inactive-tag">Inactive${deDate ? ` · since ${deDate}` : ''}</div>`;
+    }
     return `<tr class="${rowCycleClass}${s.active ? '' : ' sub-inactive'}">
-      <td>${activeDot} ${esc(s.name)}</td>
+      <td>${nameCell}</td>
       <td>${qty > 1 ? `${sym}${fmt(unitAmt)} <span style="color:var(--muted);font-size:0.78rem">× ${qty}</span> = ${sym}${fmt(totalAmt)}` : `${sym}${fmt(unitAmt)}`}</td>
       <td>${cycleLabel}</td>
       <td>£${fmt(perMonth)}</td>
@@ -3990,11 +3997,13 @@ function renderSubTable() {
       <td>${renewalHtml}</td>
       <td style="max-width:160px;white-space:normal;font-size:0.8rem;color:var(--muted)">${esc(s.notes||'')}</td>
       <td>
-        <button class="btn-icon" title="Edit" onclick="openSubModal(${s.id})">✏️</button>
-        <button class="btn-icon" title="${s.active ? 'Deactivate' : 'Activate'}" onclick="toggleSubActive(${s.id},${!s.active})">
-          ${s.active ? '⏸️' : '▶️'}
-        </button>
-        <button class="btn-icon btn-icon--danger" title="Delete" onclick="deleteSub(${s.id})">🗑️</button>
+        <div class="sub-actions">
+          <button class="sub-action-btn" title="Edit" onclick="openSubModal(${s.id})">✏️ Edit</button>
+          <button class="sub-action-btn ${s.active ? 'sub-action-btn--pause' : 'sub-action-btn--play'}" title="${s.active ? 'Deactivate' : 'Activate'}" onclick="toggleSubActive(${s.id},${!s.active})">
+            ${s.active ? '⏸ Deactivate' : '▶ Activate'}
+          </button>
+          <button class="sub-action-btn sub-action-btn--danger" title="Delete" onclick="deleteSub(${s.id})">🗑 Delete</button>
+        </div>
       </td>
     </tr>`;
   }).join('');
@@ -4050,10 +4059,17 @@ async function saveSub() {
 }
 
 async function toggleSubActive(id, active) {
-  const res = await fetch(`/api/subscriptions/${id}`, { method: 'PUT', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ active }) });
+  const sub = subsData.find(s => s.id === id);
+  if (!active && !confirm(`Deactivate "${sub ? sub.name : 'this subscription'}"? It stays on record but won't count towards your totals.`)) return;
+  const res = await fetch(`/api/subscriptions/${id}/active`, { method: 'PATCH', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ active }) });
   if (!res.ok) { showToast('Update failed', 'error'); return; }
+  const updated = await res.json().catch(() => null);
   const idx = subsData.findIndex(s => s.id === id);
-  if (idx !== -1) subsData[idx].active = active;
+  if (idx !== -1) {
+    subsData[idx].active = active;
+    subsData[idx].deactivated_at = updated ? updated.deactivated_at : (active ? null : new Date().toISOString());
+  }
+  showToast(active ? 'Subscription reactivated' : 'Subscription deactivated', 'success');
   renderSubTotals();
   renderSubTable();
 }
