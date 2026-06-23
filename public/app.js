@@ -5275,7 +5275,9 @@ async function loadEmployeeDashboard(user) {
             '</div>' +
             '<div style="display:flex;justify-content:space-between;font:500 11px/1 var(--font-mono);color:var(--muted);margin-top:8px">' +
               '<span>' + sSym + parseFloat(s.total_paid).toLocaleString('en-GB',{minimumFractionDigits:2}) + ' received</span>' +
-              '<span>' + sSym + parseFloat(s.salary_target).toLocaleString('en-GB',{minimumFractionDigits:2}) + ' target</span>' +
+              (isOverpaid
+                ? '<span style="color:var(--positive)">Fully paid ✓</span>'
+                : '<span style="color:' + outColor + '">' + sSym + Math.abs(netRemaining).toLocaleString('en-GB',{minimumFractionDigits:2}) + ' remaining</span>') +
             '</div>' +
           '</div>' +
           // Stat row
@@ -5298,10 +5300,18 @@ async function loadEmployeeDashboard(user) {
                 : null;
               const lp2Amt   = lastPay2 ? sSym + parseFloat(lastPay2.amount||0).toLocaleString('en-GB',{maximumFractionDigits:0}) : '—';
               const lp2Date  = lastPay2 ? (MONTHS[Number(lastPay2.payment_month)]||'') + (lastPay2.payment_year ? ' '+lastPay2.payment_year : '') : 'No payments yet';
-              return '<div style="flex:1;padding:16px 20px">' +
-                '<div style="font:600 9px/1 var(--font-mono);text-transform:uppercase;letter-spacing:1px;color:var(--muted);margin-bottom:8px">Last Payment</div>' +
-                '<div style="font:700 22px/1 var(--font-mono);color:' + (lastPay2 ? 'var(--positive)' : 'var(--muted)') + '">' + lp2Amt + '</div>' +
-                '<div style="font:500 10px/1 var(--font-mono);color:var(--muted);margin-top:6px">' + lp2Date + '</div>' +
+              const remAmt   = isOverpaid ? 'Paid ✓' : sSym + Math.abs(netRemaining).toLocaleString('en-GB',{maximumFractionDigits:0});
+              const remSub   = isOverpaid ? 'fully settled' : 'left this year';
+              const remColor = isOverpaid ? 'var(--positive)' : netRemaining === 0 ? 'var(--muted)' : outColor;
+              return '<div style="flex:1;padding:16px 20px;border-left:1px solid var(--border)">' +
+                  '<div style="font:600 9px/1 var(--font-mono);text-transform:uppercase;letter-spacing:1px;color:var(--muted);margin-bottom:8px">Last Payment</div>' +
+                  '<div style="font:700 22px/1 var(--font-mono);color:' + (lastPay2 ? 'var(--positive)' : 'var(--muted)') + '">' + lp2Amt + '</div>' +
+                  '<div style="font:500 10px/1 var(--font-mono);color:var(--muted);margin-top:6px">' + lp2Date + '</div>' +
+                '</div>' +
+                '<div style="flex:1;padding:16px 20px;border-left:1px solid var(--border)">' +
+                  '<div style="font:600 9px/1 var(--font-mono);text-transform:uppercase;letter-spacing:1px;color:var(--muted);margin-bottom:8px">Remaining</div>' +
+                  '<div style="font:700 22px/1 var(--font-mono);color:' + remColor + '">' + remAmt + '</div>' +
+                  '<div style="font:500 10px/1 var(--font-mono);color:var(--muted);margin-top:6px">' + remSub + '</div>' +
               '</div>';
             })() +
           '</div>' +
