@@ -750,15 +750,15 @@ function renderRevenueIntelPanel(deals, expiring, evtRevData) {
       <div class="ri-body">
         <div class="ri-chart-wrap">
           <svg class="ri-donut" viewBox="0 0 100 100">
-            <circle cx="50" cy="50" r="${R}" fill="none" stroke="rgba(255,255,255,0.04)" stroke-width="10"/>
-            <circle cx="50" cy="50" r="${R}" fill="none" stroke="#22c55e" stroke-width="10" stroke-linecap="round"
-              stroke-dasharray="0 ${C}" stroke-dashoffset="${offPaid}" class="ri-seg"
+            <circle class="ri-donut-track" cx="50" cy="50" r="${R}" fill="none" stroke-width="8"/>
+            <circle cx="50" cy="50" r="${R}" fill="none" stroke-width="8" stroke-linecap="round"
+              stroke-dasharray="0 ${C}" stroke-dashoffset="${offPaid}" class="ri-seg ri-seg--paid"
               data-final="${segPaid} ${C - segPaid}"/>
-            <circle cx="50" cy="50" r="${R}" fill="none" stroke="#f59e0b" stroke-width="10" stroke-linecap="round"
-              stroke-dasharray="0 ${C}" stroke-dashoffset="${offPartial}" class="ri-seg"
+            <circle cx="50" cy="50" r="${R}" fill="none" stroke-width="8" stroke-linecap="round"
+              stroke-dasharray="0 ${C}" stroke-dashoffset="${offPartial}" class="ri-seg ri-seg--partial"
               data-final="${segPartial} ${C - segPartial}"/>
-            <circle cx="50" cy="50" r="${R}" fill="none" stroke="#374151" stroke-width="10" stroke-linecap="round"
-              stroke-dasharray="0 ${C}" stroke-dashoffset="${offUnpaid}" class="ri-seg"
+            <circle cx="50" cy="50" r="${R}" fill="none" stroke-width="8" stroke-linecap="round"
+              stroke-dasharray="0 ${C}" stroke-dashoffset="${offUnpaid}" class="ri-seg ri-seg--unpaid"
               data-final="${segUnpaid} ${C - segUnpaid}"/>
           </svg>
           <div class="ri-donut-center">
@@ -774,7 +774,7 @@ function renderRevenueIntelPanel(deals, expiring, evtRevData) {
           <div class="ri-metric">
             <div class="ri-metric-label">Collected (inc VAT)</div>
             <div class="ri-metric-val ri-green">£${fmtK(totalPaid)}</div>
-            <div style="font-size:0.65rem;color:rgba(255,255,255,0.4);margin-top:2px">£${fmtK(totalPaidExVat)} ex VAT</div>
+            <div class="ri-metric-sub">£${fmtK(totalPaidExVat)} ex VAT</div>
           </div>
           <div class="ri-metric">
             <div class="ri-metric-label">Outstanding (ex VAT)</div>

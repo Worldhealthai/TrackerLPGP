@@ -4515,8 +4515,11 @@ tbody tr:last-child td { border-bottom: none; }
   width: 108px;
   height: 108px;
   transform: rotate(-90deg);
-  filter: drop-shadow(0 0 8px rgba(217,164,65,0.4));
 }
+.ri-donut-track   { stroke: rgba(255,255,255,0.06); }
+.ri-seg--paid     { stroke: #22c55e; }
+.ri-seg--partial  { stroke: #f59e0b; }
+.ri-seg--unpaid   { stroke: #374151; }
 .ri-donut-center {
   position: absolute;
   top: 50%; left: 50%;
@@ -4566,6 +4569,8 @@ tbody tr:last-child td { border-bottom: none; }
 }
 .ri-green { color: #4ade80 !important; }
 .ri-blue  { color: #d9a441 !important; }
+.ri-metric-sub { font-size: 0.65rem; margin-top: 2px; color: rgba(255,255,255,0.42); font-weight: 500; }
+:root .ri-metric-sub { color: #8a94a8; }
 .ri-winbar-wrap {
   flex: 1;
   height: 5px;
@@ -4682,52 +4687,82 @@ tbody tr:last-child td { border-bottom: none; }
 /* Full-width RI on dashboard — cards go horizontal when space allows */
 #contractExpiryPanel .ri-card { max-width: 100%; }
 
-/* ── Revenue Intelligence: light mode overrides ── */
+/* ── Revenue Intelligence: light mode overrides (calibrated neutral + gold) ── */
 :root .ri-card {
   background: #ffffff;
-  border: 1.5px solid rgba(217,164,65,0.22);
-  box-shadow: 0 4px 24px rgba(217,164,65,0.10), 0 1px 4px rgba(0,0,0,0.06);
+  border: 1px solid #e8eaf0;
+  border-radius: 18px;
+  box-shadow: 0 1px 2px rgba(16,24,40,0.04), 0 8px 28px -12px rgba(16,24,40,0.14);
 }
-:root .ri-glow { background: radial-gradient(ellipse, rgba(217,164,65,0.08) 0%, transparent 70%); }
-:root .ri-title { color: #4338ca; letter-spacing: .1em; }
-:root .ri-year { color: #4338ca; background: rgba(217,164,65,0.10); border-radius: 6px; }
-:root .ri-donut-num { color: #1e1b4b; font-weight: 800; }
-:root .ri-donut-label { color: #d9a441; font-weight: 700; }
-:root .ri-metric { background: #f5f3ff; border: 1px solid rgba(217,164,65,0.18); }
-:root .ri-metric-label { color: #d9a441; font-weight: 600; }
-:root .ri-metric-val { color: #1e1b4b; font-weight: 700; }
-:root .ri-green { color: #16a34a !important; }
-:root .ri-blue  { color: #d9a441 !important; }
-:root .ri-winbar-wrap { background: rgba(217,164,65,0.10); }
-:root .ri-winbar-fill { background: linear-gradient(90deg, #d9a441, #d9a441); }
-:root .ri-stages { border-top-color: rgba(217,164,65,0.15); }
-:root .ri-stage-name { color: #374151; }
-:root .ri-stage-bar-wrap { background: rgba(217,164,65,0.10); }
-:root .ri-stage-amt { color: #6b7280; }
-:root .ri-stage-count { color: #d9a441; }
-:root .ri-evt-section { border-top-color: rgba(217,164,65,0.15); }
-:root .ri-evt-section-title { color: #d9a441; font-weight: 700; }
-:root .ri-evt-search { background: #f5f3ff; border: 1px solid rgba(217,164,65,0.2); color: #1e1b4b; }
-:root .ri-evt-search::placeholder { color: #a5b4fc; }
-:root .ri-evt-card { background: #f5f3ff; border-color: rgba(217,164,65,0.25); border-left-color: #d9a441; }
-:root .ri-evt-card:hover { background: #ede9fe; border-color: rgba(217,164,65,0.5); border-left-color: #d9a441; box-shadow: 0 2px 12px rgba(217,164,65,0.12); }
-:root .ri-evt-name { color: #1e1b4b; }
-:root .ri-evt-date { color: #d9a441; background: rgba(217,164,65,0.12); }
-:root .ri-evt-stats { background: rgba(217,164,65,0.06); }
-:root .ri-evt-stat { border-right-color: rgba(217,164,65,0.1); }
-:root .ri-evt-bar-wrap { background: rgba(217,164,65,0.12); }
-:root .ri-evt-bar { background: linear-gradient(90deg, #d9a441, #22c55e); }
-:root .ri-evt-foot-label { color: #6b7280; }
-:root .ri-expiry-section { border-top-color: rgba(217,119,6,0.3); }
+:root .ri-glow { background: radial-gradient(ellipse, rgba(217,164,65,0.05) 0%, transparent 70%); }
+:root .ri-header { border-bottom: 1px solid #f0f1f5; padding-bottom: 14px; }
+:root .ri-title { color: #5b6480; font-weight: 700; letter-spacing: .14em; }
+:root .ri-pulse { background: #16a34a; }
+:root .ri-year {
+  color: #8a6d1f; background: rgba(217,164,65,0.12);
+  border: 1px solid rgba(217,164,65,0.22); border-radius: 7px; font-weight: 700;
+}
+/* Donut — soft, refined ring */
+:root .ri-donut-track { stroke: #eef0f5; }
+:root .ri-seg--paid    { stroke: #16a34a; }
+:root .ri-seg--partial { stroke: #e0a526; }
+:root .ri-seg--unpaid  { stroke: #dfe3ec; }
+:root .ri-donut-num { color: #0f1729; font-weight: 800; letter-spacing: -0.02em; }
+:root .ri-donut-label { color: #8a94a8; font-weight: 600; }
+/* Metric tiles — clean neutral surfaces, confident numbers */
+:root .ri-metric {
+  background: #fafbfc;
+  border: 1px solid #edeff4;
+  border-radius: 12px;
+  padding: 11px 13px;
+}
+:root .ri-metric-label { color: #8a94a8; font-weight: 600; letter-spacing: .07em; }
+:root .ri-metric-val { color: #0f1729; font-weight: 800; letter-spacing: -0.01em; }
+:root .ri-green { color: #15803d !important; }
+:root .ri-blue  { color: #0f1729 !important; }
+:root .ri-winbar-wrap { background: #eef0f5; }
+:root .ri-winbar-fill { background: linear-gradient(90deg, #d9a441, #c9962f); }
+:root .ri-stages { border-top-color: #f0f1f5; }
+:root .ri-stage-name { color: #5b6480; }
+:root .ri-stage-bar-wrap { background: #eef0f5; }
+:root .ri-stage-amt { color: #8a94a8; }
+:root .ri-stage-count { color: #1a1f2e; }
+:root .ri-evt-section { border-top-color: #f0f1f5; }
+:root .ri-evt-section-title { color: #5b6480; font-weight: 700; letter-spacing: .1em; }
+:root .ri-evt-search {
+  background: #fafbfc; border: 1px solid #e3e6ee; color: #1a1f2e;
+  border-radius: 8px;
+}
+:root .ri-evt-search::placeholder { color: #a8b0c2; }
+:root .ri-evt-search:focus { border-color: rgba(217,164,65,0.6); background: #fff; box-shadow: 0 0 0 3px rgba(217,164,65,0.10); }
+:root .ri-evt-card {
+  background: #fff;
+  border: 1px solid #e8eaf0;
+  border-left: 3px solid #d9a441;
+  box-shadow: 0 1px 2px rgba(16,24,40,0.03);
+}
+:root .ri-evt-card:hover {
+  background: #fffdf8;
+  border-color: rgba(217,164,65,0.45);
+  border-left-color: #d9a441;
+  box-shadow: 0 4px 16px -6px rgba(217,164,65,0.30);
+}
+:root .ri-evt-name { color: #0f1729; }
+:root .ri-evt-date {
+  color: #8a6d1f; background: rgba(217,164,65,0.12);
+  border: 1px solid rgba(217,164,65,0.20);
+}
+:root .ri-evt-stats { background: #f7f8fb; border: 1px solid #eef0f5; }
+:root .ri-evt-stat { border-right-color: #e8eaf0; }
+:root .ri-evt-bar-wrap { background: #eef0f5; }
+:root .ri-evt-bar { background: linear-gradient(90deg, #d9a441, #16a34a); }
+:root .ri-evt-foot-label { color: #8a94a8; }
+:root .ri-expiry-section { border-top-color: rgba(217,119,6,0.25); }
 :root .ri-expiry-title { color: #b45309; }
 :root .ri-expiry-row { color: #374151; }
-:root .ri-expiry-yellow { background: rgba(245,158,11,0.12); color: #92400e; }
-:root .ri-expiry-red    { background: rgba(239,68,68,0.12);  color: #991b1b; }
 :root .ri-expiry-badge  { font-weight: 700; }
 :root .ri-expiry-yellow { background: rgba(234,179,8,.15); color: #92400e; }
 :root .ri-expiry-red    { background: rgba(239,68,68,.15); color: #991b1b; }
-:root .ri-green { color: #15803d !important; }
-:root .ri-blue  { color: #d9a441 !important; }
 
 [data-theme="dark"] .ri-card {
   background: linear-gradient(145deg, #0d1117 0%, #161b2e 40%, #0d1117 100%);
