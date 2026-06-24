@@ -4086,9 +4086,20 @@ async function deleteSub(id) {
 
 let portfolioData = [];
 let _portYearFilter = String(new Date().getFullYear());
+let _portExtraYears = new Set();
 
 function setPortYear(y) {
   _portYearFilter = y;
+  renderPortfolioGrid();
+}
+
+function addPortYear() {
+  const input = prompt('Enter year to add (e.g. 2028):');
+  if (!input) return;
+  const y = parseInt(input.trim());
+  if (isNaN(y) || y < 2000 || y > 2100) { showToast('Invalid year', 'error'); return; }
+  _portExtraYears.add(y);
+  _portYearFilter = String(y);
   renderPortfolioGrid();
 }
 
@@ -4109,7 +4120,13 @@ function renderPortfolioGrid() {
   // Build year list (always include current year)
   const curYear = new Date().getFullYear();
   const yearsSet = new Set([curYear]);
-  portfolioData.forEach(e => { if (e.event_date) yearsSet.add(new Date(e.event_date + 'T12:00:00').getFullYear()); });
+  portfolioData.forEach(e => {
+    if (e.event_date) {
+      const y = parseInt(String(e.event_date).slice(0, 4));
+      if (!isNaN(y)) yearsSet.add(y);
+    }
+  });
+  _portExtraYears.forEach(y => yearsSet.add(y));
   const years = [...yearsSet].sort((a, b) => b - a);
   if (_portYearFilter !== 'all' && !years.includes(parseInt(_portYearFilter))) _portYearFilter = String(curYear);
 
@@ -4118,7 +4135,7 @@ function renderPortfolioGrid() {
     ? portfolioData
     : portfolioData.filter(e => {
         if (!e.event_date) return parseInt(_portYearFilter) === curYear;
-        return new Date(e.event_date + 'T12:00:00').getFullYear() === parseInt(_portYearFilter);
+        return parseInt(String(e.event_date).slice(0, 4)) === parseInt(_portYearFilter);
       });
 
   // Year tab strip + add button
@@ -4127,6 +4144,7 @@ function renderPortfolioGrid() {
       `<div class="deal-q-filters">` +
         years.map(y => `<button class="deal-q-btn${_portYearFilter === String(y) ? ' active' : ''}" onclick="setPortYear('${y}')">${y}</button>`).join('') +
         `<button class="deal-q-btn${_portYearFilter === 'all' ? ' active' : ''}" onclick="setPortYear('all')">All</button>` +
+        `<button class="deal-q-btn" onclick="addPortYear()" title="Add year">+</button>` +
       `</div>` +
       `<button class="btn btn-primary btn-sm" style="margin-left:auto" onclick="openPortfolioModal()">+ Add Event</button>` +
     `</div>`;
@@ -4325,6 +4343,8 @@ async function savePortfolioEvent() {
     const res = await fetch(url, { method, headers: {'Content-Type':'application/json'}, body: JSON.stringify(body) });
     if (!res.ok) { const e = await res.json().catch(() => ({})); showToast(e.error || 'Save failed', 'error'); return; }
     showToast(id ? 'Event updated' : 'Event added', 'success');
+    const savedDate = document.getElementById('portDate').value;
+    if (savedDate) { const y = parseInt(savedDate.slice(0, 4)); if (!isNaN(y)) _portYearFilter = String(y); }
     closeModal('portfolioModal');
     loadPortfolio();
   } catch (e) {
