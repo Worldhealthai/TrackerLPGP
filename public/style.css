@@ -1484,11 +1484,11 @@ tbody tr:last-child td { border-bottom: none; }
   .bottom-nav { display: flex; }
   .sidebar { transform: translateX(-100%); transition: transform 0.26s ease; z-index: 200; width: 280px; }
   .sidebar.open { transform: translateX(0); }
-  .main { margin-left: 0; padding-bottom: 62px; }
+  .main { margin-left: 0; padding-bottom: 62px; max-width: 100vw; overflow-x: hidden; }
   .topbar { padding: 0 16px; height: 56px; }
   .topbar h1 { font-size: 1rem; }
   #todayDate { display: none; }
-  .content { padding: 14px; }
+  .content { padding: 14px; max-width: 100%; box-sizing: border-box; overflow-x: hidden; }
   .stats-grid { grid-template-columns: repeat(2, 1fr); gap: 10px; margin-bottom: 16px; }
   .stat-card { padding: 14px 14px; }
   .stat-card .stat-value { font-size: 1.5rem; }
@@ -5170,6 +5170,25 @@ tbody tr:last-child td { border-bottom: none; }
   .deal-q-filters { flex-wrap: wrap; gap: 6px; }
   .deal-q-btn { font-size: 0.72rem; padding: 6px 10px; }
 
+  /* Deal filter card — stack vertically, all inputs full width */
+  .deal-filter-card { flex-direction: column; align-items: stretch; gap: 8px; padding: 12px; }
+  .deal-filter-card .deal-q-filters { flex-direction: row; flex-wrap: wrap; }
+  .deal-search-input { min-width: 0 !important; width: 100% !important; box-sizing: border-box; }
+  .deal-select { width: 100% !important; max-width: 100% !important; box-sizing: border-box; }
+  .deal-filter-card .btn { width: 100%; }
+  .deal-filter-card .deal-add-btn { margin-left: 0; }
+  .deal-range-wrap { flex-wrap: wrap; gap: 6px; }
+  .deal-range-input { flex: 1; min-width: 0; width: auto !important; }
+
+  /* Deal stat cards — 2-col but shrink values to fit */
+  .deal-stat-cards { grid-template-columns: repeat(2, 1fr); gap: 8px; }
+  .deal-stat-card { padding: 14px 12px; }
+  .deal-stat-value { font-size: 16px; white-space: normal; word-break: break-all; }
+  .deal-stat-label { max-width: none; font-size: 8.5px; }
+
+  /* Event kit searchable picker */
+  .ek-event-picker { min-width: 0 !important; width: 100%; }
+
   /* Notes hotel panel */
   .hotel-notes-panel { padding: 10px 12px 14px; }
 
@@ -5183,6 +5202,16 @@ tbody tr:last-child td { border-bottom: none; }
   /* Employee portal cards */
   .sc-card { margin-bottom: 12px; }
   .sc-payment-toggle { flex-wrap: wrap; gap: 6px; }
+
+  /* Port search input */
+  .port-search { width: 100% !important; box-sizing: border-box; }
+
+  /* Portfolio summary bar wraps */
+  .port-summary-bar { flex-wrap: wrap; }
+  .psb-item { min-width: 50%; box-sizing: border-box; }
+
+  /* Ensure all cards don't overflow */
+  .card, .deal-filter-card, .pec-card, .ri-card { max-width: 100%; box-sizing: border-box; overflow: hidden; }
 
   /* iOS zooms the page when focusing inputs smaller than 16px — force 16px */
   .form-group input,
@@ -5218,7 +5247,7 @@ tbody tr:last-child td { border-bottom: none; }
 
 @media (max-width: 420px) {
   .stats-grid { grid-template-columns: 1fr 1fr; gap: 8px; }
-  .content { padding: 10px 10px 80px; }
+  .content { padding: 10px 10px 80px; overflow-x: hidden; }
   .login-card { padding: 22px 16px; }
   .modal { padding: 20px 16px; }
   .btn { padding: 10px 14px; }
@@ -5231,6 +5260,9 @@ tbody tr:last-child td { border-bottom: none; }
   .dss-card { flex-direction: row; flex-wrap: wrap; align-items: baseline; gap: 6px 12px; }
   .dss-card .dss-label { width: 100%; }
   .dss-sub { margin-top: 0; }
+  /* Deal stat cards: 1-col on very small phones */
+  .deal-stat-cards { grid-template-columns: 1fr 1fr; }
+  .deal-stat-value { font-size: 15px; }
 }
 
 /* PWA standalone mode — hide browser chrome compensations */
