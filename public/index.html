@@ -523,10 +523,7 @@
 
       <!-- ══ PORTFOLIO ══ -->
       <div class="page" id="page-portfolio">
-        <div class="filter-bar" style="align-items:center">
-          <button class="btn btn-primary" style="margin-left:auto" onclick="openPortfolioModal()">+ Add Event</button>
-        </div>
-        <div id="portfolioGrid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:16px;margin-top:4px"></div>
+        <div id="portfolioGrid"></div>
         <div id="portfolioEmpty" class="empty-state hidden"><div class="icon">🎯</div><div>No events yet. Add your first event.</div></div>
       </div>
 
@@ -1622,11 +1619,15 @@
 
       <!-- Events -->
       <div>
-        <div class="deal-modal-sec-label">Linked Event <span style="font-weight:400;text-transform:none;letter-spacing:0;color:var(--muted)">(hold Ctrl/Cmd for multiple — value splits equally)</span></div>
-        <select id="dealEvents" multiple style="min-height:68px;border:1.5px solid var(--border);border-radius:9px;padding:8px;background:var(--bg);color:var(--text);font:500 13px/1.5 var(--font-sans);width:100%" onchange="updateDealSplitPreview()">
-          <option value="">Loading events…</option>
-        </select>
-        <div id="dealSplitPreview" style="font-size:0.75rem;color:var(--muted);margin-top:4px"></div>
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
+          <div class="deal-modal-sec-label" style="margin:0">Linked Events <span id="dealEventsCount" style="font-weight:400;text-transform:none;letter-spacing:0;color:var(--accent)"></span></div>
+          <span style="font:500 10px/1 var(--font-mono);color:var(--muted)">value splits equally across selected</span>
+        </div>
+        <div class="deal-event-picker">
+          <input type="text" id="dealEventsSearch" class="deal-event-search" placeholder="🔍  Search events…" oninput="filterDealEvents()">
+          <div id="dealEventsCheckboxes" class="deal-event-checkboxes"></div>
+        </div>
+        <div id="dealSplitPreview" style="font-size:0.75rem;color:var(--muted);margin-top:5px"></div>
       </div>
 
       <!-- Notes -->
