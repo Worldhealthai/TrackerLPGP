@@ -4234,13 +4234,9 @@ function renderPortfolioEventCard(ev) {
       </div>
     </div>
 
-    <div class="pec-stats">
+    <div class="pec-stats pec-stats--3">
       <div class="pec-stat">
-        <div class="pec-stat-lbl">Pipeline</div>
-        <div class="pec-stat-num">£${fmt(pipeline)}</div>
-      </div>
-      <div class="pec-stat">
-        <div class="pec-stat-lbl">Won</div>
+        <div class="pec-stat-lbl">Paid</div>
         <div class="pec-stat-num pec-green">£${fmt(won)}</div>
       </div>
       <div class="pec-stat">
