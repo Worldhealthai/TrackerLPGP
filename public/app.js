@@ -4915,7 +4915,7 @@ async function initEmployeePortal(user) {
   document.querySelectorAll('.employee-only').forEach(el => el.classList.remove('hidden'));
 
   // Hide non-allowed nav items
-  const EMP_PAGES = ['dashboard', 'calendar', 'portfolio', 'eventkit', 'profile'];
+  const EMP_PAGES = ['dashboard', 'calendar', 'portfolio', 'eventkit', 'profile', 'directory'];
   document.querySelectorAll('.nav-item').forEach(el => {
     if (!EMP_PAGES.includes(el.dataset.page)) el.style.display = 'none';
   });
@@ -4940,6 +4940,7 @@ async function initEmployeePortal(user) {
     if (page === 'portfolio')  loadEmployeePortfolio();
     if (page === 'eventkit')   loadEmployeeKitPage();
     if (page === 'profile')    loadEmployeeProfile();
+    if (page === 'directory')  loadEmployeeDirectory();
   };
 
   // Attach click handlers since admin init was skipped
@@ -5490,6 +5491,64 @@ async function changeMyPin(hasPin) {
     showToast('PIN updated successfully', 'success');
     loadEmployeeProfile();
   } catch (e) { showToast('Could not change PIN: ' + e.message, 'error'); }
+}
+
+// ─── EMPLOYEE DIRECTORY (staff portal) ────────────────────────────────────────
+async function loadEmployeeDirectory() {
+  const el = document.getElementById('directoryContent');
+  if (!el) return;
+  el.innerHTML = '<div class="skeleton" style="height:300px;border-radius:16px"></div>';
+  try {
+    const res = await fetch('/api/employees/all');
+    const all = res.ok ? await res.json() : [];
+    // Active employees only, sorted by name
+    const active = all.filter(e => e.active);
+
+    // Group by department (blank → "Other")
+    const deptMap = {};
+    active.forEach(e => {
+      const dept = (e.department || 'Other').trim();
+      if (!deptMap[dept]) deptMap[dept] = [];
+      deptMap[dept].push(e);
+    });
+    const depts = Object.keys(deptMap).sort((a, b) => a === 'Other' ? 1 : b === 'Other' ? -1 : a.localeCompare(b));
+
+    const card = (e) => {
+      const initials = (e.name || '?').split(' ').map(w => w[0]).join('').slice(0,2).toUpperCase();
+      const typeColors = { payroll:'var(--accent)', self_employed:'var(--positive)', contractor:'var(--warning)', intern:'var(--muted)' };
+      const avatarBg = typeColors[e.employment_type] || 'var(--accent)';
+      return '<div style="display:flex;align-items:center;gap:14px;padding:14px 0;border-bottom:1px solid var(--border)">' +
+        '<div style="width:42px;height:42px;border-radius:50%;background:' + avatarBg + ';display:flex;align-items:center;justify-content:center;font:700 14px/1 var(--font-mono);color:#1a1a1f;flex-shrink:0">' + initials + '</div>' +
+        '<div style="flex:1;min-width:0">' +
+          '<div style="font:600 14px/1.2 var(--font-sans);color:var(--text)">' + esc(e.name) + '</div>' +
+          (e.job_title ? '<div style="font:500 11px/1 var(--font-mono);color:var(--muted);margin-top:3px">' + esc(e.job_title) + '</div>' : '') +
+        '</div>' +
+        (e.email
+          ? '<a href="mailto:' + esc(e.email) + '" style="font:500 12px/1 var(--font-mono);color:var(--accent);text-decoration:none;white-space:nowrap;flex-shrink:0" title="Send email">' + esc(e.email) + '</a>'
+          : '<span style="font:500 12px/1 var(--font-mono);color:var(--muted)">No email</span>') +
+      '</div>';
+    };
+
+    el.innerHTML =
+      '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px">' +
+        '<div>' +
+          '<h2 style="font:700 20px/1 var(--font-sans);color:var(--text);margin:0">Team Directory</h2>' +
+          '<div style="font:500 12px/1 var(--font-mono);color:var(--muted);margin-top:4px">' + active.length + ' active team members · ' + depts.length + ' department' + (depts.length !== 1 ? 's' : '') + '</div>' +
+        '</div>' +
+      '</div>' +
+      depts.map(dept => {
+        const members = deptMap[dept];
+        return '<div class="card" style="padding:20px 24px;margin-bottom:16px">' +
+          '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">' +
+            '<div style="font:700 13px/1 var(--font-sans);text-transform:uppercase;letter-spacing:.08em;color:var(--accent)">' + esc(dept) + '</div>' +
+            '<div style="font:600 11px/1 var(--font-mono);color:var(--muted)">' + members.length + ' member' + (members.length !== 1 ? 's' : '') + '</div>' +
+          '</div>' +
+          '<div>' + members.map(card).join('') + '</div>' +
+        '</div>';
+      }).join('');
+  } catch (e) {
+    el.innerHTML = '<div class="alert alert-error">Failed to load directory: ' + e.message + '</div>';
+  }
 }
 
 // ─── DEAL TRACKER ─────────────────────────────────────────────────────────────
