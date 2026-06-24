@@ -750,15 +750,15 @@ function renderRevenueIntelPanel(deals, expiring, evtRevData) {
       <div class="ri-body">
         <div class="ri-chart-wrap">
           <svg class="ri-donut" viewBox="0 0 100 100">
-            <circle cx="50" cy="50" r="${R}" fill="none" stroke="rgba(255,255,255,0.04)" stroke-width="10"/>
-            <circle cx="50" cy="50" r="${R}" fill="none" stroke="#22c55e" stroke-width="10" stroke-linecap="round"
-              stroke-dasharray="0 ${C}" stroke-dashoffset="${offPaid}" class="ri-seg"
+            <circle class="ri-donut-track" cx="50" cy="50" r="${R}" fill="none" stroke-width="8"/>
+            <circle cx="50" cy="50" r="${R}" fill="none" stroke-width="8" stroke-linecap="round"
+              stroke-dasharray="0 ${C}" stroke-dashoffset="${offPaid}" class="ri-seg ri-seg--paid"
               data-final="${segPaid} ${C - segPaid}"/>
-            <circle cx="50" cy="50" r="${R}" fill="none" stroke="#f59e0b" stroke-width="10" stroke-linecap="round"
-              stroke-dasharray="0 ${C}" stroke-dashoffset="${offPartial}" class="ri-seg"
+            <circle cx="50" cy="50" r="${R}" fill="none" stroke-width="8" stroke-linecap="round"
+              stroke-dasharray="0 ${C}" stroke-dashoffset="${offPartial}" class="ri-seg ri-seg--partial"
               data-final="${segPartial} ${C - segPartial}"/>
-            <circle cx="50" cy="50" r="${R}" fill="none" stroke="#374151" stroke-width="10" stroke-linecap="round"
-              stroke-dasharray="0 ${C}" stroke-dashoffset="${offUnpaid}" class="ri-seg"
+            <circle cx="50" cy="50" r="${R}" fill="none" stroke-width="8" stroke-linecap="round"
+              stroke-dasharray="0 ${C}" stroke-dashoffset="${offUnpaid}" class="ri-seg ri-seg--unpaid"
               data-final="${segUnpaid} ${C - segUnpaid}"/>
           </svg>
           <div class="ri-donut-center">
@@ -774,7 +774,7 @@ function renderRevenueIntelPanel(deals, expiring, evtRevData) {
           <div class="ri-metric">
             <div class="ri-metric-label">Collected (inc VAT)</div>
             <div class="ri-metric-val ri-green">£${fmtK(totalPaid)}</div>
-            <div style="font-size:0.65rem;color:rgba(255,255,255,0.4);margin-top:2px">£${fmtK(totalPaidExVat)} ex VAT</div>
+            <div class="ri-metric-sub">£${fmtK(totalPaidExVat)} ex VAT</div>
           </div>
           <div class="ri-metric">
             <div class="ri-metric-label">Outstanding (ex VAT)</div>
@@ -4086,9 +4086,20 @@ async function deleteSub(id) {
 
 let portfolioData = [];
 let _portYearFilter = String(new Date().getFullYear());
+let _portExtraYears = new Set();
 
 function setPortYear(y) {
   _portYearFilter = y;
+  renderPortfolioGrid();
+}
+
+function addPortYear() {
+  const input = prompt('Enter year to add (e.g. 2028):');
+  if (!input) return;
+  const y = parseInt(input.trim());
+  if (isNaN(y) || y < 2000 || y > 2100) { showToast('Invalid year', 'error'); return; }
+  _portExtraYears.add(y);
+  _portYearFilter = String(y);
   renderPortfolioGrid();
 }
 
@@ -4109,7 +4120,13 @@ function renderPortfolioGrid() {
   // Build year list (always include current year)
   const curYear = new Date().getFullYear();
   const yearsSet = new Set([curYear]);
-  portfolioData.forEach(e => { if (e.event_date) yearsSet.add(new Date(e.event_date + 'T12:00:00').getFullYear()); });
+  portfolioData.forEach(e => {
+    if (e.event_date) {
+      const y = parseInt(String(e.event_date).slice(0, 4));
+      if (!isNaN(y)) yearsSet.add(y);
+    }
+  });
+  _portExtraYears.forEach(y => yearsSet.add(y));
   const years = [...yearsSet].sort((a, b) => b - a);
   if (_portYearFilter !== 'all' && !years.includes(parseInt(_portYearFilter))) _portYearFilter = String(curYear);
 
@@ -4118,7 +4135,7 @@ function renderPortfolioGrid() {
     ? portfolioData
     : portfolioData.filter(e => {
         if (!e.event_date) return parseInt(_portYearFilter) === curYear;
-        return new Date(e.event_date + 'T12:00:00').getFullYear() === parseInt(_portYearFilter);
+        return parseInt(String(e.event_date).slice(0, 4)) === parseInt(_portYearFilter);
       });
 
   // Year tab strip + add button
@@ -4127,6 +4144,7 @@ function renderPortfolioGrid() {
       `<div class="deal-q-filters">` +
         years.map(y => `<button class="deal-q-btn${_portYearFilter === String(y) ? ' active' : ''}" onclick="setPortYear('${y}')">${y}</button>`).join('') +
         `<button class="deal-q-btn${_portYearFilter === 'all' ? ' active' : ''}" onclick="setPortYear('all')">All</button>` +
+        `<button class="deal-q-btn" onclick="addPortYear()" title="Add year">+</button>` +
       `</div>` +
       `<button class="btn btn-primary btn-sm" style="margin-left:auto" onclick="openPortfolioModal()">+ Add Event</button>` +
     `</div>`;
@@ -4325,6 +4343,8 @@ async function savePortfolioEvent() {
     const res = await fetch(url, { method, headers: {'Content-Type':'application/json'}, body: JSON.stringify(body) });
     if (!res.ok) { const e = await res.json().catch(() => ({})); showToast(e.error || 'Save failed', 'error'); return; }
     showToast(id ? 'Event updated' : 'Event added', 'success');
+    const savedDate = document.getElementById('portDate').value;
+    if (savedDate) { const y = parseInt(savedDate.slice(0, 4)); if (!isNaN(y)) _portYearFilter = String(y); }
     closeModal('portfolioModal');
     loadPortfolio();
   } catch (e) {
@@ -7669,6 +7689,68 @@ function openSetPinModal(empId, empName) {
 
 let _ekKit = {};
 let _ekEmails = [];
+let _ekEventsList = [];
+let _ekEmpEventsList = [];
+let _ekEmpSelId = '';
+
+function ekFilterEvents() {
+  const q = (document.getElementById('ekEventSearch')?.value || '').toLowerCase();
+  const dd = document.getElementById('ekEventDropdown');
+  if (!dd) return;
+  const matches = _ekEventsList.filter(e =>
+    e.name.toLowerCase().includes(q) || (e.event_date||'').slice(0,10).includes(q)
+  );
+  if (!matches.length) { dd.classList.add('hidden'); return; }
+  dd.classList.remove('hidden');
+  dd.innerHTML = matches.slice(0, 25).map(e =>
+    `<div class="ek-event-dd-item" onclick="ekSelectEvent(${e.id},${JSON.stringify(e.name + (e.event_date?' ('+e.event_date.slice(0,10)+')':''))})">${esc(e.name)}${e.event_date?` <span style="color:var(--muted);font-size:0.75rem">(${e.event_date.slice(0,10)})</span>`:''}</div>`
+  ).join('');
+}
+
+function ekSelectEvent(id, label) {
+  const sel = document.getElementById('ekEventSel');
+  if (sel && !sel.querySelector(`option[value="${id}"]`)) {
+    const opt = document.createElement('option');
+    opt.value = String(id);
+    opt.textContent = label;
+    sel.appendChild(opt);
+  }
+  if (sel) sel.value = String(id);
+  const inp = document.getElementById('ekEventSearch');
+  if (inp) inp.value = label;
+  document.getElementById('ekEventDropdown')?.classList.add('hidden');
+  return loadEventKit();
+}
+
+document.addEventListener('click', e => {
+  const wrap = e.target.closest('.ek-event-picker');
+  if (!wrap) {
+    document.getElementById('ekEventDropdown')?.classList.add('hidden');
+    document.getElementById('ekEmpEventDropdown')?.classList.add('hidden');
+  }
+});
+
+function ekEmpFilterEvents() {
+  const q = (document.getElementById('ekEmpEventSearch')?.value || '').toLowerCase();
+  const dd = document.getElementById('ekEmpEventDropdown');
+  if (!dd) return;
+  const matches = _ekEmpEventsList.filter(e =>
+    e.name.toLowerCase().includes(q) || (e.event_date||'').slice(0,10).includes(q)
+  );
+  if (!matches.length) { dd.classList.add('hidden'); return; }
+  dd.classList.remove('hidden');
+  dd.innerHTML = matches.slice(0, 25).map(e =>
+    `<div class="ek-event-dd-item" onclick="ekEmpSelectEvent(${e.id},${JSON.stringify(e.name + (e.event_date?' ('+e.event_date.slice(0,10)+')':''))})">${esc(e.name)}${e.event_date?` <span style="color:var(--muted);font-size:0.75rem">(${e.event_date.slice(0,10)})</span>`:''}</div>`
+  ).join('');
+}
+
+function ekEmpSelectEvent(id, label) {
+  _ekEmpSelId = String(id);
+  const inp = document.getElementById('ekEmpEventSearch');
+  if (inp) inp.value = label;
+  document.getElementById('ekEmpEventDropdown')?.classList.add('hidden');
+  loadEmployeeKitEditor();
+}
 
 async function loadEventKitPage() {
   const isEmployee = currentUser?.role === 'employee';
@@ -7678,17 +7760,13 @@ async function loadEventKitPage() {
   try {
     const res = await fetch('/api/portfolio-events');
     const evs = await res.json();
-    const sel = document.getElementById('ekEventSel');
-    const cur = sel.value;
-    sel.innerHTML = '<option value="">— Select Event —</option>' +
-      evs.map(e => `<option value="${e.id}"${String(e.id)===cur?' selected':''}>${esc(e.name)}${e.event_date?' ('+e.event_date.slice(0,10)+')':''}</option>`).join('');
+    _ekEventsList = Array.isArray(evs) ? evs : [];
     const staffRes = await fetch('/api/employees/all');
     const staff = await staffRes.json();
     const ep = document.getElementById('ekEmpPicker');
     ep.innerHTML = '<option value="">Pick from staff…</option>' +
       staff.filter(s => s.email).map(s => `<option value="${esc(s.email)}">${esc(s.name)} (${esc(s.email)})</option>`).join('');
     await renderKitsList();
-    if (cur) loadEventKit();
   } catch(e) { showToast('Failed to load events', 'error'); }
 }
 
@@ -7724,18 +7802,7 @@ async function renderKitsList() {
 }
 
 async function editKit(eventId, eventName) {
-  const sel = document.getElementById('ekEventSel');
-  sel.value = String(eventId);
-  // If the option wasn't found, add a temporary one so the editor can open
-  if (sel.value !== String(eventId)) {
-    const opt = document.createElement('option');
-    opt.value = String(eventId);
-    opt.textContent = eventName;
-    sel.appendChild(opt);
-    sel.value = String(eventId);
-  }
-  await loadEventKit();
-  // Scroll the editor into view so the user can see it
+  await ekSelectEvent(eventId, eventName);
   const editor = document.getElementById('ekKitEditor');
   if (editor && !editor.classList.contains('hidden')) {
     editor.scrollIntoView({ behavior: 'smooth', block: 'start' });
@@ -7786,8 +7853,7 @@ async function loadEventKit() {
   const editor = document.getElementById('ekKitEditor');
   if (!eid) { editor.classList.add('hidden'); return; }
   editor.classList.remove('hidden');
-  const selectedOption = sel.options[sel.selectedIndex];
-  const eventLabel = selectedOption ? selectedOption.textContent : eid;
+  const eventLabel = document.getElementById('ekEventSearch')?.value || eid;
   const titleEl = document.getElementById('ekEditorTitle');
   if (titleEl) titleEl.textContent = 'Editing: ' + eventLabel;
   document.getElementById('ekMaterialsList').innerHTML = EK_MATERIAL_TYPES.map(m => `
@@ -7819,14 +7885,21 @@ async function loadEventKit() {
           document.getElementById(`ekClear-${m.key}`)?.classList.remove('hidden');
         }
       });
+      const agendaWrap = document.createElement('div');
+      agendaWrap.id = 'ekAgendaBanner';
+      let agendaHtml = '';
       if (kit.agenda_file) {
-        const banner = document.createElement('div');
-        banner.id = 'ekAgendaBanner';
-        banner.className = 'card';
-        banner.style.cssText = 'padding:16px 24px;margin-bottom:16px;display:flex;align-items:center;gap:12px';
-        const uploaderLabel = kit.agenda_uploader_name ? `${esc(kit.agenda_uploader_name)} uploaded agenda` : 'Employee uploaded agenda';
-        banner.innerHTML = `<span style="font-size:1.1rem">📋</span><div style="flex:1"><div style="font-size:0.8rem;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:2px">${uploaderLabel}</div><div style="font-size:0.88rem">${esc(kit.agenda_file)}</div></div><a class="btn btn-ghost btn-sm" href="/api/event-kits/${eid}/file/agenda" target="_blank">Download</a>`;
-        document.getElementById('ekKitEditor').insertBefore(banner, document.getElementById('ekKitEditor').firstChild);
+        const lbl = kit.agenda_uploader_name ? `${esc(kit.agenda_uploader_name)} — Agenda 1` : 'Agenda 1';
+        agendaHtml += `<div class="card" style="padding:14px 20px;margin-bottom:8px;display:flex;align-items:center;gap:12px"><span style="font-size:1.1rem">📋</span><div style="flex:1"><div style="font-size:0.78rem;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:2px">${lbl}</div><div style="font-size:0.88rem">${esc(kit.agenda_file)}</div></div><a class="btn btn-ghost btn-sm" href="/api/event-kits/${eid}/file/agenda" target="_blank">Download</a></div>`;
+      }
+      if (kit.agenda_file_2) {
+        const lbl2 = kit.agenda_uploader_name_2 ? `${esc(kit.agenda_uploader_name_2)} — Agenda 2` : 'Agenda 2';
+        agendaHtml += `<div class="card" style="padding:14px 20px;margin-bottom:8px;display:flex;align-items:center;gap:12px"><span style="font-size:1.1rem">📋</span><div style="flex:1"><div style="font-size:0.78rem;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:2px">${lbl2}</div><div style="font-size:0.88rem">${esc(kit.agenda_file_2)}</div></div><a class="btn btn-ghost btn-sm" href="/api/event-kits/${eid}/file/agenda2" target="_blank">Download</a></div>`;
+      }
+      if (agendaHtml) {
+        agendaWrap.innerHTML = agendaHtml;
+        agendaWrap.style.marginBottom = '16px';
+        document.getElementById('ekKitEditor').insertBefore(agendaWrap, document.getElementById('ekKitEditor').firstChild);
       }
     }
   } catch {}
@@ -7893,9 +7966,11 @@ async function saveEventKit() {
     body[type+'_file'] = _ekKit[type+'_file'] || '';
     body[type+'_data'] = _ekKit[type+'_data'] || '';
   });
-  // Preserve employee-uploaded agenda so admin saves don't wipe it
-  body.agenda_file = _ekKit.agenda_file || '';
-  body.agenda_data = _ekKit.agenda_data || '';
+  // Preserve employee-uploaded agendas so admin saves don't wipe them
+  body.agenda_file   = _ekKit.agenda_file   || '';
+  body.agenda_data   = _ekKit.agenda_data   || '';
+  body.agenda_file_2 = _ekKit.agenda_file_2 || '';
+  body.agenda_data_2 = _ekKit.agenda_data_2 || '';
   const status = document.getElementById('ekSaveStatus');
   status.textContent = 'Saving…';
   const res = await fetch(`/api/event-kits/${eid}`, {
@@ -7918,23 +7993,26 @@ async function loadEmployeeKitPage() {
   try {
     const res = await fetch('/api/portfolio-events');
     const events = res.ok ? await res.json() : [];
+    _ekEmpEventsList = Array.isArray(events) ? events : [];
+    _ekEmpSelId = '';
     if (!events.length) {
       empView.innerHTML = '<div style="color:var(--muted);font-size:0.85rem;text-align:center;padding:40px">No events found.</div>';
       return;
     }
     empView.innerHTML = `
-      <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:20px">
-        <select id="ekEmpEventSel" class="deal-select" style="min-width:220px" onchange="loadEmployeeKitEditor()">
-          <option value="">— Select Event —</option>
-          ${events.map(e => `<option value="${e.id}">${esc(e.name)}${e.event_date?' ('+e.event_date.slice(0,10)+')':''}</option>`).join('')}
-        </select>
+      <div style="margin-bottom:20px">
+        <div class="ek-event-picker">
+          <input type="text" id="ekEmpEventSearch" class="deal-select" placeholder="🔍 Search events…"
+                 oninput="ekEmpFilterEvents()" onfocus="ekEmpFilterEvents()" autocomplete="off" style="width:100%">
+          <div id="ekEmpEventDropdown" class="ek-event-dropdown hidden"></div>
+        </div>
       </div>
       <div id="ekEmpEditor"></div>`;
   } catch { empView.innerHTML = '<div style="color:var(--danger)">Failed to load events.</div>'; }
 }
 
 async function loadEmployeeKitEditor() {
-  const eid = document.getElementById('ekEmpEventSel').value;
+  const eid = _ekEmpSelId;
   const el = document.getElementById('ekEmpEditor');
   if (!eid) { el.innerHTML = ''; return; }
   el.innerHTML = '<div style="color:var(--muted);font-size:0.85rem;padding:12px 0">Loading…</div>';
@@ -7957,7 +8035,27 @@ async function loadEmployeeKitEditor() {
       </div>`;
     }).filter(Boolean).join('') : '';
 
-    const hasFile = !!(kit && kit.agenda_file);
+    const hasFile1 = !!(kit && kit.agenda_file);
+    const hasFile2 = !!(kit && kit.agenda_file_2);
+
+    const agendaRow = (slot, hasFile, fileKey) => {
+      const fileUrl  = fileKey === 'agenda' ? 'agenda' : 'agenda2';
+      const fileName = slot === 1 ? kit?.agenda_file : kit?.agenda_file_2;
+      const inputId  = `ekEmpFileInput-${eid}-${slot}`;
+      const labelId  = `ekEmpFile-${eid}-${slot}`;
+      return `<div class="ek-material-row">
+        <span class="ek-type-label">Agenda ${slot}</span>
+        <span class="ek-file-area">
+          ${hasFile
+            ? `<a class="btn btn-ghost btn-sm" href="/api/event-kits/${eid}/file/${fileUrl}" target="_blank">📄 ${esc(fileName)}</a>
+               <button class="btn btn-ghost btn-sm" onclick="ekEmpClearAgenda('${eid}',${slot})">✕ Remove</button>`
+            : `<span class="ek-file-name" id="${labelId}">No file</span>
+               <input type="file" id="${inputId}" accept=".pdf,.pptx,.ppt,.png,.jpg" onchange="ekEmpUploadAgenda('${eid}',this,${slot})" style="display:none">
+               <button class="btn btn-ghost btn-sm" onclick="document.getElementById('${inputId}').click()">Upload PDF</button>`
+          }
+        </span>
+      </div>`;
+    };
 
     el.innerHTML = `
       ${matRows ? `<div class="card" style="padding:24px;margin-bottom:16px">
@@ -7965,19 +8063,9 @@ async function loadEmployeeKitEditor() {
         ${matRows}
       </div>` : (hasAccess ? `<div class="card" style="padding:20px;margin-bottom:16px;color:var(--muted);font-size:0.85rem">🎨 Marketing materials will appear here once your admin prepares them.</div>` : '')}
       <div class="card" style="padding:24px">
-        <div style="font:700 13px/1 var(--font-sans);letter-spacing:.06em;text-transform:uppercase;color:var(--muted);margin-bottom:16px">📋 My Agenda</div>
-        <div class="ek-material-row">
-          <span class="ek-type-label">Agenda</span>
-          <span class="ek-file-area">
-            ${hasFile
-              ? `<a class="btn btn-ghost btn-sm" href="/api/event-kits/${eid}/file/agenda" target="_blank">📄 ${esc(kit.agenda_file)}</a>
-                 <button class="btn btn-ghost btn-sm" onclick="ekEmpClearAgenda('${eid}')">✕ Remove</button>`
-              : `<span class="ek-file-name" id="ekEmpFile-${eid}">No file</span>
-                 <input type="file" id="ekEmpFileInput-${eid}" accept=".pdf,.pptx,.ppt,.png,.jpg" onchange="ekEmpUploadAgenda('${eid}',this)" style="display:none">
-                 <button class="btn btn-ghost btn-sm" onclick="document.getElementById('ekEmpFileInput-${eid}').click()">Upload PDF</button>`
-            }
-          </span>
-        </div>
+        <div style="font:700 13px/1 var(--font-sans);letter-spacing:.06em;text-transform:uppercase;color:var(--muted);margin-bottom:16px">📋 My Agendas</div>
+        ${agendaRow(1, hasFile1, 'agenda')}
+        ${agendaRow(2, hasFile2, 'agenda2')}
       </div>`;
   } catch { el.innerHTML = '<div style="color:var(--danger)">Failed to load.</div>'; }
 }
@@ -8019,31 +8107,32 @@ function renderEmployeeKitCard(k) {
   </div>`;
 }
 
-async function ekEmpUploadAgenda(eid, input) {
+async function ekEmpUploadAgenda(eid, input, slot = 1) {
   const file = input.files[0];
   if (!file) return;
   if (file.size > 10 * 1024 * 1024) { showToast('File too large (max 10MB)', 'error'); input.value = ''; return; }
-  const label = document.getElementById('ekEmpFile-' + eid);
+  const labelId = `ekEmpFile-${eid}-${slot}`;
+  const label = document.getElementById(labelId);
   if (label) label.textContent = 'Uploading…';
   const reader = new FileReader();
   reader.onload = async ev => {
     const res = await fetch(`/api/event-kits/${eid}/agenda`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ agenda_file: file.name, agenda_data: ev.target.result.split(',')[1] })
+      body: JSON.stringify({ agenda_file: file.name, agenda_data: ev.target.result.split(',')[1], slot })
     });
-    if (res.ok) { showToast('Agenda uploaded — admins have been notified', 'success'); await loadEmployeeKitEditor(); }
+    if (res.ok) { showToast(`Agenda ${slot} uploaded — admins have been notified`, 'success'); await loadEmployeeKitEditor(); }
     else { showToast('Upload failed', 'error'); if (label) label.textContent = 'No file'; }
   };
   reader.readAsDataURL(file);
 }
 
-async function ekEmpClearAgenda(eid) {
-  if (!await showConfirm('Remove your agenda?')) return;
+async function ekEmpClearAgenda(eid, slot = 1) {
+  if (!await showConfirm(`Remove agenda ${slot}?`)) return;
   const res = await fetch(`/api/event-kits/${eid}/agenda`, {
     method: 'PATCH',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ agenda_file: '', agenda_data: '' })
+    body: JSON.stringify({ agenda_file: '', agenda_data: '', slot })
   });
   if (res.ok) { showToast('Agenda removed', 'success'); await loadEmployeeKitEditor(); }
   else showToast('Failed to remove', 'error');

@@ -649,9 +649,12 @@
 <div class="page" id="page-eventkit">
   <div id="ekAdminView">
     <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:20px">
-      <select id="ekEventSel" class="deal-select" style="min-width:220px" onchange="loadEventKit()">
-        <option value="">— Select Event —</option>
-      </select>
+      <div class="ek-event-picker">
+        <input type="text" id="ekEventSearch" class="deal-select" placeholder="🔍 Search events…"
+               oninput="ekFilterEvents()" onfocus="ekFilterEvents()" autocomplete="off" style="width:100%">
+        <div id="ekEventDropdown" class="ek-event-dropdown hidden"></div>
+        <select id="ekEventSel" style="display:none"><option value="">— Select Event —</option></select>
+      </div>
       <span id="ekSaveStatus" style="font-size:0.8rem;color:var(--muted)"></span>
     </div>
     <div id="ekKitEditor" class="hidden">

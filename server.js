@@ -133,6 +133,9 @@ async function runLateMigrations() {
     `ALTER TABLE subscriptions ADD COLUMN IF NOT EXISTS quantity INTEGER NOT NULL DEFAULT 1`,
     `ALTER TABLE subscriptions ADD COLUMN IF NOT EXISTS deactivated_at TIMESTAMPTZ`,
     `ALTER TABLE event_kits ADD COLUMN IF NOT EXISTS agenda_uploader_name TEXT NOT NULL DEFAULT ''`,
+    `ALTER TABLE event_kits ADD COLUMN IF NOT EXISTS agenda_file_2 TEXT DEFAULT ''`,
+    `ALTER TABLE event_kits ADD COLUMN IF NOT EXISTS agenda_data_2 TEXT DEFAULT ''`,
+    `ALTER TABLE event_kits ADD COLUMN IF NOT EXISTS agenda_uploader_name_2 TEXT NOT NULL DEFAULT ''`,
   ];
   for (const step of steps) {
     try { await sql(step); } catch(e) { console.warn('Migration step skipped:', e.message); }
@@ -2543,7 +2546,8 @@ app.get('/api/event-kits/:eventId', requireAuth, async (req, res) => {
 app.get('/api/event-kits/:eventId/file/:type', requireAuth, async (req, res) => {
   try {
     const type = req.params.type;
-    const col = type + '_data', nameCol = type + '_file';
+    const col     = type === 'agenda2' ? 'agenda_data_2'  : type + '_data';
+    const nameCol = type === 'agenda2' ? 'agenda_file_2'  : type + '_file';
     const { rows } = await q(`SELECT ${col}, ${nameCol} FROM event_kits WHERE event_id=?`, [req.params.eventId]);
     if (!rows.length || !rows[0][col]) return res.status(404).json({ error: 'No file' });
     const name = rows[0][nameCol] || 'file';
@@ -2559,13 +2563,19 @@ app.get('/api/event-kits/:eventId/file/:type', requireAuth, async (req, res) => 
 app.patch('/api/event-kits/:eventId/agenda', requireAuth, async (req, res) => {
   try {
     const eid = req.params.eventId;
-    const { agenda_file, agenda_data } = req.body;
+    const { agenda_file, agenda_data, slot } = req.body;
+    const useSlot2 = slot === 2;
+    const fileCol = useSlot2 ? 'agenda_file_2'          : 'agenda_file';
+    const dataCol = useSlot2 ? 'agenda_data_2'          : 'agenda_data';
+    const nameCol = useSlot2 ? 'agenda_uploader_name_2' : 'agenda_uploader_name';
     const uploaderName = req.admin.name || req.admin.username || '';
     const { rows: exist } = await q('SELECT id FROM event_kits WHERE event_id=?', [eid]);
     if (exist.length) {
-      await q('UPDATE event_kits SET agenda_file=?, agenda_data=?, agenda_uploader_name=?, updated_at=NOW() WHERE event_id=?', [agenda_file||'', agenda_data||'', agenda_file ? uploaderName : '', eid]);
+      await q(`UPDATE event_kits SET ${fileCol}=?, ${dataCol}=?, ${nameCol}=?, updated_at=NOW() WHERE event_id=?`,
+        [agenda_file||'', agenda_data||'', agenda_file ? uploaderName : '', eid]);
     } else {
-      await q('INSERT INTO event_kits (event_id, agenda_file, agenda_data, agenda_uploader_name, created_by) VALUES (?,?,?,?,?)', [eid, agenda_file||'', agenda_data||'', agenda_file ? uploaderName : '', req.admin.id]);
+      await q(`INSERT INTO event_kits (event_id, ${fileCol}, ${dataCol}, ${nameCol}, created_by) VALUES (?,?,?,?,?)`,
+        [eid, agenda_file||'', agenda_data||'', agenda_file ? uploaderName : '', req.admin.id]);
     }
     // Notify admins/managers if an employee uploaded (not clearing)
     if (agenda_file && req.admin.role === 'employee') {
@@ -2597,7 +2607,7 @@ app.put('/api/agenda-notifications/:id/read', requireAuth, async (req, res) => {
 app.put('/api/event-kits/:eventId', requireAuth, requireAdminOrManager, async (req, res) => {
   try {
     const eid = req.params.eventId;
-    const fields = ['agenda_file','agenda_data','brochure_url','brochure_file','brochure_data',
+    const fields = ['agenda_file','agenda_data','agenda_file_2','agenda_data_2','brochure_url','brochure_file','brochure_data',
       'banner_url','banner_file','banner_data','roundtable_url','roundtable_file','roundtable_data',
       'presentation_url','presentation_file','presentation_data','backdrop_url','backdrop_file','backdrop_data',
       'name_badges_url','name_badges_file','name_badges_data','access_emails','notes'];
