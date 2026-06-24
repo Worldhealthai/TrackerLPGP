@@ -4043,27 +4043,76 @@ tbody tr:last-child td { border-bottom: none; }
 .sub-renewal-overdue { color: var(--negative) !important; font-weight: 600; }
 
 /* ── Portfolio ─────────────────────────────────────────────────────────────── */
-.port-card {
-  background: var(--bg-2);
-  border: 1.5px solid var(--border);
-  border-radius: 14px;
-  padding: 18px 20px;
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  transition: box-shadow .15s;
-}
-.port-card:hover { box-shadow: 0 4px 20px rgba(0,0,0,.08); }
+/* Legacy small cards (kept for any stray references) */
+.port-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 18px 20px; display: flex; flex-direction: column; gap: 10px; }
 .port-card-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; }
 .port-card-title { font-weight: 700; font-size: 1rem; color: var(--text); }
 .port-card-meta { display: flex; gap: 10px; flex-wrap: wrap; font-size: 0.78rem; color: var(--muted); }
-.port-card-stats { display: flex; gap: 12px; }
 .port-stat { flex: 1; background: var(--bg); border-radius: 10px; padding: 10px 14px; }
 .port-stat-label { font-size: 0.72rem; color: var(--muted); margin-bottom: 4px; }
 .port-stat-val { font-size: 1.1rem; font-weight: 700; color: var(--text); }
 .port-stat--green { color: var(--success) !important; }
 .port-stat--amber { color: var(--warning) !important; }
 .port-card-notes { font-size: 0.8rem; color: var(--muted); border-top: 1px solid var(--border); padding-top: 8px; }
+
+/* New portfolio year-summary strip */
+.port-year-summary {
+  display: flex; gap: 1px; background: var(--border);
+  border: 1px solid var(--border); border-radius: var(--radius);
+  overflow: hidden; margin-bottom: 16px;
+}
+.port-sum-stat {
+  flex: 1; padding: 14px 18px; background: var(--surface);
+  display: flex; flex-direction: column; gap: 5px;
+}
+.port-sum-label { font: 600 9px/1 var(--font-mono); text-transform: uppercase; letter-spacing: .8px; color: var(--muted); }
+.port-sum-val   { font: 700 18px/1 var(--font-mono); color: var(--text); }
+.port-sum--green { color: var(--positive) !important; }
+.port-sum--amber { color: var(--warning) !important; }
+
+/* New full-width event card */
+.port-event-list { display: flex; flex-direction: column; gap: 10px; }
+.port-event-card {
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: var(--radius); padding: 18px 20px;
+  transition: border-color .15s, box-shadow .15s;
+}
+.port-event-card:hover { border-color: var(--accent-line); box-shadow: 0 2px 16px rgba(0,0,0,.12); }
+.port-event-hd { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; margin-bottom: 10px; }
+.port-event-name { font: 700 16px/1.2 var(--font-sans); color: var(--text); }
+.port-event-meta { display: flex; gap: 12px; flex-wrap: wrap; font: 500 12px/1 var(--font-mono); color: var(--muted); margin-top: 5px; }
+.port-event-progress { margin: 10px 0; }
+.port-event-companies { font: 500 11px/1.4 var(--font-mono); color: var(--muted); padding-top: 10px; border-top: 1px solid var(--border); }
+.port-event-notes { font: 500 12px/1.4 var(--font-sans); color: var(--muted); padding-top: 8px; font-style: italic; }
+.port-event-footer { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; padding-top: 10px; border-top: 1px solid var(--border); margin-top: 10px; }
+.port-deals-toggle {
+  background: none; border: none; cursor: pointer; padding: 0;
+  font: 600 12px/1 var(--font-mono); color: var(--accent);
+  display: flex; align-items: center; gap: 5px;
+}
+.port-deals-toggle:hover { color: var(--text); }
+
+/* Deal modal — linked event picker */
+.deal-event-picker { border: 1px solid var(--border); border-radius: 9px; overflow: hidden; background: var(--surface); }
+.deal-event-search {
+  width: 100%; padding: 9px 12px; border: none; border-bottom: 1px solid var(--border);
+  background: var(--surface-2); color: var(--text); font: 500 13px/1 var(--font-sans);
+  outline: none;
+}
+.deal-event-search::placeholder { color: var(--dim); }
+.deal-event-checkboxes { max-height: 160px; overflow-y: auto; padding: 4px 0; }
+.deal-event-checkboxes::-webkit-scrollbar { width: 4px; }
+.deal-event-checkboxes::-webkit-scrollbar-track { background: transparent; }
+.deal-event-checkboxes::-webkit-scrollbar-thumb { background: var(--border-bright); border-radius: 2px; }
+.deal-event-check-item {
+  display: flex; align-items: center; gap: 10px;
+  padding: 8px 12px; cursor: pointer; transition: background .1s;
+}
+.deal-event-check-item:hover { background: var(--surface-2); }
+.deal-event-check-item input[type="checkbox"] { width: 15px; height: 15px; accent-color: var(--accent); cursor: pointer; flex-shrink: 0; }
+.deal-event-check-item span { font: 500 13px/1.3 var(--font-sans); color: var(--text); }
+.deal-event-check-item.selected { background: var(--accent-soft); }
+
 
 /* ── Deal Tracker ──────────────────────────────────────────────────────────── */
 .deal-col {

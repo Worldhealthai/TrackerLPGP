@@ -4085,6 +4085,12 @@ async function deleteSub(id) {
 // ─── PORTFOLIO ────────────────────────────────────────────────────────────────
 
 let portfolioData = [];
+let _portYearFilter = String(new Date().getFullYear());
+
+function setPortYear(y) {
+  _portYearFilter = y;
+  renderPortfolioGrid();
+}
 
 async function loadPortfolio() {
   try {
@@ -4097,49 +4103,119 @@ async function loadPortfolio() {
 }
 
 function renderPortfolioGrid() {
-  const grid = document.getElementById('portfolioGrid');
+  const grid  = document.getElementById('portfolioGrid');
   const empty = document.getElementById('portfolioEmpty');
-  if (!portfolioData.length) { grid.innerHTML = ''; empty.classList.remove('hidden'); return; }
+
+  // Build year list (always include current year)
+  const curYear = new Date().getFullYear();
+  const yearsSet = new Set([curYear]);
+  portfolioData.forEach(e => { if (e.event_date) yearsSet.add(new Date(e.event_date + 'T12:00:00').getFullYear()); });
+  const years = [...yearsSet].sort((a, b) => b - a);
+  if (_portYearFilter !== 'all' && !years.includes(parseInt(_portYearFilter))) _portYearFilter = String(curYear);
+
+  // Filter
+  const filtered = _portYearFilter === 'all'
+    ? portfolioData
+    : portfolioData.filter(e => {
+        if (!e.event_date) return parseInt(_portYearFilter) === curYear;
+        return new Date(e.event_date + 'T12:00:00').getFullYear() === parseInt(_portYearFilter);
+      });
+
+  // Year tab strip + add button
+  const tabsHtml =
+    `<div class="deal-filter-card" style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:14px">` +
+      `<div class="deal-q-filters">` +
+        years.map(y => `<button class="deal-q-btn${_portYearFilter === String(y) ? ' active' : ''}" onclick="setPortYear('${y}')">${y}</button>`).join('') +
+        `<button class="deal-q-btn${_portYearFilter === 'all' ? ' active' : ''}" onclick="setPortYear('all')">All</button>` +
+      `</div>` +
+      `<button class="btn btn-primary btn-sm" style="margin-left:auto" onclick="openPortfolioModal()">+ Add Event</button>` +
+    `</div>`;
+
+  if (!filtered.length) {
+    grid.innerHTML = tabsHtml;
+    empty.classList.remove('hidden');
+    return;
+  }
   empty.classList.add('hidden');
-  grid.innerHTML = portfolioData.map(ev => {
-    const dateStr = ev.event_date ? new Date(ev.event_date).toLocaleDateString('en-GB',{day:'numeric',month:'short',year:'numeric'}) : 'TBD';
-    const won = parseFloat(ev.total_won) || 0;
-    const pipeline = parseFloat(ev.total_pipeline) || 0;
-    const outstanding = Math.max(0, pipeline - won);
-    const dealCount = parseInt(ev.deal_count) || 0;
-    return `<div class="port-card">
-      <div class="port-card-header">
-        <div class="port-card-title">${esc(ev.name)}</div>
-        <div style="display:flex;gap:6px">
-          <button class="btn-icon" title="Edit" onclick="openPortfolioModal(${ev.id})">✏️</button>
-          <button class="btn-icon btn-icon--danger" title="Delete" onclick="deletePortfolioEvent(${ev.id})">🗑️</button>
+
+  // Summary strip
+  const totalWon       = filtered.reduce((a, e) => a + (parseFloat(e.total_won)      || 0), 0);
+  const totalPipeline  = filtered.reduce((a, e) => a + (parseFloat(e.total_pipeline) || 0), 0);
+  const totalDeals     = filtered.reduce((a, e) => a + (parseInt(e.deal_count)        || 0), 0);
+  const outstanding    = Math.max(0, totalPipeline - totalWon);
+  const collectPct     = totalPipeline > 0 ? Math.round(totalWon / totalPipeline * 100) : 0;
+
+  const summaryHtml =
+    `<div class="port-year-summary" style="margin-bottom:16px">` +
+      `<div class="port-sum-stat"><span class="port-sum-label">Events</span><span class="port-sum-val">${filtered.length}</span></div>` +
+      `<div class="port-sum-stat"><span class="port-sum-label">Revenue Won</span><span class="port-sum-val port-sum--green">£${fmt(totalWon)}</span></div>` +
+      `<div class="port-sum-stat"><span class="port-sum-label">Outstanding</span><span class="port-sum-val${outstanding > 0 ? ' port-sum--amber' : ''}">£${fmt(outstanding)}</span></div>` +
+      `<div class="port-sum-stat"><span class="port-sum-label">Deals</span><span class="port-sum-val">${totalDeals}</span></div>` +
+      `<div class="port-sum-stat"><span class="port-sum-label">Collected</span><span class="port-sum-val" style="color:${collectPct >= 80 ? 'var(--positive)' : collectPct > 40 ? 'var(--warning)' : 'var(--muted)'}">${collectPct}%</span></div>` +
+    `</div>`;
+
+  // Sort by date ascending
+  const sorted = [...filtered].sort((a, b) => {
+    if (!a.event_date && !b.event_date) return 0;
+    if (!a.event_date) return 1;
+    if (!b.event_date) return -1;
+    return new Date(a.event_date) - new Date(b.event_date);
+  });
+
+  grid.innerHTML = tabsHtml + summaryHtml +
+    `<div class="port-event-list">${sorted.map(renderPortfolioEventCard).join('')}</div>`;
+}
+
+function renderPortfolioEventCard(ev) {
+  const dateStr    = ev.event_date ? new Date(ev.event_date + 'T12:00:00').toLocaleDateString('en-GB',{day:'numeric',month:'short',year:'numeric'}) : 'Date TBD';
+  const won        = parseFloat(ev.total_won) || 0;
+  const pipeline   = parseFloat(ev.total_pipeline) || 0;
+  const outstanding= Math.max(0, pipeline - won);
+  const dealCount  = parseInt(ev.deal_count) || 0;
+  const pct        = pipeline > 0 ? Math.min(100, Math.round(won / pipeline * 100)) : (won > 0 ? 100 : 0);
+  const barCol     = pct >= 100 ? 'var(--positive)' : pct > 60 ? 'var(--accent)' : pct > 30 ? 'var(--warning)' : 'var(--muted)';
+
+  const progressHtml = (pipeline > 0 || won > 0)
+    ? `<div class="port-event-progress">
+        <div style="display:flex;justify-content:space-between;font:600 10px/1 var(--font-mono);color:var(--muted);margin-bottom:6px">
+          <span>Revenue collected</span><span style="color:${barCol}">${pct}%</span>
+        </div>
+        <div style="height:5px;background:var(--border);border-radius:3px">
+          <div style="height:100%;width:${pct}%;background:${barCol};border-radius:3px;transition:width .4s"></div>
+        </div>
+        <div style="display:flex;justify-content:space-between;font:500 10px/1 var(--font-mono);color:var(--muted);margin-top:6px">
+          <span style="color:var(--positive)">£${fmt(won)} won</span>
+          ${outstanding > 0 ? `<span style="color:var(--warning)">£${fmt(outstanding)} outstanding</span>` : '<span style="color:var(--positive)">Fully collected ✓</span>'}
+        </div>
+      </div>`
+    : `<div style="font:500 11px/1 var(--font-mono);color:var(--dim);padding:6px 0">No revenue linked yet</div>`;
+
+  return `<div class="port-event-card">
+    <div class="port-event-hd">
+      <div class="port-event-info">
+        <div class="port-event-name">${esc(ev.name)}</div>
+        <div class="port-event-meta">
+          <span>${ev.event_date ? '📅 ' + dateStr : '<span style="color:var(--dim)">📅 TBD</span>'}</span>
+          ${ev.location ? `<span>📍 ${esc(ev.location)}</span>` : ''}
         </div>
       </div>
-      <div class="port-card-meta">
-        ${ev.event_date ? `<span>📅 ${dateStr}</span>` : ''}
-        ${ev.location ? `<span>📍 ${esc(ev.location)}</span>` : ''}
+      <div class="sub-actions">
+        <button class="sub-action-btn" onclick="openPortfolioModal(${ev.id})">✏️ Edit</button>
+        <button class="sub-action-btn sub-action-btn--danger" onclick="deletePortfolioEvent(${ev.id})">🗑 Delete</button>
       </div>
-      <div class="port-card-stats">
-        <div class="port-stat">
-          <div class="port-stat-label">Revenue Made</div>
-          <div class="port-stat-val port-stat--green">£${fmt(won)}</div>
-        </div>
-        <div class="port-stat">
-          <div class="port-stat-label">Outstanding</div>
-          <div class="port-stat-val ${outstanding > 0 ? 'port-stat--amber' : ''}">£${fmt(outstanding)}</div>
-        </div>
-      </div>
-      ${ev.companies ? `<div class="port-card-companies"><span style="font-size:0.72rem;color:var(--muted)">Companies: </span>${esc(ev.companies)}</div>` : ''}
-      ${ev.notes ? `<div class="port-card-notes">${esc(ev.notes)}</div>` : ''}
-      <div style="margin-top:10px;padding-top:10px;border-top:1px solid var(--border)">
-        <button onclick="togglePortfolioDeals(this,${ev.id})" style="background:none;border:none;cursor:pointer;font-size:0.78rem;color:var(--primary);font-weight:600;padding:0;display:flex;align-items:center;gap:5px">
-          <span class="port-deal-arrow" style="display:inline-block;transition:transform .2s">▶</span>
-          ${dealCount} deal${dealCount !== 1 ? 's' : ''} linked
-        </button>
-        <div class="port-deals-list" style="display:none;margin-top:8px"></div>
-      </div>
-    </div>`;
-  }).join('');
+    </div>
+    ${progressHtml}
+    ${ev.companies ? `<div class="port-event-companies"><span style="font-weight:700;color:var(--muted)">Companies · </span>${esc(ev.companies)}</div>` : ''}
+    ${ev.notes ? `<div class="port-event-notes">${esc(ev.notes)}</div>` : ''}
+    <div class="port-event-footer">
+      <button class="port-deals-toggle" onclick="togglePortfolioDeals(this,${ev.id})">
+        <span class="port-deal-arrow" style="display:inline-block;transition:transform .2s">▶</span>
+        ${dealCount} deal${dealCount !== 1 ? 's' : ''} linked
+      </button>
+      <div class="port-deals-list" style="display:none;width:100%;margin-top:10px"></div>
+      ${dealCount > 0 ? `<button class="sub-action-btn" style="font-size:10px;padding:4px 10px;margin-left:auto" onclick="viewEventDeals(${ev.id},'${esc(ev.name).replace(/'/g,"\\'")}')">View in Deals →</button>` : ''}
+    </div>
+  </div>`;
 }
 
 async function togglePortfolioDeals(btn, eventId) {
@@ -6647,13 +6723,13 @@ async function openDealModal(id, defaultStage) {
   document.getElementById('dealInv1File').value = '';
   document.getElementById('dealInv2File').value = '';
 
-  // Load events into select
-  const sel = document.getElementById('dealEvents');
+  // Load events into checkbox picker
+  let _evs = [];
+  let _selectedEvIds = [];
   try {
     const evRes = await fetch('/api/portfolio-events');
-    const evs = await evRes.json();
-    sel.innerHTML = evs.map(ev => `<option value="${ev.id}">${esc(ev.name)}${ev.event_date ? ' ('+new Date(ev.event_date).toLocaleDateString('en-GB',{month:'short',year:'numeric'})+')' : ''}</option>`).join('');
-  } catch { sel.innerHTML = '<option>Failed to load events</option>'; }
+    _evs = await evRes.json();
+  } catch { _evs = []; }
 
   if (id) {
     const d = dealsData.find(x => x.id === id);
@@ -6672,8 +6748,7 @@ async function openDealModal(id, defaultStage) {
     document.getElementById('dealInvSent').value = d.invoice_agreement_sent ? 'true' : 'false';
     document.getElementById('dealSigReceived').value = d.signature_received ? 'true' : 'false';
     document.getElementById('dealNotes').value = d.notes || '';
-    const evIds = Array.isArray(d.events) ? d.events.map(e => e.event_id).filter(Boolean) : [];
-    Array.from(sel.options).forEach(o => { o.selected = evIds.includes(parseInt(o.value)); });
+    _selectedEvIds = Array.isArray(d.events) ? d.events.map(e => e.event_id).filter(Boolean) : [];
     if (d.invoice1_name) document.getElementById('dealInv1Preview').textContent = `Current: ${d.invoice1_name}`;
     if (d.invoice2_name) document.getElementById('dealInv2Preview').textContent = `Current: ${d.invoice2_name}`;
     selectDealPayment(d.bank === 'Stripe' ? 'Stripe' : 'Bank');
@@ -6692,9 +6767,30 @@ async function openDealModal(id, defaultStage) {
     document.getElementById('dealInvSent').value = 'false';
     document.getElementById('dealSigReceived').value = 'false';
     document.getElementById('dealNotes').value = '';
-    Array.from(sel.options).forEach(o => o.selected = false);
+    _selectedEvIds = [];
     selectDealPayment('Bank');
   }
+
+  // Render checkbox list (sorted by date desc, then name)
+  const sortedEvs = [..._evs].sort((a, b) => {
+    if (!a.event_date && !b.event_date) return a.name.localeCompare(b.name);
+    if (!a.event_date) return 1;
+    if (!b.event_date) return -1;
+    return new Date(b.event_date) - new Date(a.event_date);
+  });
+  const container = document.getElementById('dealEventsCheckboxes');
+  if (container) {
+    container.innerHTML = sortedEvs.map(ev => {
+      const label = esc(ev.name) + (ev.event_date ? ' <span style="color:var(--muted);font-size:11px">(' + new Date(ev.event_date + 'T12:00:00').toLocaleDateString('en-GB',{month:'short',year:'numeric'}) + ')</span>' : '');
+      const checked = _selectedEvIds.includes(ev.id) ? 'checked' : '';
+      return `<label class="deal-event-check-item${_selectedEvIds.includes(ev.id) ? ' selected' : ''}">
+        <input type="checkbox" value="${ev.id}" ${checked} onchange="onDealEventCheck(this)">
+        <span>${label}</span>
+      </label>`;
+    }).join('') || '<div style="padding:12px;font:500 12px/1 var(--font-mono);color:var(--muted)">No events yet — add one in Portfolio first.</div>';
+  }
+  const searchEl = document.getElementById('dealEventsSearch');
+  if (searchEl) searchEl.value = '';
   updateDealSplitPreview();
   openModal('dealModal');
 }
@@ -6721,17 +6817,32 @@ function fillNextInvoiceNumber() {
   document.getElementById('dealInvoiceNumber').value = el.textContent;
 }
 
+function onDealEventCheck(cb) {
+  const item = cb.closest('.deal-event-check-item');
+  if (item) item.classList.toggle('selected', cb.checked);
+  updateDealSplitPreview();
+}
+
+function filterDealEvents() {
+  const q = (document.getElementById('dealEventsSearch')?.value || '').toLowerCase();
+  document.querySelectorAll('#dealEventsCheckboxes .deal-event-check-item').forEach(item => {
+    item.style.display = item.querySelector('span').textContent.toLowerCase().includes(q) ? '' : 'none';
+  });
+}
+
 function updateDealSplitPreview() {
-  const sel = document.getElementById('dealEvents');
-  const selected = Array.from(sel.selectedOptions);
+  const checked = Array.from(document.querySelectorAll('#dealEventsCheckboxes input[type="checkbox"]:checked'));
+  const countEl = document.getElementById('dealEventsCount');
+  if (countEl) countEl.textContent = checked.length ? `· ${checked.length} selected` : '';
   const amount = parseFloat(document.getElementById('dealAmount').value) || 0;
   const sym = { GBP:'£', USD:'$', AED:'AED ', PHP:'₱', EUR:'€' }[document.getElementById('dealCurrency')?.value] || '';
   const preview = document.getElementById('dealSplitPreview');
-  if (selected.length > 1 && amount > 0) {
-    const each = amount / selected.length;
-    preview.textContent = `${sym}${fmt(each)} allocated to each of ${selected.length} events`;
-  } else if (selected.length === 1 && amount > 0) {
-    preview.textContent = `${sym}${fmt(amount)} allocated to ${selected[0].text}`;
+  if (checked.length > 1 && amount > 0) {
+    const each = amount / checked.length;
+    preview.textContent = `${sym}${fmt(each)} allocated to each of ${checked.length} events`;
+  } else if (checked.length === 1 && amount > 0) {
+    const label = checked[0].closest('label')?.querySelector('span')?.textContent || '';
+    preview.textContent = `${sym}${fmt(amount)} allocated to ${label}`;
   } else {
     preview.textContent = '';
   }
@@ -6758,8 +6869,8 @@ async function saveDeal() {
   if (!company) { showToast('Company name is required', 'error'); return; }
   const amount = parseFloat(document.getElementById('dealAmount').value);
   if (isNaN(amount) || amount < 0) { showToast('Enter a valid deal value', 'error'); return; }
-  const sel = document.getElementById('dealEvents');
-  const event_ids = Array.from(sel.selectedOptions).map(o => parseInt(o.value)).filter(Boolean);
+  const event_ids = Array.from(document.querySelectorAll('#dealEventsCheckboxes input[type="checkbox"]:checked'))
+    .map(cb => parseInt(cb.value)).filter(Boolean);
   const paidIncVat = document.getElementById('dealPaidIncVat').value;
   const taxVat = document.getElementById('dealTaxVat').value;
   // Use company as title if no explicit title stored
