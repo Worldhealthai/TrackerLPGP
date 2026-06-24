@@ -735,6 +735,12 @@ function renderRevenueIntelPanel(deals, expiring, evtRevData) {
     </div>`;
   }).join('');
 
+  // Year badge: use the max event year from data (e.g. 2027), not calendar year
+  const _riDisplayYear = (evtRevData||[]).reduce((max, e) => {
+    const y = e.event_date ? parseInt(String(e.event_date).slice(0,4)) : 0;
+    return !isNaN(y) && y > max ? y : max;
+  }, new Date().getFullYear());
+
   el.innerHTML = `
     <div class="ri-card">
       <div class="ri-glow"></div>
@@ -743,7 +749,7 @@ function renderRevenueIntelPanel(deals, expiring, evtRevData) {
           <span class="ri-pulse"></span>
           <span class="ri-title">REVENUE INTELLIGENCE</span>
         </div>
-        <span class="ri-year">${new Date().getFullYear()}</span>
+        <span class="ri-year">${_riDisplayYear}</span>
       </div>
 
       <!-- Top: donut + summary metrics -->
@@ -4085,8 +4091,9 @@ async function deleteSub(id) {
 // ─── PORTFOLIO ────────────────────────────────────────────────────────────────
 
 let portfolioData = [];
-let _portYearFilter = String(new Date().getFullYear());
+let _portYearFilter = String(new Date().getFullYear() + 1); // default to next year (2027)
 let _portExtraYears = new Set();
+let _portSearch = '';
 
 function setPortYear(y) {
   _portYearFilter = y;
@@ -4113,13 +4120,20 @@ async function loadPortfolio() {
   } catch { showToast('Failed to load portfolio', 'error'); }
 }
 
+function portFilterCards(q) {
+  _portSearch = (q || '').toLowerCase().trim();
+  document.querySelectorAll('.pec-card').forEach(c => {
+    c.style.display = !_portSearch || (c.dataset.name || '').includes(_portSearch) ? '' : 'none';
+  });
+}
+
 function renderPortfolioGrid() {
   const grid  = document.getElementById('portfolioGrid');
   const empty = document.getElementById('portfolioEmpty');
 
-  // Build year list (always include current year)
+  // Build year list — always include current and next year
   const curYear = new Date().getFullYear();
-  const yearsSet = new Set([curYear]);
+  const yearsSet = new Set([curYear, curYear + 1]);
   portfolioData.forEach(e => {
     if (e.event_date) {
       const y = parseInt(String(e.event_date).slice(0, 4));
@@ -4128,9 +4142,9 @@ function renderPortfolioGrid() {
   });
   _portExtraYears.forEach(y => yearsSet.add(y));
   const years = [...yearsSet].sort((a, b) => b - a);
-  if (_portYearFilter !== 'all' && !years.includes(parseInt(_portYearFilter))) _portYearFilter = String(curYear);
+  if (_portYearFilter !== 'all' && !years.includes(parseInt(_portYearFilter))) _portYearFilter = String(years[0] || curYear);
 
-  // Filter
+  // Filter by year
   const filtered = _portYearFilter === 'all'
     ? portfolioData
     : portfolioData.filter(e => {
@@ -4138,7 +4152,7 @@ function renderPortfolioGrid() {
         return parseInt(String(e.event_date).slice(0, 4)) === parseInt(_portYearFilter);
       });
 
-  // Year tab strip + add button
+  // Year tab strip + search + add button
   const tabsHtml =
     `<div class="deal-filter-card" style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:14px">` +
       `<div class="deal-q-filters">` +
@@ -4146,7 +4160,8 @@ function renderPortfolioGrid() {
         `<button class="deal-q-btn${_portYearFilter === 'all' ? ' active' : ''}" onclick="setPortYear('all')">All</button>` +
         `<button class="deal-q-btn" onclick="addPortYear()" title="Add year">+</button>` +
       `</div>` +
-      `<button class="btn btn-primary btn-sm" style="margin-left:auto" onclick="openPortfolioModal()">+ Add Event</button>` +
+      `<input class="port-search" id="portSearch" placeholder="🔍 Search events…" oninput="portFilterCards(this.value)" value="${esc(_portSearch)}">` +
+      `<button class="btn btn-primary btn-sm" onclick="openPortfolioModal()">+ Add Event</button>` +
     `</div>`;
 
   if (!filtered.length) {
@@ -4156,20 +4171,20 @@ function renderPortfolioGrid() {
   }
   empty.classList.add('hidden');
 
-  // Summary strip
-  const totalWon       = filtered.reduce((a, e) => a + (parseFloat(e.total_won)      || 0), 0);
-  const totalPipeline  = filtered.reduce((a, e) => a + (parseFloat(e.total_pipeline) || 0), 0);
-  const totalDeals     = filtered.reduce((a, e) => a + (parseInt(e.deal_count)        || 0), 0);
-  const outstanding    = Math.max(0, totalPipeline - totalWon);
-  const collectPct     = totalPipeline > 0 ? Math.round(totalWon / totalPipeline * 100) : 0;
+  // Summary bar
+  const totalWon      = filtered.reduce((a, e) => a + (parseFloat(e.total_won)      || 0), 0);
+  const totalPipeline = filtered.reduce((a, e) => a + (parseFloat(e.total_pipeline) || 0), 0);
+  const totalDeals    = filtered.reduce((a, e) => a + (parseInt(e.deal_count)        || 0), 0);
+  const outstanding   = Math.max(0, totalPipeline - totalWon);
+  const collectPct    = totalPipeline > 0 ? Math.round(totalWon / totalPipeline * 100) : 0;
 
   const summaryHtml =
-    `<div class="port-year-summary" style="margin-bottom:16px">` +
-      `<div class="port-sum-stat"><span class="port-sum-label">Events</span><span class="port-sum-val">${filtered.length}</span></div>` +
-      `<div class="port-sum-stat"><span class="port-sum-label">Revenue Won</span><span class="port-sum-val port-sum--green">£${fmt(totalWon)}</span></div>` +
-      `<div class="port-sum-stat"><span class="port-sum-label">Outstanding</span><span class="port-sum-val${outstanding > 0 ? ' port-sum--amber' : ''}">£${fmt(outstanding)}</span></div>` +
-      `<div class="port-sum-stat"><span class="port-sum-label">Deals</span><span class="port-sum-val">${totalDeals}</span></div>` +
-      `<div class="port-sum-stat"><span class="port-sum-label">Collected</span><span class="port-sum-val" style="color:${collectPct >= 80 ? 'var(--positive)' : collectPct > 40 ? 'var(--warning)' : 'var(--muted)'}">${collectPct}%</span></div>` +
+    `<div class="port-summary-bar">` +
+      `<div class="psb-item"><span class="psb-lbl">Events</span><span class="psb-val">${filtered.length}</span></div>` +
+      `<div class="psb-item"><span class="psb-lbl">Revenue Won</span><span class="psb-val psb-green">£${fmt(totalWon)}</span></div>` +
+      `<div class="psb-item"><span class="psb-lbl">Outstanding</span><span class="psb-val${outstanding > 0 ? ' psb-amber' : ''}">£${fmt(outstanding)}</span></div>` +
+      `<div class="psb-item"><span class="psb-lbl">Deals</span><span class="psb-val">${totalDeals}</span></div>` +
+      `<div class="psb-item"><span class="psb-lbl">Collected</span><span class="psb-val" style="color:${collectPct >= 80 ? 'var(--positive)' : collectPct > 40 ? 'var(--warning)' : 'var(--muted)'}">${collectPct}%</span></div>` +
     `</div>`;
 
   // Sort by date ascending
@@ -4180,76 +4195,96 @@ function renderPortfolioGrid() {
     return new Date(a.event_date) - new Date(b.event_date);
   });
 
-  grid.innerHTML = tabsHtml + summaryHtml +
-    `<div class="port-event-list">${sorted.map(renderPortfolioEventCard).join('')}</div>`;
+  grid.innerHTML = tabsHtml + summaryHtml + `<div class="pec-list">${sorted.map(renderPortfolioEventCard).join('')}</div>`;
+
+  // Animate progress bars after paint
+  requestAnimationFrame(() => setTimeout(() => {
+    grid.querySelectorAll('.pec-bar').forEach(b => { b.style.width = (b.dataset.pct || 0) + '%'; });
+  }, 60));
+
+  // Re-apply any active search
+  if (_portSearch) portFilterCards(_portSearch);
 }
 
 function renderPortfolioEventCard(ev) {
-  const dateStr    = ev.event_date ? new Date(ev.event_date + 'T12:00:00').toLocaleDateString('en-GB',{day:'numeric',month:'short',year:'numeric'}) : 'Date TBD';
+  // Safe date parsing — works for both date-only strings and full ISO timestamps
+  const d = ev.event_date ? new Date(ev.event_date) : null;
+  const validDate  = d && !isNaN(d.getTime());
+  const dateChip   = validDate ? d.toLocaleDateString('en-GB', {month:'short', year:'2-digit'}) : null;
+
   const won        = parseFloat(ev.total_won) || 0;
   const pipeline   = parseFloat(ev.total_pipeline) || 0;
-  const outstanding= Math.max(0, pipeline - won);
+  const outstanding = Math.max(0, pipeline - won);
   const dealCount  = parseInt(ev.deal_count) || 0;
   const pct        = pipeline > 0 ? Math.min(100, Math.round(won / pipeline * 100)) : (won > 0 ? 100 : 0);
-  const barCol     = pct >= 100 ? 'var(--positive)' : pct > 60 ? 'var(--accent)' : pct > 30 ? 'var(--warning)' : 'var(--muted)';
+  const barColor   = pct >= 100 ? 'var(--positive)' : pct > 60 ? 'var(--accent)' : pct > 30 ? 'var(--warning)' : 'var(--border)';
 
-  const progressHtml = (pipeline > 0 || won > 0)
-    ? `<div class="port-event-progress">
-        <div style="display:flex;justify-content:space-between;font:600 10px/1 var(--font-mono);color:var(--muted);margin-bottom:6px">
-          <span>Revenue collected</span><span style="color:${barCol}">${pct}%</span>
-        </div>
-        <div style="height:5px;background:var(--border);border-radius:3px">
-          <div style="height:100%;width:${pct}%;background:${barCol};border-radius:3px;transition:width .4s"></div>
-        </div>
-        <div style="display:flex;justify-content:space-between;font:500 10px/1 var(--font-mono);color:var(--muted);margin-top:6px">
-          <span style="color:var(--positive)">£${fmt(won)} won</span>
-          ${outstanding > 0 ? `<span style="color:var(--warning)">£${fmt(outstanding)} outstanding</span>` : '<span style="color:var(--positive)">Fully collected ✓</span>'}
-        </div>
-      </div>`
-    : `<div style="font:500 11px/1 var(--font-mono);color:var(--dim);padding:6px 0">No revenue linked yet</div>`;
-
-  return `<div class="port-event-card">
-    <div class="port-event-hd">
-      <div class="port-event-info">
-        <div class="port-event-name">${esc(ev.name)}</div>
-        <div class="port-event-meta">
-          <span>${ev.event_date ? '📅 ' + dateStr : '<span style="color:var(--dim)">📅 TBD</span>'}</span>
-          ${ev.location ? `<span>📍 ${esc(ev.location)}</span>` : ''}
+  return `<div class="pec-card" data-name="${esc((ev.name || '').toLowerCase())}">
+    <div class="pec-hd">
+      <div style="min-width:0;flex:1">
+        <div class="pec-name">${esc(ev.name)}</div>
+        <div class="pec-chips">
+          ${dateChip ? `<span class="pec-date-chip">${dateChip}</span>` : '<span class="pec-date-chip pec-date-tbd">TBD</span>'}
+          ${ev.location ? `<span class="pec-loc-chip">📍 ${esc(ev.location)}</span>` : ''}
         </div>
       </div>
-      <div class="sub-actions">
+      <div class="sub-actions" style="flex-shrink:0">
         <button class="sub-action-btn" onclick="openPortfolioModal(${ev.id})">✏️ Edit</button>
         <button class="sub-action-btn sub-action-btn--danger" onclick="deletePortfolioEvent(${ev.id})">🗑 Delete</button>
       </div>
     </div>
-    ${progressHtml}
-    ${ev.companies ? `<div class="port-event-companies"><span style="font-weight:700;color:var(--muted)">Companies · </span>${esc(ev.companies)}</div>` : ''}
-    ${ev.notes ? `<div class="port-event-notes">${esc(ev.notes)}</div>` : ''}
-    <div class="port-event-footer">
-      <button class="port-deals-toggle" onclick="togglePortfolioDeals(this,${ev.id})">
-        <span class="port-deal-arrow" style="display:inline-block;transition:transform .2s">▶</span>
+
+    <div class="pec-stats">
+      <div class="pec-stat">
+        <div class="pec-stat-lbl">Pipeline</div>
+        <div class="pec-stat-num">£${fmt(pipeline)}</div>
+      </div>
+      <div class="pec-stat">
+        <div class="pec-stat-lbl">Won</div>
+        <div class="pec-stat-num pec-green">£${fmt(won)}</div>
+      </div>
+      <div class="pec-stat">
+        <div class="pec-stat-lbl">Outstanding</div>
+        <div class="pec-stat-num${outstanding > 0 ? ' pec-amber' : ''}">£${fmt(outstanding)}</div>
+      </div>
+      <div class="pec-stat">
+        <div class="pec-stat-lbl">Collected</div>
+        <div class="pec-stat-num" style="color:${pct >= 100 ? 'var(--positive)' : pct > 40 ? 'var(--warning)' : 'var(--muted)'}">${pct}%</div>
+      </div>
+    </div>
+
+    <div class="pec-bar-wrap"><div class="pec-bar" data-pct="${pct}" style="width:0%;background:${barColor}"></div></div>
+
+    ${ev.notes ? `<div class="pec-notes">${esc(ev.notes)}</div>` : ''}
+
+    <div class="pec-footer">
+      <button class="pec-deals-btn" onclick="togglePortfolioDeals(this,${ev.id})">
+        <span class="pec-arrow">▶</span>
         ${dealCount} deal${dealCount !== 1 ? 's' : ''} linked
       </button>
-      <div class="port-deals-list" style="display:none;width:100%;margin-top:10px"></div>
       ${dealCount > 0 ? `<button class="sub-action-btn" style="font-size:10px;padding:4px 10px;margin-left:auto" onclick="viewEventDeals(${ev.id},'${esc(ev.name).replace(/'/g,"\\'")}')">View in Deals →</button>` : ''}
     </div>
+    <div class="pec-deals-list" style="display:none"></div>
   </div>`;
 }
 
 async function togglePortfolioDeals(btn, eventId) {
-  const arrow = btn.querySelector('.port-deal-arrow');
-  const list = btn.nextElementSibling;
+  const arrow = btn.querySelector('.pec-arrow');
+  const card  = btn.closest('.pec-card');
+  const list  = card ? card.querySelector('.pec-deals-list') : null;
+  if (!list) return;
   const isOpen = list.style.display !== 'none';
 
   if (isOpen) {
     list.style.display = 'none';
-    arrow.style.transform = '';
+    if (arrow) arrow.style.transform = '';
     return;
   }
 
-  arrow.style.transform = 'rotate(90deg)';
+  if (arrow) arrow.style.transform = 'rotate(90deg)';
   list.style.display = 'block';
-  list.innerHTML = '<div style="font-size:0.75rem;color:var(--muted)">Loading…</div>';
+  list.style.cssText = 'border-top:1px solid var(--border);margin-top:10px;padding-top:6px';
+  list.innerHTML = '<div style="font-size:0.75rem;color:var(--muted);padding:4px 0">Loading…</div>';
 
   try {
     const res = await fetch(`/api/portfolio-events/${eventId}/deals`);
