@@ -998,9 +998,9 @@ function renderDashUpcoming(upcoming, dayOffs) {
     var mon = MONS[d.getUTCMonth()];
     var catCol = e.isDayOff ? '#f59e0b' : 'var(--muted)';
     return '<div style="display:flex;gap:14px;padding:13px 18px;border-bottom:1px solid var(--border);align-items:center">' +
-      '<div style="width:42px;min-width:42px;text-align:center;background:#1a1f2e;border:1px solid var(--border);border-radius:8px;padding:7px 0">' +
-        '<div style="font:800 17px/1 var(--font-mono);color:var(--text)">' + day + '</div>' +
-        '<div style="font:600 9px/1 var(--font-mono);color:var(--muted);margin-top:4px;letter-spacing:0.8px">' + mon + '</div>' +
+      '<div style="width:42px;min-width:42px;text-align:center;background:var(--accent);border:1px solid var(--accent);border-radius:8px;padding:7px 0">' +
+        '<div style="font:800 17px/1 var(--font-mono);color:#fff">' + day + '</div>' +
+        '<div style="font:600 9px/1 var(--font-mono);color:rgba(255,255,255,0.75);margin-top:4px;letter-spacing:0.8px">' + mon + '</div>' +
       '</div>' +
       '<div style="flex:1;min-width:0">' +
         '<div style="font:600 13px/1.2 var(--font-sans);color:var(--text)">' + e.title + '</div>' +
@@ -3031,9 +3031,9 @@ function renderDayOffRequestsBanner(pending) {
     const d = new Date(r.request_date);
     const typeLabel = parseFloat(r.is_day_off) === 1 ? 'Full day' : 'Half day';
     return '<div style="display:flex;align-items:center;gap:12px;padding:10px 16px;border-bottom:1px solid var(--border)">' +
-      '<div style="width:36px;text-align:center;background:#1a1f2e;border:1px solid var(--border);border-radius:6px;padding:5px 0;flex-shrink:0">' +
-        '<div style="font:800 13px/1 var(--font-mono);color:var(--text)">' + d.getUTCDate() + '</div>' +
-        '<div style="font:600 9px/1 var(--font-mono);color:var(--muted)">' + MONS[d.getUTCMonth()] + '</div>' +
+      '<div style="width:36px;text-align:center;background:var(--accent);border:1px solid var(--accent);border-radius:6px;padding:5px 0;flex-shrink:0">' +
+        '<div style="font:800 13px/1 var(--font-mono);color:#fff">' + d.getUTCDate() + '</div>' +
+        '<div style="font:600 9px/1 var(--font-mono);color:rgba(255,255,255,0.75)">' + MONS[d.getUTCMonth()] + '</div>' +
       '</div>' +
       '<div style="flex:1">' +
         '<div style="font:600 13px/1 var(--font-sans);color:var(--text)">' + esc(r.employee_name) + '</div>' +
@@ -7531,9 +7531,9 @@ async function loadEmployeeCalendar() {
     const remItems = upcomingReminders.slice(0, 5).map(r => {
       const rd = new Date(r.virtual_date);
       return '<div style="display:flex;gap:12px;padding:10px 0;border-bottom:1px solid var(--border);align-items:center">' +
-        '<div style="width:36px;min-width:36px;text-align:center;background:#1a1f2e;border:1px solid var(--border);border-radius:7px;padding:5px 0">' +
-          '<div style="font:800 13px/1 var(--font-mono);color:var(--text)">' + rd.getUTCDate() + '</div>' +
-          '<div style="font:600 9px/1 var(--font-mono);color:var(--muted);margin-top:3px">' + MONS[rd.getUTCMonth()] + '</div>' +
+        '<div style="width:36px;min-width:36px;text-align:center;background:var(--accent);border:1px solid var(--accent);border-radius:7px;padding:5px 0">' +
+          '<div style="font:800 13px/1 var(--font-mono);color:#fff">' + rd.getUTCDate() + '</div>' +
+          '<div style="font:600 9px/1 var(--font-mono);color:rgba(255,255,255,0.75);margin-top:3px">' + MONS[rd.getUTCMonth()] + '</div>' +
         '</div>' +
         '<div style="flex:1"><div style="font:600 12px/1 var(--font-sans);color:var(--text)">' + esc(r.title) + '</div>' +
           '<div style="font:600 10px/1 var(--font-mono);color:var(--muted);margin-top:3px">' + (r.category||'').toUpperCase() + '</div></div>' +
