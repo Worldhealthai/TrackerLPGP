@@ -1881,15 +1881,15 @@
     </div>
     <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:14px;margin-bottom:14px">
       <div class="form-group">
-        <label>Amount (ex VAT) *</label>
-        <input type="text" id="igAmountExVat" placeholder="8,550">
+        <label>Amount (ex VAT) * <span style="font-weight:400;color:var(--muted)">(auto-sums from events)</span></label>
+        <input type="text" id="igAmountExVat" placeholder="8,550" oninput="igRecalcTotals(false)">
       </div>
       <div class="form-group">
         <label>VAT Amount</label>
-        <input type="text" id="igVatAmount" placeholder="1,710">
+        <input type="text" id="igVatAmount" placeholder="1,710" oninput="igRecalcTotals(false)">
       </div>
       <div class="form-group">
-        <label>Total Due</label>
+        <label>Total Due <span style="font-weight:400;color:var(--muted)">(auto)</span></label>
         <input type="text" id="igTotalDue" placeholder="10,260">
       </div>
     </div>

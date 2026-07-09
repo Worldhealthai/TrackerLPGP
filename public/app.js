@@ -8607,12 +8607,22 @@ function igAddEventRow(name, pkg, amount, benefits) {
   const card = document.createElement('div');
   card.className = 'ig-event-card';
 
-  const row = document.createElement('div');
-  row.className = 'ig-event-row';
+  // Row 1: full-width event name + remove button
+  const row1 = document.createElement('div');
+  row1.className = 'ig-event-row';
   const n = document.createElement('input');
   n.type = 'text'; n.className = 'ig-ev-name';
   n.placeholder = 'Event — e.g. 4th Annual CFO Summit';
   n.value = name || '';
+  const x = document.createElement('button');
+  x.type = 'button'; x.className = 'ig-ev-del'; x.title = 'Remove event';
+  x.textContent = '✕';
+  x.onclick = () => { card.remove(); igRecalcTotals(true); };
+  row1.append(n, x);
+
+  // Row 2: package + per-event amount
+  const row2 = document.createElement('div');
+  row2.className = 'ig-event-row';
   const p = document.createElement('input');
   p.type = 'text'; p.className = 'ig-ev-pkg';
   p.placeholder = 'Package — e.g. Exhibitor';
@@ -8621,19 +8631,34 @@ function igAddEventRow(name, pkg, amount, benefits) {
   a.type = 'text'; a.className = 'ig-ev-amt';
   a.placeholder = '£3,750';
   a.value = amount || '';
-  const x = document.createElement('button');
-  x.type = 'button'; x.className = 'ig-ev-del'; x.title = 'Remove event';
-  x.textContent = '✕';
-  x.onclick = () => card.remove();
-  row.append(n, p, a, x);
+  a.oninput = () => igRecalcTotals(true);
+  row2.append(p, a);
 
   const b = document.createElement('textarea');
   b.className = 'ig-ev-benefits'; b.rows = 3;
   b.placeholder = 'Package details for this event, one per line — e.g.\nSpeaker on a Panel (subject to availability)\n2 delegate passes';
   b.value = benefits || '';
 
-  card.append(row, b);
+  card.append(row1, row2, b);
   wrap.appendChild(card);
+}
+
+function igParseMoney(v) {
+  return parseFloat(String(v || '').replace(/[^0-9.\-]/g, '')) || 0;
+}
+
+// Single source of truth for money: per-event amounts sum into Amount (ex VAT),
+// and Total Due is always amount + VAT.
+function igRecalcTotals(fromEvents) {
+  const amts = Array.from(document.querySelectorAll('#igEventsList .ig-ev-amt'))
+    .map(i => i.value.trim()).filter(Boolean);
+  if (fromEvents && amts.length) {
+    const sum = amts.reduce((s, v) => s + igParseMoney(v), 0);
+    document.getElementById('igAmountExVat').value = sum ? sum.toLocaleString('en-GB', { maximumFractionDigits: 2 }) : '';
+  }
+  const ex = igParseMoney(document.getElementById('igAmountExVat').value);
+  const vat = igParseMoney(document.getElementById('igVatAmount').value);
+  document.getElementById('igTotalDue').value = (ex || vat) ? (ex + vat).toLocaleString('en-GB', { maximumFractionDigits: 2 }) : '';
 }
 
 function igCollectEventObjs() {
@@ -8679,6 +8704,7 @@ function openInvoiceGenModal(dealId) {
   document.getElementById('igTotalDue').value = totalDue;
   document.getElementById('igClientName').value = deal.company || deal.title || '';
   document.getElementById('igAdditionalNotes').value = '';
+  igRecalcTotals(false);
   document.getElementById('invoiceGenModal').classList.add('open');
 }
 
