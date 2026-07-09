@@ -7706,7 +7706,11 @@ async function loadEmployeeCalendar() {
         '<div class="modal-header"><span class="modal-title">Request Day Off</span>' +
           '<button class="modal-close" onclick="closeModal(\'empDayOffModal\')">×</button></div>' +
         '<div style="padding:20px;display:flex;flex-direction:column;gap:14px">' +
-          '<div class="form-group"><label>Date</label><input type="date" id="empDayOffDate"></div>' +
+          '<div id="empDayOffRangeNote" class="hidden" style="font:600 12px/1.4 var(--font-sans);color:var(--accent);background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:8px 10px"></div>' +
+          '<div class="form-row" style="display:flex;gap:10px">' +
+            '<div class="form-group" style="flex:1"><label>From</label><input type="date" id="empDayOffDate" onchange="empDayOffSyncEnd()"></div>' +
+            '<div class="form-group" style="flex:1"><label>To</label><input type="date" id="empDayOffEndDate"></div>' +
+          '</div>' +
           '<div class="form-group"><label>Type</label>' +
             '<select id="empDayOffType"><option value="1">Full Day</option><option value="0.5">Half Day</option></select></div>' +
           '<div class="form-group"><label>Reason <span style="color:var(--muted);font-weight:400">(required)</span></label><textarea id="empDayOffReason" class="form-control" rows="3" placeholder="e.g. Medical appointment, personal matter..."></textarea></div>' +
@@ -7794,8 +7798,8 @@ async function loadEmployeeCalendar() {
       }
 
       gridHtml +=
-        '<div class="emp-cal-day" style="background:' + bg + ';border:' + border + ';border-radius:8px;padding:8px 6px 6px;min-height:72px;cursor:pointer;display:flex;flex-direction:column;align-items:center"'
-        + ' onclick="empDayClick(\'' + dateStr + '\')">' +
+        '<div class="emp-cal-day" data-date="' + dateStr + '" style="background:' + bg + ';border:' + border + ';border-radius:8px;padding:8px 6px 6px;min-height:72px;cursor:pointer;display:flex;flex-direction:column;align-items:center;user-select:none"'
+        + ' onmousedown="empDayMouseDown(event,\'' + dateStr + '\')" onmouseenter="empDayMouseEnter(\'' + dateStr + '\')" ontouchstart="empDayMouseDown(event,\'' + dateStr + '\')">' +
           '<div style="font:' + (isToday?'800':'700') + ' 15px/1 var(--font-mono);color:' + (isToday?'var(--primary)':isPast?'var(--dim)':'var(--text)') + ';width:100%;text-align:center">' + d + '</div>' +
           statusBar + teamHtml +
         '</div>';
@@ -7848,7 +7852,7 @@ async function loadEmployeeCalendar() {
           '<div class="card-header"><span class="card-title">Team Calendar</span>' +
             '<span style="font:700 11px/1 var(--font-mono);color:var(--muted)">' + myRequests.length + ' request' + (myRequests.length!==1?'s':'') + ' this month</span></div>' +
           '<div style="padding:16px">' + gridHtml + '</div>' +
-          '<div style="padding:0 16px 12px;font:500 11px/1 var(--font-mono);color:var(--muted)">Click any date to see details or request a day off</div>' +
+          '<div style="padding:0 16px 12px;font:500 11px/1 var(--font-mono);color:var(--muted)">Click a date for details, or click-and-drag across multiple dates to request them all at once</div>' +
         '</div>' +
         '<div class="card"><div class="card-header"><span class="card-title">What\'s Coming Up</span><span style="font:700 11px/1 var(--font-mono);color:var(--muted)">NEXT 60D</span></div>' +
           '<div style="padding:4px 16px 12px">' + (remHtml || '<div style="color:var(--muted);font-size:0.82rem;padding:12px 0">No upcoming team events or days off</div>') + '</div>' +
@@ -7968,26 +7972,109 @@ function showEmpDeclineReason(reason) {
 }
 
 function openEmpDayOffModal() {
-  document.getElementById('empDayOffDate').value = new Date().toISOString().slice(0,10);
+  const d = new Date().toISOString().slice(0,10);
+  document.getElementById('empDayOffDate').value = d;
+  document.getElementById('empDayOffEndDate').value = d;
   document.getElementById('empDayOffReason').value = '';
+  document.getElementById('empDayOffRangeNote').classList.add('hidden');
   openModal('empDayOffModal');
 }
 function openEmpDayOffModalDate(date) {
   document.getElementById('empDayOffDate').value = date;
+  document.getElementById('empDayOffEndDate').value = date;
   document.getElementById('empDayOffReason').value = '';
+  document.getElementById('empDayOffRangeNote').classList.add('hidden');
   openModal('empDayOffModal');
+}
+function openEmpDayOffModalRange(startDate, endDate) {
+  document.getElementById('empDayOffDate').value = startDate;
+  document.getElementById('empDayOffEndDate').value = endDate;
+  document.getElementById('empDayOffReason').value = '';
+  const days = empDateRange(startDate, endDate).length;
+  const note = document.getElementById('empDayOffRangeNote');
+  note.textContent = '📅 Requesting ' + days + ' day' + (days !== 1 ? 's' : '') + ': ' + startDate + ' → ' + endDate;
+  note.classList.remove('hidden');
+  openModal('empDayOffModal');
+}
+function empDayOffSyncEnd() {
+  const start = document.getElementById('empDayOffDate').value;
+  const endEl = document.getElementById('empDayOffEndDate');
+  if (start && (!endEl.value || endEl.value < start)) endEl.value = start;
+}
+function empDateRange(start, end) {
+  const dates = [];
+  let d = new Date(start + 'T12:00:00');
+  const last = new Date(end + 'T12:00:00');
+  while (d <= last) {
+    dates.push(d.toISOString().slice(0,10));
+    d.setDate(d.getDate() + 1);
+  }
+  return dates;
 }
 
 async function submitEmpDayOff() {
-  const date = document.getElementById('empDayOffDate').value;
+  const start = document.getElementById('empDayOffDate').value;
+  const end = document.getElementById('empDayOffEndDate').value || start;
   const is_day_off = document.getElementById('empDayOffType').value;
   const reason = (document.getElementById('empDayOffReason').value || '').trim();
-  if (!date) return showToast('Please select a date', 'error');
+  if (!start) return showToast('Please select a date', 'error');
   if (!reason) return showToast('Please add a reason for your request', 'error');
-  const res = await fetch('/api/employee/day-off', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ date, is_day_off, reason }) });
-  const data = await res.json();
-  if (res.ok) { closeModal('empDayOffModal'); showToast('Day off submitted!', 'success'); loadEmployeeCalendar(); }
-  else showToast(data.error || 'Failed', 'error');
+  const dates = empDateRange(start, end > start ? end : start);
+  let ok = 0, fail = 0;
+  for (const date of dates) {
+    const res = await fetch('/api/employee/day-off', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ date, is_day_off, reason }) });
+    if (res.ok) ok++; else fail++;
+  }
+  closeModal('empDayOffModal');
+  if (ok > 0) showToast(ok === 1 ? 'Day off submitted!' : ok + ' day-off requests submitted!' + (fail ? ` (${fail} skipped — already booked)` : ''), 'success');
+  else showToast('Request failed — those dates may already be booked', 'error');
+  loadEmployeeCalendar();
+}
+
+// ─── Calendar drag-to-select multiple days ────────────────────────────────
+let _empDragAnchor = null, _empDragCurrent = null, _empDragActive = false, _empDragListenersBound = false;
+
+function empDayMouseDown(e, dateStr) {
+  if (e.type === 'mousedown' && e.button !== 0) return;
+  _empDragAnchor = dateStr; _empDragCurrent = dateStr; _empDragActive = true;
+  empUpdateDragHighlight();
+  if (!_empDragListenersBound) {
+    _empDragListenersBound = true;
+    document.addEventListener('mouseup', empDragFinish);
+    document.addEventListener('touchend', empDragFinish);
+    document.addEventListener('touchmove', e2 => {
+      if (!_empDragActive || !e2.touches.length) return;
+      const t = e2.touches[0];
+      const el = document.elementFromPoint(t.clientX, t.clientY);
+      const cell = el && el.closest ? el.closest('.emp-cal-day') : null;
+      if (cell && cell.dataset.date) { _empDragCurrent = cell.dataset.date; empUpdateDragHighlight(); }
+    }, { passive: true });
+  }
+}
+function empDayMouseEnter(dateStr) {
+  if (!_empDragActive) return;
+  _empDragCurrent = dateStr;
+  empUpdateDragHighlight();
+}
+function empUpdateDragHighlight() {
+  if (!_empDragActive || !_empDragAnchor || !_empDragCurrent) return;
+  const a = _empDragAnchor < _empDragCurrent ? _empDragAnchor : _empDragCurrent;
+  const b = _empDragAnchor < _empDragCurrent ? _empDragCurrent : _empDragAnchor;
+  document.querySelectorAll('.emp-cal-day').forEach(el => {
+    const d = el.dataset.date;
+    el.classList.toggle('emp-cal-day-dragsel', !!d && d >= a && d <= b);
+  });
+}
+function empDragFinish() {
+  if (!_empDragActive) return;
+  _empDragActive = false;
+  document.querySelectorAll('.emp-cal-day-dragsel').forEach(el => el.classList.remove('emp-cal-day-dragsel'));
+  const a = _empDragAnchor, b = _empDragCurrent;
+  _empDragAnchor = null; _empDragCurrent = null;
+  if (!a) return;
+  if (a === b) { empDayClick(a); return; }
+  const start = a < b ? a : b, end = a < b ? b : a;
+  openEmpDayOffModalRange(start, end);
 }
 
 async function cancelEmpDayOff(date) {

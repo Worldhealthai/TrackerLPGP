@@ -1157,6 +1157,7 @@ tbody tr:last-child td { border-bottom: none; }
   letter-spacing: .08em; color: var(--primary); margin-bottom: 8px;
 }
 #dealPackageToggleBtn.active { background: var(--accent); border-color: var(--accent); color: #fff; }
+.emp-cal-day-dragsel { outline: 2px solid var(--accent) !important; outline-offset: -2px; background: rgba(217,164,65,0.16) !important; }
 .deal-invoice-gen-btn {
   display: block; width: 100%; margin-bottom: 4px; padding: 5px 8px;
   font: 700 11px/1 var(--font-sans); border-radius: 6px;
