@@ -1863,17 +1863,16 @@
       </div>
       <div class="form-group">
         <label>Invoice Number *</label>
-        <input type="text" id="igInvoiceNum" placeholder="e.g. 680">
+        <div style="display:flex;gap:6px;align-items:center">
+          <input type="text" id="igInvoiceNum" placeholder="e.g. 680" style="flex:1;min-width:0">
+          <button type="button" class="btn btn-ghost" style="padding:6px 10px;font-size:0.75rem;white-space:nowrap;flex-shrink:0" onclick="igUseNextInvoice()">Use Next</button>
+        </div>
       </div>
     </div>
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px">
       <div class="form-group">
         <label>Date *</label>
         <input type="text" id="igDate" placeholder="DD/MM/YYYY">
-      </div>
-      <div class="form-group">
-        <label>Package Name *</label>
-        <input type="text" id="igPackageName" placeholder="e.g. Event Partner, Gold Sponsor">
       </div>
     </div>
     <div class="form-group" style="margin-bottom:14px">
@@ -1885,25 +1884,21 @@
     </div>
     <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:14px;margin-bottom:14px">
       <div class="form-group">
-        <label>Amount (ex VAT) *</label>
-        <input type="text" id="igAmountExVat" placeholder="8,550">
+        <label>Amount (ex VAT) * <span style="font-weight:400;color:var(--muted)">(auto-sums from events)</span></label>
+        <input type="text" id="igAmountExVat" placeholder="8,550" oninput="igRecalcTotals(false)">
       </div>
       <div class="form-group">
         <label>VAT Amount</label>
-        <input type="text" id="igVatAmount" placeholder="1,710">
+        <input type="text" id="igVatAmount" placeholder="1,710" oninput="igRecalcTotals(false)">
       </div>
       <div class="form-group">
-        <label>Total Due</label>
+        <label>Total Due <span style="font-weight:400;color:var(--muted)">(auto)</span></label>
         <input type="text" id="igTotalDue" placeholder="10,260">
       </div>
     </div>
     <div class="form-group" style="margin-bottom:14px">
       <label>Client Signing Name *</label>
       <input type="text" id="igClientName" placeholder="Name as it appears in the agreement (e.g. Kroll LLC)">
-    </div>
-    <div class="form-group" style="margin-bottom:14px">
-      <label>General Benefits <span style="font-weight:400;color:var(--muted)">(optional, one per line — applies to the whole package; per-event details go on each event above)</span></label>
-      <textarea id="igBenefits" rows="4" style="width:100%;resize:vertical;font-family:var(--font-mono);font-size:0.82rem" placeholder="LinkedIn post before the conference&#10;Logo on all event marketing"></textarea>
     </div>
     <div class="form-group" style="margin-bottom:20px">
       <label>Additional Notes <span style="font-weight:400;color:var(--muted)">(optional)</span></label>

@@ -8607,12 +8607,22 @@ function igAddEventRow(name, pkg, amount, benefits) {
   const card = document.createElement('div');
   card.className = 'ig-event-card';
 
-  const row = document.createElement('div');
-  row.className = 'ig-event-row';
+  // Row 1: full-width event name + remove button
+  const row1 = document.createElement('div');
+  row1.className = 'ig-event-row';
   const n = document.createElement('input');
   n.type = 'text'; n.className = 'ig-ev-name';
   n.placeholder = 'Event — e.g. 4th Annual CFO Summit';
   n.value = name || '';
+  const x = document.createElement('button');
+  x.type = 'button'; x.className = 'ig-ev-del'; x.title = 'Remove event';
+  x.textContent = '✕';
+  x.onclick = () => { card.remove(); igRecalcTotals(true); };
+  row1.append(n, x);
+
+  // Row 2: package + per-event amount
+  const row2 = document.createElement('div');
+  row2.className = 'ig-event-row';
   const p = document.createElement('input');
   p.type = 'text'; p.className = 'ig-ev-pkg';
   p.placeholder = 'Package — e.g. Exhibitor';
@@ -8621,19 +8631,51 @@ function igAddEventRow(name, pkg, amount, benefits) {
   a.type = 'text'; a.className = 'ig-ev-amt';
   a.placeholder = '£3,750';
   a.value = amount || '';
-  const x = document.createElement('button');
-  x.type = 'button'; x.className = 'ig-ev-del'; x.title = 'Remove event';
-  x.textContent = '✕';
-  x.onclick = () => card.remove();
-  row.append(n, p, a, x);
+  a.oninput = () => igRecalcTotals(true);
+  row2.append(p, a);
 
   const b = document.createElement('textarea');
   b.className = 'ig-ev-benefits'; b.rows = 3;
   b.placeholder = 'Package details for this event, one per line — e.g.\nSpeaker on a Panel (subject to availability)\n2 delegate passes';
   b.value = benefits || '';
 
-  card.append(row, b);
+  card.append(row1, row2, b);
   wrap.appendChild(card);
+}
+
+// Fill the generator's invoice number with the next in sequence,
+// same as the deal modal's Use Next
+async function igUseNextInvoice() {
+  try {
+    const res = await fetch('/api/deals/last-invoice');
+    const d = res.ok ? await res.json() : {};
+    if (d.invoice_number && d.next_number) {
+      const prefix = d.invoice_number.replace(/\d+$/, '');
+      document.getElementById('igInvoiceNum').value = prefix + String(d.next_number).padStart(3, '0');
+      return;
+    }
+  } catch { /* fall through to cached value */ }
+  const el = document.getElementById('dealNextInvNum');
+  if (el && el.textContent) document.getElementById('igInvoiceNum').value = el.textContent;
+  else showToast('No previous invoice number found', 'error');
+}
+
+function igParseMoney(v) {
+  return parseFloat(String(v || '').replace(/[^0-9.\-]/g, '')) || 0;
+}
+
+// Single source of truth for money: per-event amounts sum into Amount (ex VAT),
+// and Total Due is always amount + VAT.
+function igRecalcTotals(fromEvents) {
+  const amts = Array.from(document.querySelectorAll('#igEventsList .ig-ev-amt'))
+    .map(i => i.value.trim()).filter(Boolean);
+  if (fromEvents && amts.length) {
+    const sum = amts.reduce((s, v) => s + igParseMoney(v), 0);
+    document.getElementById('igAmountExVat').value = sum ? sum.toLocaleString('en-GB', { maximumFractionDigits: 2 }) : '';
+  }
+  const ex = igParseMoney(document.getElementById('igAmountExVat').value);
+  const vat = igParseMoney(document.getElementById('igVatAmount').value);
+  document.getElementById('igTotalDue').value = (ex || vat) ? (ex + vat).toLocaleString('en-GB', { maximumFractionDigits: 2 }) : '';
 }
 
 function igCollectEventObjs() {
@@ -8674,13 +8716,12 @@ function openInvoiceGenModal(dealId) {
   } else {
     igAddEventRow();
   }
-  document.getElementById('igPackageName').value = '';
   document.getElementById('igAmountExVat').value = amtEx ? Number(amtEx).toLocaleString('en-GB') : '';
   document.getElementById('igVatAmount').value = vatAmt;
   document.getElementById('igTotalDue').value = totalDue;
   document.getElementById('igClientName').value = deal.company || deal.title || '';
-  document.getElementById('igBenefits').value = '';
   document.getElementById('igAdditionalNotes').value = '';
+  igRecalcTotals(false);
   document.getElementById('invoiceGenModal').classList.add('open');
 }
 
@@ -8690,26 +8731,17 @@ function closeInvoiceGenModal() {
 
 function igCollectPayload() {
   const evs = igCollectEventObjs();
-  const globalBenefits = document.getElementById('igBenefits').value.split('\n').map(s => s.trim()).filter(Boolean);
 
   // Events list on page 2: "Event Name — £3,750" one per line
   const eventLines = evs.map(e => [e.name, e.amount].filter(Boolean).join(' — '));
 
-  // Benefits: a block per event ("Event — Package" header + its bullets),
-  // then any general benefits that apply to the whole package.
-  let benefits = [];
-  const withDetail = evs.filter(e => e.pkg || e.benefits.length);
-  if (withDetail.length) {
-    withDetail.forEach(e => {
-      benefits.push(e.pkg ? `${e.name} — ${e.pkg}` : e.name);
-      benefits.push(...e.benefits);
-      benefits.push('');
-    });
-    if (globalBenefits.length) benefits.push(...globalBenefits);
-    else benefits.pop(); // drop trailing blank line
-  } else {
-    benefits = globalBenefits;
-  }
+  // Benefits: a block per event — "Event — Package" header followed by its bullets
+  const benefits = [];
+  evs.filter(e => e.pkg || e.benefits.length).forEach(e => {
+    if (benefits.length) benefits.push('');
+    benefits.push(e.pkg ? `${e.name} — ${e.pkg}` : e.name);
+    benefits.push(...e.benefits);
+  });
 
   return {
     contact_name:   document.getElementById('igContact').value.trim(),
@@ -8719,7 +8751,7 @@ function igCollectPayload() {
     invoice_number: document.getElementById('igInvoiceNum').value.trim(),
     date:           document.getElementById('igDate').value.trim(),
     event_name:     eventLines.join('\n'),
-    package_name:   document.getElementById('igPackageName').value.trim(),
+    package_name:   '',
     amount_ex_vat:  document.getElementById('igAmountExVat').value.trim(),
     vat_amount:     document.getElementById('igVatAmount').value.trim(),
     total_due:      document.getElementById('igTotalDue').value.trim(),
@@ -8768,7 +8800,7 @@ function previewInvoice() {
         <tr class="ig-sumrow ig-due"><td></td><td>TOTAL DUE</td><td>£ ${esc(p.total_due || '—')}</td></tr>
       </tbody>
     </table>
-    <div class="ig-contact-line">If you have any questions concerning this invoice, contact accounts.payable@lpgpconnect.com</div>
+    <div class="ig-contact-line">If you have any questions concerning this invoice, contact accounts@lpgpconnect.com</div>
     <div class="ig-bank">
       <div>LPGPCONNECT.COM LTD</div>
       <div>Account number: 42247054</div>
@@ -8790,8 +8822,7 @@ function previewInvoice() {
     <div class="ig-sec-hd">Sponsorship &amp; Benefits</div>
     <div class="ig-events-lbl">Events:</div>
     <div class="ig-event-name">${p.event_name ? p.event_name.split('\n').map(l => `<div>${esc(l)}</div>`).join('') : '—'}</div>
-    <div class="ig-pkg-name">${esc(p.package_name || '—')}</div>
-    ${benefits || '<div class="ig-benefit" style="color:#999">No benefits listed</div>'}
+    ${benefits || '<div class="ig-benefit" style="color:#999">No package details listed</div>'}
     <div class="ig-total-cost">Total Cost - £${amt} plus VAT</div>
     <div class="ig-sec-hd" style="margin-top:22px">Additional Comments:</div>
     <div class="ig-comments">${esc(p.additional_notes || '—')}</div>
