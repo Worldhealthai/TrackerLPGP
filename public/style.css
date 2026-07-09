@@ -1863,11 +1863,6 @@ tbody tr:last-child td { border-bottom: none; }
   transition: background 0.12s;
 }
 .hc-emp-row:hover { background: var(--bg); }
-.hc-emp-av {
-  width: 30px; height: 30px; border-radius: 8px; flex-shrink: 0;
-  display: flex; align-items: center; justify-content: center;
-  font-size: 0.65rem; font-weight: 800; color: #fff;
-}
 .hc-emp-info { flex: 1; min-width: 0; }
 .hc-emp-name { font-size: 0.82rem; font-weight: 600; color: var(--text); }
 .hc-emp-role { font-size: 0.7rem; color: var(--muted); }

@@ -931,12 +931,9 @@ function renderHeadcountPanel(activeEmps, payrollCount, seCount, totalHeadcount,
             <div class="hc-dept-track"><div class="hc-dept-fill" style="width:${pct}%;background:${color}"></div></div>
             <div class="hc-emp-list">
               ${info.emps.map(e => {
-                const initials = (e.name||'?').split(' ').map(w=>w[0]).join('').slice(0,2).toUpperCase();
                 const isSE = e.employment_type === 'self_employed';
-                const avatarBg = isSE ? '#d97706' : color;
                 const role = e.job_title || (isSE ? 'Self-Employed' : 'Payroll');
-                return `<div class="hc-emp-row" onclick="event.stopPropagation();goToTracking(${e.id})">
-                  <div class="hc-emp-av" style="background:${avatarBg}">${initials}</div>
+                return `<div class="hc-emp-row" onclick="event.stopPropagation();goToEmployee(${e.id})" title="Open employee record">
                   <div class="hc-emp-info">
                     <div class="hc-emp-name">${esc(e.name)}</div>
                     <div class="hc-emp-role">${esc(role)}</div>
@@ -1078,6 +1075,17 @@ function goToTracking(empId) {
   navigate('tracking');
   document.getElementById('trackEmp').value = empId;
   loadEmployeeRecords();
+}
+
+// Open the Employees page and pop the clicked employee's record
+async function goToEmployee(empId) {
+  navigate('employees');
+  // navigate() kicks off loadEmpTable(); wait for the data to arrive
+  for (let i = 0; i < 20 && !(allEmployeesData || []).find(e => e.id === empId); i++) {
+    await new Promise(r => setTimeout(r, 150));
+  }
+  const emp = (allEmployeesData || []).find(e => e.id === empId);
+  if (emp) openEmpModal(emp);
 }
 
 // ─── TRACKING ────────────────────────────────────────────────────────────────
