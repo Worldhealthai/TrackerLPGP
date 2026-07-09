@@ -99,6 +99,10 @@
         <span class="icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="7" width="20" height="14" rx="2" ry="2"/><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/></svg></span>
         <span class="nav-label">Portfolio</span>
       </div>
+      <div class="nav-item admin-manager-only hidden" data-page="expenses">
+        <span class="icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h16v16H4z"/><path d="M9 9h6M9 13h6M9 17h3"/></svg></span>
+        <span class="nav-label">Expenses</span>
+      </div>
       <div class="nav-item admin-manager-only hidden" data-page="subscriptions">
         <span class="icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="5" width="20" height="14" rx="2"/><line x1="2" y1="10" x2="22" y2="10"/></svg></span>
         <span class="nav-label">Subscriptions</span>
@@ -479,6 +483,55 @@
           <div id="hotelEmpty" class="empty-state hidden">
             <div class="icon">🏨</div>
             <div>No hotel expenses yet. Click "+ Add Event" to get started.</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ══ EXPENSES ══ -->
+      <div class="page" id="page-expenses">
+        <div class="filter-bar" style="align-items:center;gap:10px;flex-wrap:wrap">
+          <div class="deal-q-filters" id="expQFilters">
+            <button class="deal-q-btn active" data-eq="all" onclick="setExpQuarter(this,'all')">All</button>
+            <button class="deal-q-btn" data-eq="Q1" onclick="setExpQuarter(this,'Q1')">Q1 (Nov–Jan)</button>
+            <button class="deal-q-btn" data-eq="Q2" onclick="setExpQuarter(this,'Q2')">Q2 (Feb–Apr)</button>
+            <button class="deal-q-btn" data-eq="Q3" onclick="setExpQuarter(this,'Q3')">Q3 (May–Jul)</button>
+            <button class="deal-q-btn" data-eq="Q4" onclick="setExpQuarter(this,'Q4')">Q4 (Aug–Oct)</button>
+          </div>
+          <div class="deal-q-filters" id="expVatFilters">
+            <button class="deal-q-btn active" data-ev="all" onclick="setExpVat(this,'all')">All</button>
+            <button class="deal-q-btn" data-ev="vat" onclick="setExpVat(this,'vat')">VAT</button>
+            <button class="deal-q-btn" data-ev="non_vat" onclick="setExpVat(this,'non_vat')">Non-VAT</button>
+          </div>
+          <input type="search" id="expSearch" placeholder="Search expenses…" oninput="renderExpTable()" style="border:1.5px solid var(--border);border-radius:9px;padding:8px 13px;font-size:0.85rem;font-family:inherit;outline:none;background:var(--bg-2);color:var(--text);min-width:180px" />
+          <button class="btn btn-primary" style="margin-left:auto" onclick="openExpModal()">+ Add Expense</button>
+        </div>
+
+        <div id="expSummary" style="margin-bottom:20px"></div>
+
+        <div class="card" style="padding:0;overflow:hidden">
+          <div class="card-header" style="padding:16px 20px;margin:0;border-radius:var(--radius) var(--radius) 0 0">
+            <span class="card-title">Company Expenses</span>
+            <span id="expRowCount" style="font-size:0.78rem;color:var(--muted)"></span>
+          </div>
+          <div class="table-wrap">
+            <table id="expTable">
+              <thead>
+                <tr>
+                  <th>Date</th>
+                  <th>Category</th>
+                  <th>Description</th>
+                  <th>VAT</th>
+                  <th style="text-align:right">Amount</th>
+                  <th>Receipt</th>
+                  <th style="width:36px"></th>
+                </tr>
+              </thead>
+              <tbody id="expTableBody"></tbody>
+            </table>
+          </div>
+          <div id="expEmpty" class="empty-state hidden">
+            <div class="icon">🧾</div>
+            <div>No expenses logged yet. Click "+ Add Expense" to get started.</div>
           </div>
         </div>
       </div>
@@ -1240,6 +1293,76 @@
     <div style="display:flex;gap:10px;justify-content:flex-end">
       <button class="btn btn-ghost" onclick="closeModal('calReminderModal')">Cancel</button>
       <button class="btn btn-primary" onclick="saveCalReminder()">Save Reminder</button>
+    </div>
+  </div>
+</div>
+
+<!-- Expense Modal -->
+<div class="modal-overlay" id="expModal">
+  <div class="modal">
+    <div class="modal-header">
+      <h2 id="expModalTitle">Add Expense</h2>
+      <button class="modal-close" onclick="closeModal('expModal')">✕</button>
+    </div>
+    <input type="hidden" id="expEditId" />
+    <div class="form-row hm-2col">
+      <div class="form-group">
+        <label>Date *</label>
+        <input type="date" id="expDate" />
+      </div>
+      <div class="form-group">
+        <label>Category</label>
+        <select id="expCategory">
+          <option value="office">Office</option>
+          <option value="travel">Travel</option>
+          <option value="marketing">Marketing</option>
+          <option value="software">Software</option>
+          <option value="staff">Staff / HR</option>
+          <option value="event">Event Costs</option>
+          <option value="legal">Legal / Professional</option>
+          <option value="other" selected>Other</option>
+        </select>
+      </div>
+    </div>
+    <div class="form-group">
+      <label>Description *</label>
+      <input type="text" id="expDescription" placeholder="e.g. Office printer ink" />
+    </div>
+    <div class="form-row hm-3col">
+      <div class="form-group">
+        <label>Amount</label>
+        <input type="number" id="expAmount" step="0.01" placeholder="0.00" />
+      </div>
+      <div class="form-group">
+        <label>Currency</label>
+        <select id="expCurrency">
+          <option>GBP</option><option>USD</option><option>EUR</option><option>AED</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label>VAT Status</label>
+        <select id="expVatStatus">
+          <option value="non_vat">Non-VAT</option>
+          <option value="vat">VAT</option>
+        </select>
+      </div>
+    </div>
+    <div class="form-group">
+      <label>Notes</label>
+      <textarea id="expNotes" rows="2" placeholder="Optional notes"></textarea>
+    </div>
+    <div class="form-group">
+      <label>Receipt</label>
+      <div id="expReceiptCurrent" class="hidden" style="display:flex;align-items:center;gap:10px;padding:10px 12px;background:var(--surface);border:1px solid var(--border);border-radius:8px;margin-bottom:8px">
+        <span style="font-size:18px">🧾</span>
+        <a id="expReceiptLink" href="#" target="_blank" style="font-weight:600;color:var(--accent);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"></a>
+        <button class="btn btn-ghost btn-sm" onclick="expRemoveReceipt()">Remove</button>
+      </div>
+      <input type="file" id="expReceiptFile" accept=".pdf,.png,.jpg,.jpeg" onchange="expReceiptPreview(this)" />
+    </div>
+    <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:12px">
+      <button class="btn btn-ghost" onclick="closeModal('expModal')">Cancel</button>
+      <button class="btn btn-primary" onclick="saveExpense()">Save Expense</button>
     </div>
   </div>
 </div>

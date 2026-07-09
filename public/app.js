@@ -120,7 +120,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   // Deep-link / PWA shortcut support: /?page=salary opens that page directly
   try {
     const startPage = new URLSearchParams(window.location.search).get('page');
-    const validPages = ['dashboard','tracking','salary','employees','reports','calendar','admins','hotels','subscriptions','portfolio','deals','eventkit'];
+    const validPages = ['dashboard','tracking','salary','employees','reports','calendar','admins','hotels','expenses','subscriptions','portfolio','deals','eventkit'];
     if (startPage && validPages.includes(startPage)) {
       navigate(startPage);
       // tidy the URL so a manual refresh doesn't re-trigger
@@ -178,13 +178,14 @@ function navigate(page) {
   document.getElementById('page-' + page).classList.add('active');
   document.querySelector(`.nav-item[data-page="${page}"]`)?.classList.add('active');
   document.querySelector(`.bottom-nav-item[data-page="${page}"]`)?.classList.add('active');
-  const titles = { dashboard:'Dashboard', tracking:'Daily Tracking', salary:'Salary Tracker', employees:'Employees', reports:'Reports', calendar:'Calendar', admins:'Admin Users', hotels:'Hotel Expenses', subscriptions:'Subscriptions', portfolio:'Portfolio', deals:'Deal Tracker', eventkit:'Event Kit' };
+  const titles = { dashboard:'Dashboard', tracking:'Daily Tracking', salary:'Salary Tracker', employees:'Employees', reports:'Reports', calendar:'Calendar', admins:'Admin Users', hotels:'Hotel Expenses', expenses:'Expenses', subscriptions:'Subscriptions', portfolio:'Portfolio', deals:'Deal Tracker', eventkit:'Event Kit' };
   document.getElementById('pageTitle').textContent = titles[page] || page;
   if (page === 'employees') loadEmpTable();
   if (page === 'admins') loadAdmins();
   if (page === 'calendar') loadCalendar();
   if (page === 'salary') { loadSalaryPage(); }
   if (page === 'hotels') loadHotelExpenses();
+  if (page === 'expenses') loadExpenses();
   if (page === 'subscriptions') loadSubscriptions();
   if (page === 'portfolio') { loadPortfolio(); }
   if (page === 'deals') { loadDeals(); }
@@ -3887,6 +3888,204 @@ async function reviewHolidayRequest(id, action) {
   const remaining = document.querySelectorAll('#notifList .notif-item').length;
   if (!remaining) document.getElementById('notifList').innerHTML = '<div class="notif-empty">No pending requests</div>';
   refreshNotifBadge();
+}
+
+// ─── COMPANY EXPENSES ─────────────────────────────────────────────────────────
+let expData = [];
+let _expQuarter = 'all';
+let _expVat = 'all';
+let _expReceiptBase64 = null;
+let _expReceiptName = null;
+
+const EXP_CATEGORY_LABEL = { office:'Office', travel:'Travel', marketing:'Marketing', software:'Software', staff:'Staff / HR', event:'Event Costs', legal:'Legal / Professional', other:'Other' };
+
+function expQuarterOf(dateStr) {
+  if (!dateStr) return null;
+  const m = parseInt(String(dateStr).slice(5, 7), 10);
+  if (m === 11 || m === 12 || m === 1) return 'Q1';
+  if (m === 2 || m === 3 || m === 4)   return 'Q2';
+  if (m === 5 || m === 6 || m === 7)   return 'Q3';
+  if (m === 8 || m === 9 || m === 10)  return 'Q4';
+  return null;
+}
+
+async function loadExpenses() {
+  const res = await fetch('/api/expenses');
+  if (!res.ok) { showToast('Failed to load expenses', 'error'); return; }
+  expData = await res.json();
+  renderExpSummary();
+  renderExpTable();
+}
+
+function setExpQuarter(btn, q) {
+  _expQuarter = q;
+  document.querySelectorAll('#expQFilters .deal-q-btn').forEach(b => b.classList.toggle('active', b.dataset.eq === q));
+  renderExpSummary();
+  renderExpTable();
+}
+
+function setExpVat(btn, v) {
+  _expVat = v;
+  document.querySelectorAll('#expVatFilters .deal-q-btn').forEach(b => b.classList.toggle('active', b.dataset.ev === v));
+  renderExpSummary();
+  renderExpTable();
+}
+
+function expFiltered() {
+  return expData.filter(r => {
+    if (_expQuarter !== 'all' && expQuarterOf(r.expense_date) !== _expQuarter) return false;
+    if (_expVat !== 'all' && r.vat_status !== _expVat) return false;
+    return true;
+  });
+}
+
+function expCurSymbol(c) {
+  if (c === 'GBP') return '£';
+  if (c === 'EUR') return '€';
+  if (c === 'AED') return 'AED ';
+  return '$';
+}
+
+function renderExpSummary() {
+  const rows = expFiltered();
+  const byCur = {};
+  rows.forEach(r => {
+    const cur = r.currency || 'GBP';
+    byCur[cur] = byCur[cur] || { vat: 0, nonVat: 0, total: 0 };
+    const amt = parseFloat(r.amount) || 0;
+    byCur[cur].total += amt;
+    if (r.vat_status === 'vat') byCur[cur].vat += amt; else byCur[cur].nonVat += amt;
+  });
+  const fmtN = n => n.toLocaleString('en-GB', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  const cards = Object.entries(byCur).map(([cur, s]) => `
+    <div class="hotel-fin-card">
+      <div class="hotel-fin-currency">${cur}</div>
+      <div class="hotel-fin-row"><span class="hotel-fin-lbl">VAT Expenses</span><span class="hotel-fin-val">${expCurSymbol(cur)}${fmtN(s.vat)}</span></div>
+      <div class="hotel-fin-row"><span class="hotel-fin-lbl">Non-VAT Expenses</span><span class="hotel-fin-val">${expCurSymbol(cur)}${fmtN(s.nonVat)}</span></div>
+      <div class="hotel-fin-row hotel-fin-total-row"><span class="hotel-fin-lbl">Total</span><span class="hotel-fin-val hotel-fin-blue">${expCurSymbol(cur)}${fmtN(s.total)}</span></div>
+    </div>`).join('');
+  const qLabel = _expQuarter !== 'all' ? ` · ${_expQuarter}` : '';
+  const vLabel = _expVat !== 'all' ? ` · ${_expVat === 'vat' ? 'VAT' : 'Non-VAT'}` : '';
+  document.getElementById('expSummary').innerHTML = `
+    <div class="hotel-fin-strip">
+      ${cards || '<div class="hotel-fin-card"><div class="hotel-fin-currency">TOTALS${qLabel}${vLabel}</div><div class="hotel-fin-row"><span class="hotel-fin-lbl">No expenses in this filter</span></div></div>'}
+      <div class="hotel-fin-card hotel-fin-card--status">
+        <div class="hotel-fin-currency">STATUS${qLabel}${vLabel}</div>
+        <div class="hotel-fin-row"><span class="hotel-fin-lbl">Line Items</span><span class="hotel-fin-val">${rows.length}</span></div>
+        <div class="hotel-fin-row"><span class="hotel-fin-lbl">With Receipt</span><span class="hotel-fin-val hotel-fin-green">${rows.filter(r=>r.has_receipt).length}</span></div>
+        <div class="hotel-fin-row hotel-fin-total-row"><span class="hotel-fin-lbl">Missing Receipt</span><span class="hotel-fin-val hotel-fin-red">${rows.filter(r=>!r.has_receipt).length}</span></div>
+      </div>
+    </div>`;
+}
+
+function renderExpTable() {
+  const search = (document.getElementById('expSearch')?.value || '').toLowerCase();
+  const rows = expFiltered().filter(r => !search || (r.description||'').toLowerCase().includes(search) || (r.category||'').toLowerCase().includes(search));
+  const tbody = document.getElementById('expTableBody');
+  const empty = document.getElementById('expEmpty');
+  document.getElementById('expRowCount').textContent = `${rows.length} item${rows.length !== 1 ? 's' : ''}`;
+  if (!rows.length) { tbody.innerHTML = ''; empty.classList.remove('hidden'); return; }
+  empty.classList.add('hidden');
+  tbody.innerHTML = rows.map(r => `
+    <tr>
+      <td>${r.expense_date ? r.expense_date.slice(0,10) : '—'}</td>
+      <td><span class="badge badge-grey">${esc(EXP_CATEGORY_LABEL[r.category] || r.category)}</span></td>
+      <td>${esc(r.description)}</td>
+      <td>${r.vat_status === 'vat' ? '<span class="badge badge-blue">VAT</span>' : '<span class="badge badge-yellow">Non-VAT</span>'}</td>
+      <td style="text-align:right;font-family:var(--font-mono);font-weight:600">${expCurSymbol(r.currency)}${parseFloat(r.amount||0).toLocaleString('en-GB',{minimumFractionDigits:2,maximumFractionDigits:2})}</td>
+      <td>${r.has_receipt ? `<a href="/api/expenses/${r.id}/receipt" target="_blank" class="badge badge-green" style="text-decoration:none">🧾 View</a>` : '<span style="color:var(--muted)">—</span>'}</td>
+      <td style="text-align:right;white-space:nowrap">
+        <button class="btn btn-ghost btn-sm" onclick="openExpModal(${r.id})">Edit</button>
+        <button class="btn btn-danger btn-sm" onclick="deleteExpense(${r.id})">✕</button>
+      </td>
+    </tr>`).join('');
+}
+
+function openExpModal(id) {
+  const r = id ? expData.find(x => x.id === id) : null;
+  document.getElementById('expModalTitle').textContent = r ? 'Edit Expense' : 'Add Expense';
+  document.getElementById('expEditId').value = r ? r.id : '';
+  document.getElementById('expDate').value = r ? (r.expense_date || '').slice(0,10) : today();
+  document.getElementById('expCategory').value = r ? r.category : 'other';
+  document.getElementById('expDescription').value = r ? r.description : '';
+  document.getElementById('expAmount').value = r ? r.amount : '';
+  document.getElementById('expCurrency').value = r ? (r.currency || 'GBP') : 'GBP';
+  document.getElementById('expVatStatus').value = r ? r.vat_status : 'non_vat';
+  document.getElementById('expNotes').value = r ? (r.notes || '') : '';
+  document.getElementById('expReceiptFile').value = '';
+  _expReceiptBase64 = null; _expReceiptName = null;
+  const cur = document.getElementById('expReceiptCurrent');
+  if (r && r.has_receipt) {
+    cur.classList.remove('hidden');
+    document.getElementById('expReceiptLink').href = `/api/expenses/${r.id}/receipt`;
+    document.getElementById('expReceiptLink').textContent = r.receipt_name || 'View receipt';
+  } else {
+    cur.classList.add('hidden');
+  }
+  openModal('expModal');
+}
+
+function expReceiptPreview(input) {
+  const file = input.files[0];
+  if (!file) return;
+  if (file.size > 8 * 1024 * 1024) { showToast('File must be under 8 MB', 'error'); input.value = ''; return; }
+  const reader = new FileReader();
+  reader.onload = e => {
+    _expReceiptBase64 = e.target.result.split(',')[1];
+    _expReceiptName = file.name;
+    showToast('Receipt ready — will attach on save', 'success');
+  };
+  reader.readAsDataURL(file);
+}
+
+async function expRemoveReceipt() {
+  const id = document.getElementById('expEditId').value;
+  if (id) {
+    if (!confirm('Remove stored receipt?')) return;
+    const res = await fetch(`/api/expenses/${id}/receipt`, { method: 'DELETE' });
+    if (!res.ok) { showToast('Failed', 'error'); return; }
+    const idx = expData.findIndex(r => r.id == id);
+    if (idx !== -1) expData[idx].has_receipt = false;
+  }
+  document.getElementById('expReceiptCurrent').classList.add('hidden');
+}
+
+async function saveExpense() {
+  const id = document.getElementById('expEditId').value;
+  const payload = {
+    category: document.getElementById('expCategory').value,
+    description: document.getElementById('expDescription').value.trim(),
+    vat_status: document.getElementById('expVatStatus').value,
+    amount: parseFloat(document.getElementById('expAmount').value) || 0,
+    currency: document.getElementById('expCurrency').value,
+    expense_date: document.getElementById('expDate').value,
+    notes: document.getElementById('expNotes').value.trim()
+  };
+  if (!payload.expense_date) { showToast('Date is required', 'error'); return; }
+  if (!payload.description) { showToast('Description is required', 'error'); return; }
+  if (!id && _expReceiptBase64) { payload.receipt_name = _expReceiptName; payload.receipt_data = _expReceiptBase64; }
+  const method = id ? 'PUT' : 'POST';
+  const url = id ? `/api/expenses/${id}` : '/api/expenses';
+  const res = await fetch(url, { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+  if (!res.ok) { const e = await res.json(); showToast(e.error || 'Save failed', 'error'); return; }
+  const saved = await res.json();
+  if (id && _expReceiptBase64) {
+    await fetch(`/api/expenses/${id}/receipt`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ receipt_name: _expReceiptName, receipt_data: _expReceiptBase64 })
+    });
+  }
+  showToast(id ? 'Updated' : 'Added', 'success');
+  closeModal('expModal');
+  loadExpenses();
+}
+
+async function deleteExpense(id) {
+  if (!confirm('Delete this expense?')) return;
+  const res = await fetch(`/api/expenses/${id}`, { method: 'DELETE' });
+  if (!res.ok) { showToast('Delete failed', 'error'); return; }
+  showToast('Deleted', 'success');
+  loadExpenses();
 }
 
 // ─── SUBSCRIPTIONS ────────────────────────────────────────────────────────────

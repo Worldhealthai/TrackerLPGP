@@ -83,6 +83,28 @@ async function runLateMigrations() {
     )`,
     `ALTER TABLE deals ADD COLUMN IF NOT EXISTS deal_month TEXT DEFAULT ''`,
     `ALTER TABLE deals ADD COLUMN IF NOT EXISTS fiscal_year INT`,
+    `CREATE TABLE IF NOT EXISTS company_expenses (
+      id SERIAL PRIMARY KEY,
+      category TEXT NOT NULL DEFAULT 'other',
+      description TEXT NOT NULL DEFAULT '',
+      vat_status TEXT NOT NULL DEFAULT 'non_vat' CHECK (vat_status IN ('vat','non_vat')),
+      amount NUMERIC(12,2) NOT NULL DEFAULT 0,
+      currency TEXT NOT NULL DEFAULT 'GBP',
+      expense_date DATE NOT NULL,
+      notes TEXT DEFAULT '',
+      receipt_name TEXT,
+      receipt_data TEXT,
+      created_by INT,
+      created_at TIMESTAMPTZ DEFAULT NOW()
+    )`,
+    `CREATE TABLE IF NOT EXISTS deal_event_packages (
+      id SERIAL PRIMARY KEY,
+      deal_id INT NOT NULL REFERENCES deals(id) ON DELETE CASCADE,
+      event_id INT NOT NULL REFERENCES portfolio_events(id) ON DELETE CASCADE,
+      package_label TEXT NOT NULL DEFAULT '',
+      amount NUMERIC(12,2) NOT NULL DEFAULT 0,
+      created_at TIMESTAMPTZ DEFAULT NOW()
+    )`,
     `CREATE TABLE IF NOT EXISTS event_kits (
       id SERIAL PRIMARY KEY,
       event_id INT NOT NULL,
@@ -1649,6 +1671,86 @@ app.patch('/api/hotel-expenses/:id', requireAuth, async (req, res) => {
     if (!rows.length) return res.status(404).json({ error: 'Not found' });
     // Refresh in-memory for summary recalc (client will re-fetch)
     res.json(rows[0]);
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// ─── COMPANY EXPENSES ─────────────────────────────────────────────────────────
+
+app.get('/api/expenses', requireAuth, requireAdminOrManager, async (req, res) => {
+  try {
+    const { rows } = await q('SELECT id, category, description, vat_status, amount, currency, expense_date, notes, receipt_name, (receipt_data IS NOT NULL) AS has_receipt, created_at FROM company_expenses ORDER BY expense_date DESC, id DESC');
+    res.json(rows);
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.post('/api/expenses', requireAuth, requireAdminOrManager, async (req, res) => {
+  try {
+    const { category, description, vat_status, amount, currency, expense_date, notes, receipt_name, receipt_data } = req.body;
+    if (!expense_date) return res.status(400).json({ error: 'expense_date required' });
+    const { rows } = await q(
+      `INSERT INTO company_expenses (category, description, vat_status, amount, currency, expense_date, notes, receipt_name, receipt_data, created_by)
+       VALUES (?,?,?,?,?,?,?,?,?,?) RETURNING id, category, description, vat_status, amount, currency, expense_date, notes, receipt_name, (receipt_data IS NOT NULL) AS has_receipt, created_at`,
+      [category||'other', description||'', vat_status==='vat'?'vat':'non_vat', amount||0, currency||'GBP',
+       expense_date, notes||'', receipt_name||null, receipt_data||null, req.user?.id||null]
+    );
+    res.json(rows[0]);
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.put('/api/expenses/:id', requireAuth, requireAdminOrManager, async (req, res) => {
+  try {
+    const { category, description, vat_status, amount, currency, expense_date, notes } = req.body;
+    const { rows } = await q(
+      `UPDATE company_expenses SET category=?, description=?, vat_status=?, amount=?, currency=?, expense_date=?, notes=?
+       WHERE id=? RETURNING id, category, description, vat_status, amount, currency, expense_date, notes, receipt_name, (receipt_data IS NOT NULL) AS has_receipt, created_at`,
+      [category||'other', description||'', vat_status==='vat'?'vat':'non_vat', amount||0, currency||'GBP',
+       expense_date, notes||'', req.params.id]
+    );
+    if (!rows.length) return res.status(404).json({ error: 'Not found' });
+    res.json(rows[0]);
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.delete('/api/expenses/:id', requireAuth, requireAdminOrManager, async (req, res) => {
+  try {
+    await q('DELETE FROM company_expenses WHERE id = ?', [req.params.id]);
+    res.json({ ok: true });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// Upload receipt (base64) for an expense
+app.post('/api/expenses/:id/receipt', requireAuth, requireAdminOrManager, async (req, res) => {
+  try {
+    const { receipt_name, receipt_data } = req.body;
+    if (!receipt_name || !receipt_data) return res.status(400).json({ error: 'receipt_name and receipt_data required' });
+    const { rows } = await q(
+      `UPDATE company_expenses SET receipt_name=?, receipt_data=? WHERE id=? RETURNING id, receipt_name`,
+      [receipt_name, receipt_data, req.params.id]
+    );
+    if (!rows.length) return res.status(404).json({ error: 'Not found' });
+    res.json(rows[0]);
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// Download/view receipt
+app.get('/api/expenses/:id/receipt', requireAuth, requireAdminOrManager, async (req, res) => {
+  try {
+    const { rows } = await q(`SELECT receipt_name, receipt_data FROM company_expenses WHERE id=?`, [req.params.id]);
+    const r = rows[0];
+    if (!r || !r.receipt_data) return res.status(404).json({ error: 'No receipt stored' });
+    const buf = Buffer.from(r.receipt_data, 'base64');
+    const ext = (r.receipt_name || '').split('.').pop().toLowerCase();
+    const mime = ext === 'pdf' ? 'application/pdf' : ext === 'png' ? 'image/png' : ext === 'jpg' || ext === 'jpeg' ? 'image/jpeg' : 'application/octet-stream';
+    res.setHeader('Content-Type', mime);
+    res.setHeader('Content-Disposition', `inline; filename="${r.receipt_name}"`);
+    res.send(buf);
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.delete('/api/expenses/:id/receipt', requireAuth, requireAdminOrManager, async (req, res) => {
+  try {
+    await q(`UPDATE company_expenses SET receipt_name=NULL, receipt_data=NULL WHERE id=?`, [req.params.id]);
+    res.json({ ok: true });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
