@@ -8568,6 +8568,39 @@ async function ekEmpClearAgenda(eid, slot = 1) {
 }
 
 // ── Invoice Generator ──────────────────────────────────────────────────────────
+// Add a row to the invoice generator's events list.
+// Each event can carry an optional package/allocation detail — mirrors the
+// deal tracker's custom package split (e.g. "Exhibitor — £3,000").
+function igAddEventRow(name, detail) {
+  const wrap = document.getElementById('igEventsList');
+  if (!wrap) return;
+  const row = document.createElement('div');
+  row.className = 'ig-event-row';
+  const n = document.createElement('input');
+  n.type = 'text'; n.className = 'ig-ev-name';
+  n.placeholder = 'Event name — e.g. 4th Annual CFO Summit';
+  n.value = name || '';
+  const d = document.createElement('input');
+  d.type = 'text'; d.className = 'ig-ev-detail';
+  d.placeholder = 'Package / amount (optional) — e.g. Exhibitor £3,000';
+  d.value = detail || '';
+  const x = document.createElement('button');
+  x.type = 'button'; x.className = 'ig-ev-del'; x.title = 'Remove event';
+  x.textContent = '✕';
+  x.onclick = () => row.remove();
+  row.append(n, d, x);
+  wrap.appendChild(row);
+}
+
+// One line per event: "Event Name — Package £3,000"
+function igCollectEvents() {
+  return Array.from(document.querySelectorAll('#igEventsList .ig-event-row')).map(r => {
+    const n = r.querySelector('.ig-ev-name').value.trim();
+    const d = r.querySelector('.ig-ev-detail').value.trim();
+    return n ? (d ? `${n} — ${d}` : n) : '';
+  }).filter(Boolean);
+}
+
 function openInvoiceGenModal(dealId) {
   const deal = dealsData.find(d => d.id === dealId);
   if (!deal) return;
@@ -8585,7 +8618,20 @@ function openInvoiceGenModal(dealId) {
   document.getElementById('igEmail').value = '';
   document.getElementById('igInvoiceNum').value = deal.invoice_number || '';
   document.getElementById('igDate').value = new Date().toLocaleDateString('en-GB');
-  document.getElementById('igEventName').value = '';
+  // Pre-fill events from the deal's linked events, carrying over any
+  // custom package allocation (label + per-event amount)
+  document.getElementById('igEventsList').innerHTML = '';
+  const linked = Array.isArray(deal.events) ? deal.events.filter(e => e.event_name) : [];
+  if (linked.length) {
+    linked.forEach(e => {
+      const alloc = parseFloat(e.allocated_amount) || 0;
+      const detail = [e.package_label, alloc > 0 ? sym + fmt(alloc) : '']
+        .filter(Boolean).join(' ');
+      igAddEventRow(e.event_name, detail);
+    });
+  } else {
+    igAddEventRow();
+  }
   document.getElementById('igPackageName').value = '';
   document.getElementById('igAmountExVat').value = amtEx ? Number(amtEx).toLocaleString('en-GB') : '';
   document.getElementById('igVatAmount').value = vatAmt;
@@ -8608,7 +8654,7 @@ function igCollectPayload() {
     email:          document.getElementById('igEmail').value.trim(),
     invoice_number: document.getElementById('igInvoiceNum').value.trim(),
     date:           document.getElementById('igDate').value.trim(),
-    event_name:     document.getElementById('igEventName').value.trim(),
+    event_name:     igCollectEvents().join('\n'),
     package_name:   document.getElementById('igPackageName').value.trim(),
     amount_ex_vat:  document.getElementById('igAmountExVat').value.trim(),
     vat_amount:     document.getElementById('igVatAmount').value.trim(),
@@ -8677,7 +8723,7 @@ function previewInvoice() {
     <div class="ig-agree-title">LPGP Connect Agreement 2026</div>
     <div class="ig-sec-hd">Sponsorship &amp; Benefits</div>
     <div class="ig-events-lbl">Events:</div>
-    <div class="ig-event-name">${esc(p.event_name || '—')}</div>
+    <div class="ig-event-name">${p.event_name ? p.event_name.split('\n').map(l => `<div>${esc(l)}</div>`).join('') : '—'}</div>
     <div class="ig-pkg-name">${esc(p.package_name || '—')}</div>
     ${benefits || '<div class="ig-benefit" style="color:#999">No benefits listed</div>'}
     <div class="ig-total-cost">Total Cost - £${amt} plus VAT</div>

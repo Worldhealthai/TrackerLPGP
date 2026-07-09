@@ -1188,6 +1188,15 @@ tbody tr:last-child td { border-bottom: none; }
   border: 1px dashed var(--border); white-space: nowrap;
 }
 .deal-inv-missing-badge:hover { color: var(--accent); border-color: var(--accent); }
+.ig-event-row { display: flex; gap: 8px; align-items: center; }
+.ig-event-row .ig-ev-name { flex: 1.2; min-width: 0; }
+.ig-event-row .ig-ev-detail { flex: 1; min-width: 0; font-size: 0.82rem; }
+.ig-ev-del {
+  width: 28px; height: 28px; flex-shrink: 0; border-radius: 6px; cursor: pointer;
+  background: transparent; color: var(--muted); border: 1px solid var(--border);
+  font-size: 12px; line-height: 1;
+}
+.ig-ev-del:hover { color: #fff; background: var(--negative); border-color: var(--negative); }
 
 /* ── Invoice preview sheet (always renders as light "paper" in both themes) ── */
 .ig-preview-scroll { background: var(--bg-2); padding: 22px; max-height: 68vh; overflow-y: auto; }
