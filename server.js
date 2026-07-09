@@ -98,6 +98,8 @@ async function runLateMigrations() {
       created_at TIMESTAMPTZ DEFAULT NOW()
     )`,
     `ALTER TABLE deal_events ADD COLUMN IF NOT EXISTS package_label TEXT NOT NULL DEFAULT ''`,
+    // One-time cleanup: 'Bank' was a junk default the modal used to apply to every deal
+    `UPDATE deals SET bank='' WHERE bank='Bank'`,
     `CREATE TABLE IF NOT EXISTS event_kits (
       id SERIAL PRIMARY KEY,
       event_id INT NOT NULL,

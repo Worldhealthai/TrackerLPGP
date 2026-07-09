@@ -1740,14 +1740,15 @@
       <div class="deal-edit-only-row">
         <div class="deal-modal-sec-label">Payment Method</div>
         <div class="deal-payment-toggle">
-          <button type="button" class="deal-pay-btn active" id="dealPayBank" onclick="selectDealPayment('Bank')">
-            <span class="deal-pay-icon">🏦</span> Bank Transfer
+          <button type="button" class="deal-pay-btn" id="dealPayBank" onclick="selectDealPayment('HSBC')">
+            <span class="deal-pay-icon">🏦</span> HSBC
           </button>
           <button type="button" class="deal-pay-btn" id="dealPayStripe" onclick="selectDealPayment('Stripe')">
             <span class="deal-pay-icon">⚡</span> Stripe
           </button>
         </div>
-        <input type="hidden" id="dealBank" value="Bank">
+        <div style="font:500 10px/1 var(--font-mono);color:var(--muted);margin-top:6px">Optional — click again to unset</div>
+        <input type="hidden" id="dealBank" value="">
       </div>
 
       <!-- Events -->
@@ -1920,7 +1921,7 @@
       <div class="ig-sheet" id="igPreviewSheet"></div>
     </div>
     <div class="ig-preview-footer">
-      <span class="ig-preview-note">Layout approximation — the download is generated from the official Word template</span>
+      <span class="ig-preview-note">Preview mirrors the Word template — check every detail before generating</span>
       <div style="display:flex;gap:10px;flex-shrink:0">
         <button class="btn btn-ghost" onclick="closeModal('invoicePreviewModal')">Back to Edit</button>
         <button class="btn btn-primary" onclick="closeModal('invoicePreviewModal');generateInvoice()">Generate & Download</button>

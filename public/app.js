@@ -7027,7 +7027,7 @@ async function openDealModal(id, defaultStage) {
     }
     if (d.invoice1_name) document.getElementById('dealInv1Preview').textContent = `Current: ${d.invoice1_name}`;
     if (d.invoice2_name) document.getElementById('dealInv2Preview').textContent = `Current: ${d.invoice2_name}`;
-    selectDealPayment(d.bank === 'Stripe' ? 'Stripe' : 'Bank');
+    setDealPayment(d.bank === 'Stripe' ? 'Stripe' : d.bank ? 'HSBC' : '');
   } else {
     document.getElementById('dealTitle').value = '';
     document.getElementById('dealCompany').value = '';
@@ -7045,7 +7045,7 @@ async function openDealModal(id, defaultStage) {
     document.getElementById('dealSigReceived').value = 'false';
     document.getElementById('dealNotes').value = '';
     _selectedEvIds = [];
-    selectDealPayment('Bank');
+    setDealPayment('');
   }
 
   // Render checkbox list (sorted by date desc, then name)
@@ -7088,10 +7088,15 @@ function autofillDealMonth() {
   monthEl.value = dealMonthLabel(dateVal + 'T12:00:00');
 }
 
+function setDealPayment(value) {
+  document.getElementById('dealBank').value = value || '';
+  document.getElementById('dealPayBank')?.classList.toggle('active', value === 'HSBC');
+  document.getElementById('dealPayStripe')?.classList.toggle('active', value === 'Stripe');
+}
 function selectDealPayment(method) {
-  document.getElementById('dealBank').value = method;
-  document.getElementById('dealPayBank')?.classList.toggle('active', method === 'Bank');
-  document.getElementById('dealPayStripe')?.classList.toggle('active', method === 'Stripe');
+  // Clicking the already-active method unsets it — no payment method by default
+  const cur = document.getElementById('dealBank').value;
+  setDealPayment(cur === method ? '' : method);
 }
 
 function fillNextInvoiceNumber() {
@@ -8614,50 +8619,93 @@ function igCollectPayload() {
   };
 }
 
-// On-screen mock-up of the invoice using the exact values that will be sent
-// to the docx template, so details can be sanity-checked before generating.
+// On-screen replica of invoice_template.docx populated with the exact values
+// that will be sent to it, so details can be checked before generating.
 function previewInvoice() {
   const p = igCollectPayload();
-  const benefits = p.benefits.map(b => `<li>${esc(b)}</li>`).join('');
-  document.getElementById('igPreviewSheet').innerHTML = `
-    <div class="ig-sheet-head">
-      <div>
-        <div class="ig-brand">LPGP CONNECT COM LTD</div>
-        <div class="ig-brand-sub">Private Markets Events &amp; Networking</div>
+  const benefits = p.benefits.map(b => `<div class="ig-benefit">${esc(b)}</div>`).join('');
+  const amt = esc(p.amount_ex_vat || '—');
+
+  const page1 = `<div class="ig-page">
+    <div class="ig-band"><img src="/invoice_logo.png" alt="LPGP Connect"></div>
+    <div class="ig-inv-title">INVOICE</div>
+    <div class="ig-addr-row">
+      <div class="ig-addr">
+        <div class="ig-addr-co">LPGPCONNECT.COM LTD</div>
+        <div>1 Oakcroft Road</div><div>Trident Court</div><div>Studio 111</div><div>KT9 1BD</div>
       </div>
-      <div style="text-align:right">
-        <div class="ig-inv-title">INVOICE</div>
-        <div class="ig-inv-meta">No. ${esc(p.invoice_number || '—')}</div>
-        <div class="ig-inv-meta">${esc(p.date || '—')}</div>
-      </div>
+      <div class="ig-date"><strong>Date:</strong> ${esc(p.date || '—')}</div>
     </div>
-    <div class="ig-billto">
-      <div class="ig-sec-lbl">BILL TO</div>
-      ${p.contact_name ? `<div class="ig-billto-name">${esc(p.contact_name)}</div>` : ''}
-      ${p.company_name ? `<div>${esc(p.company_name)}</div>` : ''}
-      ${p.address ? `<div>${esc(p.address)}</div>` : ''}
-      ${p.email ? `<div>${esc(p.email)}</div>` : ''}
+    <div class="ig-client">
+      <div class="ig-client-hd">CLIENT</div>
+      <div>Contact: ${esc(p.contact_name || '—')}</div>
+      <div>Company: ${esc(p.company_name || '—')}</div>
+      <div>Address: ${esc(p.address || '—')}</div>
+      <div>Email: ${esc(p.email || '—')}</div>
+      <div>Invoice Number: ${esc(p.invoice_number || '—')}</div>
     </div>
-    <table class="ig-table">
-      <thead><tr><th>Description</th><th style="text-align:right">Amount</th></tr></thead>
-      <tbody><tr>
-        <td>
-          <strong>${esc(p.package_name || 'Package')}</strong>${p.event_name ? ' — ' + esc(p.event_name) : ''}
-          ${benefits ? `<ul>${benefits}</ul>` : ''}
-        </td>
-        <td style="text-align:right">${esc(p.amount_ex_vat || '—')}</td>
-      </tr></tbody>
-      <tfoot>
-        <tr><td>Subtotal (ex VAT)</td><td>${esc(p.amount_ex_vat || '—')}</td></tr>
-        <tr><td>VAT</td><td>${esc(p.vat_amount || '—')}</td></tr>
-        <tr class="ig-total"><td>Total Due</td><td>${esc(p.total_due || '—')}</td></tr>
-      </tfoot>
+    <table class="ig-items">
+      <thead><tr><th>Description</th><th>Unit price</th><th>Total</th></tr></thead>
+      <tbody>
+        <tr>
+          <td><strong>Please refer to your sponsorship &amp; benefits in Page 2</strong></td>
+          <td>£ ${amt}</td><td>£ ${amt}</td>
+        </tr>
+        <tr class="ig-sumrow"><td></td><td>SUBTOTAL</td><td>£ ${amt}</td></tr>
+        <tr class="ig-sumrow"><td></td><td>VAT 20%</td><td>£ ${esc(p.vat_amount || '—')}</td></tr>
+        <tr class="ig-sumrow ig-due"><td></td><td>TOTAL DUE</td><td>£ ${esc(p.total_due || '—')}</td></tr>
+      </tbody>
     </table>
-    ${p.additional_notes ? `<div class="ig-notes"><div class="ig-sec-lbl">NOTES</div>${esc(p.additional_notes)}</div>` : ''}
-    <div class="ig-sign">
-      <div class="ig-sec-lbl">CLIENT</div>
-      <div>${esc(p.client_name || '—')}</div>
-    </div>`;
+    <div class="ig-contact-line">If you have any questions concerning this invoice, contact accounts.payable@lpgpconnect.com</div>
+    <div class="ig-bank">
+      <div>LPGPCONNECT.COM LTD</div>
+      <div>Account number: 42247054</div>
+      <div>Sort code: 40-26-12</div>
+      <div>Swift/BIC: HBUKGB4B</div>
+      <div>IBAN: GB32 HBUK40261242247054</div>
+      <div>Payment Reference: ${esc(p.company_name || 'Company Name')}</div>
+      <div>VAT Number: 371409111</div>
+    </div>
+    <div class="ig-terms-note">
+      <div>Payment is due within 7 days from invoice date</div>
+      <div class="ig-terms-sub">Immediate payment is due if booking has been made 30 days prior to the start of the conference date.</div>
+    </div>
+  </div>`;
+
+  const page2 = `<div class="ig-page">
+    <div class="ig-band"><img src="/invoice_logo.png" alt="LPGP Connect"></div>
+    <div class="ig-agree-title">LPGP Connect Agreement 2026</div>
+    <div class="ig-sec-hd">Sponsorship &amp; Benefits</div>
+    <div class="ig-events-lbl">Events:</div>
+    <div class="ig-event-name">${esc(p.event_name || '—')}</div>
+    <div class="ig-pkg-name">${esc(p.package_name || '—')}</div>
+    ${benefits || '<div class="ig-benefit" style="color:#999">No benefits listed</div>'}
+    <div class="ig-total-cost">Total Cost - £${amt} plus VAT</div>
+    <div class="ig-sec-hd" style="margin-top:22px">Additional Comments:</div>
+    <div class="ig-comments">${esc(p.additional_notes || '—')}</div>
+  </div>`;
+
+  const page3 = `<div class="ig-page">
+    <div class="ig-agree-title" style="margin-top:6px">LPGP Connect Limited Terms &amp; Conditions</div>
+    <div class="ig-tc">
+      <div class="ig-tc-hd">Scope of Agreement</div>
+      <p>These are the conditions of the contract between you, the Sponsoring Client and LPGP Connect Limited. The above package includes the benefits to each event you are solicitated to (listed above). This agreement constitutes the entire agreement between LPGP Connect Limited and you.</p>
+      <div class="ig-tc-hd">Cancellations</div>
+      <p>Subject to the terms hereof, in the event of your cancellation 100% of the Total Fee is payable and non-refundable unless otherwise agreed to by LPGP Connect Limited. All cancellation requests must be submitted to us in writing…</p>
+      <div class="ig-tc-hd">Force Majeure</div>
+      <p>In the event that a party is prevented, hindered or delayed in or from performing any of its obligations under this agreement for any reason beyond its reasonable control… <em>(full text appears in the generated document)</em></p>
+    </div>
+    <div class="ig-sig">
+      <div class="ig-sig-name">${esc(p.client_name || '—')}</div>
+      <div class="ig-sig-line">Name</div>
+      <div class="ig-sig-line" style="margin-top:26px">Signature</div>
+    </div>
+  </div>`;
+
+  document.getElementById('igPreviewSheet').innerHTML =
+    `<div class="ig-pageno">Page 1 — Invoice</div>${page1}` +
+    `<div class="ig-pageno">Page 2 — Sponsorship &amp; Benefits</div>${page2}` +
+    `<div class="ig-pageno">Page 3 — Terms &amp; Signature</div>${page3}`;
   openModal('invoicePreviewModal');
 }
 
