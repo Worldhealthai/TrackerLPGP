@@ -97,14 +97,7 @@ async function runLateMigrations() {
       created_by INT,
       created_at TIMESTAMPTZ DEFAULT NOW()
     )`,
-    `CREATE TABLE IF NOT EXISTS deal_event_packages (
-      id SERIAL PRIMARY KEY,
-      deal_id INT NOT NULL REFERENCES deals(id) ON DELETE CASCADE,
-      event_id INT NOT NULL REFERENCES portfolio_events(id) ON DELETE CASCADE,
-      package_label TEXT NOT NULL DEFAULT '',
-      amount NUMERIC(12,2) NOT NULL DEFAULT 0,
-      created_at TIMESTAMPTZ DEFAULT NOW()
-    )`,
+    `ALTER TABLE deal_events ADD COLUMN IF NOT EXISTS package_label TEXT NOT NULL DEFAULT ''`,
     `CREATE TABLE IF NOT EXISTS event_kits (
       id SERIAL PRIMARY KEY,
       event_id INT NOT NULL,
@@ -1831,7 +1824,7 @@ app.get('/api/portfolio-events/:id/deals', requireAuth, requireAdminOrManager, a
   try {
     const { rows } = await q(`
       SELECT d.id, COALESCE(NULLIF(d.company,''),d.title) AS company,
-        de.allocated_amount AS amount, d.currency,
+        de.allocated_amount AS amount, de.package_label, d.currency,
         d.paid_inc_vat, d.stage
       FROM deal_events de
       JOIN deals d ON d.id=de.deal_id
@@ -1872,7 +1865,7 @@ app.get('/api/deals', requireAuth, requireAdminOrManager, async (req, res) => {
   try {
     const { rows: deals } = await q(`
       SELECT d.*,
-        COALESCE(json_agg(json_build_object('event_id',de.event_id,'event_name',pe.name,'allocated_amount',de.allocated_amount))
+        COALESCE(json_agg(json_build_object('event_id',de.event_id,'event_name',pe.name,'allocated_amount',de.allocated_amount,'package_label',de.package_label))
           FILTER (WHERE de.event_id IS NOT NULL), '[]') AS events
       FROM deals d
       LEFT JOIN deal_events de ON de.deal_id = d.id
@@ -1941,9 +1934,27 @@ app.get('/api/deals/last-invoice', requireAuth, requireAdminOrManager, async (re
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+// Inserts deal_events rows for a deal, either an even split across event_ids
+// or a custom per-event allocation (event_packages: [{event_id, amount, package_label}])
+async function insertDealEvents(dealId, amount, event_ids, event_packages) {
+  if (Array.isArray(event_packages) && event_packages.length > 0) {
+    for (const p of event_packages) {
+      if (!p.event_id) continue;
+      await q('INSERT INTO deal_events (deal_id, event_id, allocated_amount, package_label) VALUES (?,?,?,?)',
+        [dealId, p.event_id, parseFloat(p.amount) || 0, p.package_label || '']);
+    }
+  } else if (Array.isArray(event_ids) && event_ids.length > 0) {
+    const perEvent = parseFloat((parseFloat(amount) / event_ids.length).toFixed(2));
+    for (const eid of event_ids) {
+      await q('INSERT INTO deal_events (deal_id, event_id, allocated_amount) VALUES (?,?,?)',
+        [dealId, eid, perEvent]);
+    }
+  }
+}
+
 app.post('/api/deals', requireAuth, requireAdminOrManager, async (req, res) => {
   try {
-    const { title, company, contact_name, amount, currency, stage, event_ids, notes,
+    const { title, company, contact_name, amount, currency, stage, event_ids, event_packages, notes,
             invoice1_name, invoice1_data, invoice2_name, invoice2_data,
             paid_inc_vat, tax_vat, invoice_date, paid_date, bank, invoice_number,
             invoice_agreement_sent, signature_received, initials, deal_month, fiscal_year } = req.body;
@@ -1963,19 +1974,13 @@ app.post('/api/deals', requireAuth, requireAdminOrManager, async (req, res) => {
        deal_month||'', fiscal_year ? parseInt(fiscal_year) : null]
     );
     const deal = rows[0];
-    if (Array.isArray(event_ids) && event_ids.length > 0) {
-      const perEvent = parseFloat((parseFloat(amount) / event_ids.length).toFixed(2));
-      for (const eid of event_ids) {
-        await q('INSERT INTO deal_events (deal_id, event_id, allocated_amount) VALUES (?,?,?)',
-          [deal.id, eid, perEvent]);
-      }
-    }
+    await insertDealEvents(deal.id, amount, event_ids, event_packages);
     res.json(deal);
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 app.put('/api/deals/:id', requireAuth, requireAdminOrManager, async (req, res) => {
   try {
-    const { title, company, contact_name, amount, currency, stage, event_ids, notes,
+    const { title, company, contact_name, amount, currency, stage, event_ids, event_packages, notes,
             invoice1_name, invoice1_data, invoice2_name, invoice2_data,
             paid_inc_vat, tax_vat, invoice_date, paid_date, bank, invoice_number,
             invoice_agreement_sent, signature_received, initials, deal_month } = req.body;
@@ -1996,13 +2001,9 @@ app.put('/api/deals/:id', requireAuth, requireAdminOrManager, async (req, res) =
        deal_month||'', req.params.id]
     );
     if (!rows.length) return res.status(404).json({ error: 'Not found' });
-    if (Array.isArray(event_ids)) {
+    if (Array.isArray(event_ids) || Array.isArray(event_packages)) {
       await q('DELETE FROM deal_events WHERE deal_id=?', [req.params.id]);
-      const perEvent = event_ids.length > 0 ? parseFloat((parseFloat(amount) / event_ids.length).toFixed(2)) : 0;
-      for (const eid of event_ids) {
-        await q('INSERT INTO deal_events (deal_id, event_id, allocated_amount) VALUES (?,?,?)',
-          [req.params.id, eid, perEvent]);
-      }
+      await insertDealEvents(req.params.id, amount, event_ids, event_packages);
     }
     res.json(rows[0]);
   } catch (e) { res.status(500).json({ error: e.message }); }

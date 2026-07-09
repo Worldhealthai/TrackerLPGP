@@ -4503,6 +4503,7 @@ async function togglePortfolioDeals(btn, eventId) {
       return `<div style="display:flex;align-items:center;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--border)">
         <div>
           <div style="font:600 13px/1.3 var(--font-sans);color:var(--text)">${esc(d.company)}</div>
+          ${d.package_label ? `<div style="font:600 10px/1 var(--font-mono);color:var(--accent);margin-top:3px;text-transform:uppercase;letter-spacing:.03em">📦 ${esc(d.package_label)}</div>` : ''}
           <div style="margin-top:2px">${statusDot}</div>
         </div>
         <div style="text-align:right;flex-shrink:0">
@@ -4605,6 +4606,8 @@ const DEAL_VAT_QUARTERS = {
 let dealsData = [];
 let _dealInv1 = null;
 let _dealInv2 = null;
+let _dealPackageMode = false;
+let _dealPackages = {}; // { [eventId]: { amount, label } }
 let _dealQFilter = 'all';
 let _dealYearFilter = 'all';
 let _dealEventFilter = '';
@@ -4860,15 +4863,17 @@ function renderDealsTable() {
       ${ec('tax_vat','number',d.tax_vat??'', d.tax_vat ? `${sym}${fmt(parseFloat(d.tax_vat))}` : '<span style="color:var(--muted)">—</span>', 'class="deal-num dt-r"')}
       ${ec('invoice_date','date',d.invoice_date||'', `${invDateStr||'<span style="color:var(--muted)">—</span>'}`)}
       ${ec('bank','select-bank',d.bank||'', `${esc(d.bank||'')||'<span style="color:var(--muted)">—</span>'}`)}
-      <td class="deal-cell-inv" data-id="${d.id}" onclick="openDealInvoicePanel(${d.id})" title="Click to upload / view invoices" style="cursor:pointer">
+      <td class="deal-cell-inv" data-id="${d.id}" onclick="openDealInvoicePanel(${d.id})" title="Click to upload / view invoice files" style="cursor:pointer">
         <span style="font-family:monospace;font-size:0.72rem;color:${d.invoice_number?'var(--text)':'var(--muted)'}">${d.invoice_number ? esc(d.invoice_number) : '—'}</span>
-        ${(d.invoice1_name||d.invoice2_name) ? `<span style="margin-left:4px;font-size:11px" title="${[d.invoice1_name,d.invoice2_name].filter(Boolean).join(', ')}">📎</span>` : ''}
+        ${(d.invoice1_name||d.invoice2_name)
+          ? `<span class="deal-inv-filed-badge" title="${[d.invoice1_name,d.invoice2_name].filter(Boolean).join(', ')}">📎 Filed</span>`
+          : `<span class="deal-inv-missing-badge" title="No invoice file uploaded yet">+ Add file</span>`}
       </td>
       <td class="deal-cell-toggle" onclick="dealToggleBool(${d.id},'signature_received',${!!d.signature_received})" style="text-align:center;cursor:pointer" title="Click to toggle">${d.signature_received ? '✅' : '<span style="color:var(--muted)">—</span>'}</td>
       ${ec('initials','text',d.initials||'', d.initials ? `<span class="deal-initials-badge">${esc(d.initials)}</span>` : '<span style="color:var(--muted)">—</span>', 'style="text-align:center"')}
       ${ec('notes','textarea',d.notes||'', notesDisplay)}
       <td style="text-align:center;white-space:nowrap;padding:4px 6px">
-        <button class="btn btn-ghost btn-sm" onclick="event.stopPropagation();openInvoiceGenModal(${d.id})" style="padding:4px 8px;font-size:0.72rem;margin-bottom:3px;display:block;width:100%">📄 Invoice</button>
+        <button class="btn deal-invoice-gen-btn" onclick="event.stopPropagation();openInvoiceGenModal(${d.id})" title="Generate a branded invoice PDF for this deal">🧾 Generate Invoice</button>
         <button class="btn-icon btn-icon--danger" title="Delete" onclick="deleteDeal(${d.id})">🗑️</button>
       </td>
     </tr>`;
@@ -5017,15 +5022,18 @@ function openDealInvoicePanel(dealId) {
   function slotHtml(n) {
     const name = n === 1 ? deal.invoice1_name : deal.invoice2_name;
     const label = n === 1 ? 'Invoice 1' : 'Invoice 2';
-    return `<div id="dealInvSlot${n}" style="border:1px solid var(--border);border-radius:10px;padding:14px 16px">
-      <div style="font:700 12px/1 var(--font-mono);text-transform:uppercase;letter-spacing:0.5px;color:var(--muted);margin-bottom:10px">${label}</div>
+    return `<div id="dealInvSlot${n}" style="border:1px solid ${name ? 'rgba(95,211,150,0.35)' : 'var(--border)'};background:${name ? 'var(--positive-soft)' : 'transparent'};border-radius:10px;padding:14px 16px">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+        <div style="font:700 12px/1 var(--font-mono);text-transform:uppercase;letter-spacing:0.5px;color:var(--muted)">${label}</div>
+        ${name ? '<span style="font:700 10px/1.6 var(--font-mono);color:var(--positive);background:rgba(95,211,150,0.18);padding:2px 8px;border-radius:20px">✓ ON FILE</span>' : ''}
+      </div>
       ${name
         ? `<div style="display:flex;align-items:center;gap:10px">
-            <a href="/api/deals/${dealId}/invoice/${n}" target="_blank" style="font-size:13px;font-weight:600;color:var(--primary);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(name)}">📄 ${esc(name)}</a>
+            <a href="/api/deals/${dealId}/invoice/${n}" target="_blank" style="font-size:13px;font-weight:600;color:var(--positive);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(name)}">📄 ${esc(name)}</a>
             <button class="btn btn-ghost btn-sm" style="color:var(--negative);flex-shrink:0" onclick="dealInvoiceDelete(${dealId},${n})">Remove</button>
           </div>`
         : `<label style="display:flex;align-items:center;gap:10px;cursor:pointer">
-            <span style="font-size:13px;color:var(--muted)">No file uploaded</span>
+            <span style="font-size:13px;color:var(--muted)">No file uploaded — sales team won't see a package doc here</span>
             <input type="file" accept=".pdf,.doc,.docx" style="display:none" onchange="dealInvoiceUpload(event,${dealId},${n})">
             <button class="btn btn-ghost btn-sm" onclick="this.previousElementSibling.click()">Upload PDF / Word</button>
           </label>`
@@ -6966,12 +6974,20 @@ async function cycleDealStatus(id, newStatus) {
 
 async function openDealModal(id, defaultStage) {
   _dealInv1 = null; _dealInv2 = null;
+  _dealPackageMode = false;
+  _dealPackages = {};
   document.getElementById('dealEditId').value = id || '';
   document.getElementById('dealModalTitle').textContent = id ? 'Edit Deal' : 'Add Deal';
+  document.querySelector('#dealModal .modal').classList.toggle('deal-modal-editing', !!id);
   document.getElementById('dealInv1Preview').textContent = '';
   document.getElementById('dealInv2Preview').textContent = '';
   document.getElementById('dealInv1File').value = '';
   document.getElementById('dealInv2File').value = '';
+  document.getElementById('dealPackageRows').classList.add('hidden');
+  document.getElementById('dealPackageRows').innerHTML = '';
+  document.getElementById('dealSplitPreview').classList.remove('hidden');
+  const pkgBtn = document.getElementById('dealPackageToggleBtn');
+  if (pkgBtn) pkgBtn.textContent = '📦 Custom Package Split';
 
   // Load events into checkbox picker
   let _evs = [];
@@ -6999,6 +7015,11 @@ async function openDealModal(id, defaultStage) {
     document.getElementById('dealSigReceived').value = d.signature_received ? 'true' : 'false';
     document.getElementById('dealNotes').value = d.notes || '';
     _selectedEvIds = Array.isArray(d.events) ? d.events.map(e => e.event_id).filter(Boolean) : [];
+    // If this deal has any per-event package label or an uneven split, restore custom package mode
+    if (Array.isArray(d.events) && d.events.some(e => e.package_label)) {
+      _dealPackageMode = true;
+      d.events.forEach(e => { _dealPackages[e.event_id] = { amount: e.allocated_amount, label: e.package_label || '' }; });
+    }
     if (d.invoice1_name) document.getElementById('dealInv1Preview').textContent = `Current: ${d.invoice1_name}`;
     if (d.invoice2_name) document.getElementById('dealInv2Preview').textContent = `Current: ${d.invoice2_name}`;
     selectDealPayment(d.bank === 'Stripe' ? 'Stripe' : 'Bank');
@@ -7042,6 +7063,7 @@ async function openDealModal(id, defaultStage) {
   const searchEl = document.getElementById('dealEventsSearch');
   if (searchEl) searchEl.value = '';
   updateDealSplitPreview();
+  if (_dealPackageMode) { _dealPackageMode = false; toggleDealPackageMode(); }
   openModal('dealModal');
 }
 
@@ -7084,6 +7106,7 @@ function updateDealSplitPreview() {
   const checked = Array.from(document.querySelectorAll('#dealEventsCheckboxes input[type="checkbox"]:checked'));
   const countEl = document.getElementById('dealEventsCount');
   if (countEl) countEl.textContent = checked.length ? `· ${checked.length} selected` : '';
+  if (_dealPackageMode) { renderDealPackageRows(); return; }
   const amount = parseFloat(document.getElementById('dealAmount').value) || 0;
   const sym = { GBP:'£', USD:'$', AED:'AED ', PHP:'₱', EUR:'€' }[document.getElementById('dealCurrency')?.value] || '';
   const preview = document.getElementById('dealSplitPreview');
@@ -7095,6 +7118,72 @@ function updateDealSplitPreview() {
     preview.textContent = `${sym}${fmt(amount)} allocated to ${label}`;
   } else {
     preview.textContent = '';
+  }
+}
+
+function toggleDealPackageMode() {
+  _dealPackageMode = !_dealPackageMode;
+  const btn = document.getElementById('dealPackageToggleBtn');
+  const rows = document.getElementById('dealPackageRows');
+  const preview = document.getElementById('dealSplitPreview');
+  if (_dealPackageMode) {
+    btn.textContent = '↩ Use Even Split';
+    btn.classList.add('active');
+    rows.classList.remove('hidden');
+    preview.classList.add('hidden');
+    renderDealPackageRows();
+  } else {
+    btn.textContent = '📦 Custom Package Split';
+    btn.classList.remove('active');
+    rows.classList.add('hidden');
+    preview.classList.remove('hidden');
+    updateDealSplitPreview();
+  }
+}
+
+function renderDealPackageRows() {
+  const rows = document.getElementById('dealPackageRows');
+  if (!rows) return;
+  const checked = Array.from(document.querySelectorAll('#dealEventsCheckboxes input[type="checkbox"]:checked'));
+  const sym = { GBP:'£', USD:'$', AED:'AED ', PHP:'₱', EUR:'€' }[document.getElementById('dealCurrency')?.value] || '';
+  if (!checked.length) {
+    rows.innerHTML = '<div style="font:500 12px/1 var(--font-mono);color:var(--muted);padding:6px 0">Select events above to allocate a custom package to each.</div>';
+    return;
+  }
+  rows.innerHTML = checked.map(cb => {
+    const evId = parseInt(cb.value);
+    const label = cb.closest('label')?.querySelector('span')?.textContent || '';
+    const existing = _dealPackages[evId] || {};
+    return `<div class="deal-package-row">
+      <span class="dpr-name" title="${esc(label)}">${esc(label)}</span>
+      <input type="text" placeholder="Package e.g. Exhibitor" value="${esc(existing.label || '')}"
+        style="width:150px" oninput="dealPackageEdit(${evId},'label',this.value)">
+      <span style="font:600 12px/1 var(--font-mono);color:var(--muted)">${sym}</span>
+      <input type="number" min="0" step="0.01" placeholder="0.00" value="${existing.amount != null ? existing.amount : ''}"
+        style="width:100px" oninput="dealPackageEdit(${evId},'amount',this.value)">
+    </div>`;
+  }).join('');
+  const total = Object.values(_dealPackages).reduce((s, p) => s + (parseFloat(p.amount) || 0), 0);
+  const dealAmount = parseFloat(document.getElementById('dealAmount').value) || 0;
+  const diff = dealAmount - total;
+  rows.innerHTML += `<div style="font:600 11px/1 var(--font-mono);color:${Math.abs(diff) < 0.01 ? 'var(--positive)' : 'var(--warning)'};padding:2px 2px 0">
+    Allocated ${sym}${fmt(total)} of ${sym}${fmt(dealAmount)} deal value ${Math.abs(diff) >= 0.01 ? `(${diff > 0 ? sym+fmt(diff)+' unallocated' : 'over-allocated by '+sym+fmt(Math.abs(diff))})` : '— fully allocated'}
+  </div>`;
+}
+
+function dealPackageEdit(evId, field, value) {
+  if (!_dealPackages[evId]) _dealPackages[evId] = {};
+  _dealPackages[evId][field] = field === 'amount' ? value : value;
+  // Re-render just the totals line without losing focus: recompute totals only
+  const rows = document.getElementById('dealPackageRows');
+  const totalLine = rows?.lastElementChild;
+  const sym = { GBP:'£', USD:'$', AED:'AED ', PHP:'₱', EUR:'€' }[document.getElementById('dealCurrency')?.value] || '';
+  const total = Object.values(_dealPackages).reduce((s, p) => s + (parseFloat(p.amount) || 0), 0);
+  const dealAmount = parseFloat(document.getElementById('dealAmount').value) || 0;
+  const diff = dealAmount - total;
+  if (totalLine && totalLine.tagName === 'DIV' && totalLine.textContent.includes('Allocated')) {
+    totalLine.style.color = Math.abs(diff) < 0.01 ? 'var(--positive)' : 'var(--warning)';
+    totalLine.textContent = `Allocated ${sym}${fmt(total)} of ${sym}${fmt(dealAmount)} deal value ${Math.abs(diff) >= 0.01 ? `(${diff > 0 ? sym+fmt(diff)+' unallocated' : 'over-allocated by '+sym+fmt(Math.abs(diff))})` : '— fully allocated'}`;
   }
 }
 
@@ -7143,6 +7232,13 @@ async function saveDeal() {
     notes: document.getElementById('dealNotes').value.trim(),
     event_ids
   };
+  if (_dealPackageMode) {
+    body.event_packages = event_ids.map(evId => ({
+      event_id: evId,
+      amount: parseFloat(_dealPackages[evId]?.amount) || 0,
+      package_label: (_dealPackages[evId]?.label || '').trim()
+    }));
+  }
   if (_dealInv1) { body.invoice1_name = _dealInv1.name; body.invoice1_data = _dealInv1.data; }
   if (_dealInv2) { body.invoice2_name = _dealInv2.name; body.invoice2_data = _dealInv2.data; }
 

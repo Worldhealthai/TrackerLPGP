@@ -1697,11 +1697,14 @@
           <div class="form-group" style="flex:1;margin:0">
             <input type="number" id="dealAmount" min="0" step="0.01" placeholder="Deal value *" oninput="updateDealSplitPreview()" style="width:100%">
           </div>
-          <div class="form-group" style="flex:1;margin:0">
-            <input type="number" id="dealPaidIncVat" min="0" step="0.01" placeholder="Paid inc VAT" style="width:100%">
-          </div>
           <div class="form-group" style="width:100px;margin:0">
             <input type="number" id="dealTaxVat" min="0" step="0.01" placeholder="VAT" style="width:100%">
+          </div>
+        </div>
+        <div class="deal-edit-only-row form-row" style="margin:10px 0 0;gap:10px">
+          <div class="form-group" style="flex:1;margin:0">
+            <label style="font:600 10px/1 var(--font-mono);color:var(--muted);margin-bottom:4px;display:block">Paid (inc VAT) — set on edit</label>
+            <input type="number" id="dealPaidIncVat" min="0" step="0.01" placeholder="Paid inc VAT" style="width:100%">
           </div>
         </div>
       </div>
@@ -1710,23 +1713,26 @@
       <div>
         <div class="deal-modal-sec-label">Invoice</div>
         <div class="form-row" style="margin:0;gap:10px">
+          <div class="form-group" style="width:150px;margin:0">
+            <input type="date" id="dealInvoiceDate" style="width:100%">
+          </div>
+          <div class="form-group" style="width:130px;margin:0">
+            <input type="text" id="dealMonth" placeholder="Month e.g. 26 - Jan" style="width:100%;font-size:0.82rem" title="Business month (e.g. 26 - Jan). Auto-filled from invoice date.">
+          </div>
+        </div>
+        <div class="deal-edit-only-row form-row" style="margin:10px 0 0;gap:10px">
           <div class="form-group" style="flex:1;margin:0">
+            <label style="font:600 10px/1 var(--font-mono);color:var(--muted);margin-bottom:4px;display:block">Invoice Number — set on edit</label>
             <div style="display:flex;gap:6px;align-items:center">
               <input type="text" id="dealInvoiceNumber" placeholder="Invoice number" style="flex:1;min-width:0">
               <button type="button" class="btn btn-ghost" style="padding:6px 10px;font-size:0.75rem;white-space:nowrap;flex-shrink:0" onclick="fillNextInvoiceNumber()">Use Next</button>
             </div>
           </div>
-          <div class="form-group" style="width:150px;margin:0">
-            <input type="date" id="dealInvoiceDate" style="width:100%">
-          </div>
-          <div class="form-group" style="width:110px;margin:0">
-            <input type="text" id="dealMonth" placeholder="Month e.g. 26 - Jan" style="width:100%;font-size:0.82rem" title="Business month (e.g. 26 - Jan). Auto-filled from invoice date.">
-          </div>
         </div>
       </div>
 
-      <!-- Payment method -->
-      <div>
+      <!-- Payment method (edit only) -->
+      <div class="deal-edit-only-row">
         <div class="deal-modal-sec-label">Payment Method</div>
         <div class="deal-payment-toggle">
           <button type="button" class="deal-pay-btn active" id="dealPayBank" onclick="selectDealPayment('Bank')">
@@ -1741,15 +1747,16 @@
 
       <!-- Events -->
       <div>
-        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;flex-wrap:wrap;gap:6px">
           <div class="deal-modal-sec-label" style="margin:0">Linked Events <span id="dealEventsCount" style="font-weight:400;text-transform:none;letter-spacing:0;color:var(--accent)"></span></div>
-          <span style="font:500 10px/1 var(--font-mono);color:var(--muted)">value splits equally across selected</span>
+          <button type="button" class="btn btn-ghost btn-sm" id="dealPackageToggleBtn" onclick="toggleDealPackageMode()" style="font-size:0.72rem">📦 Custom Package Split</button>
         </div>
         <div class="deal-event-picker">
           <input type="text" id="dealEventsSearch" class="deal-event-search" placeholder="🔍  Search events…" oninput="filterDealEvents()">
           <div id="dealEventsCheckboxes" class="deal-event-checkboxes"></div>
         </div>
         <div id="dealSplitPreview" style="font-size:0.75rem;color:var(--muted);margin-top:5px"></div>
+        <div id="dealPackageRows" class="hidden" style="margin-top:10px;display:flex;flex-direction:column;gap:8px"></div>
       </div>
 
       <!-- Notes -->
@@ -1758,8 +1765,8 @@
         <textarea id="dealNotes" rows="2" placeholder="Deal notes…" style="width:100%;resize:vertical"></textarea>
       </div>
 
-      <!-- Documents -->
-      <div>
+      <!-- Documents (edit only) -->
+      <div class="deal-edit-only-row">
         <div class="deal-modal-sec-label">Documents</div>
         <div class="form-row" style="margin:0;gap:12px">
           <div class="form-group" style="flex:1;margin:0">
