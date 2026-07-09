@@ -8800,7 +8800,7 @@ function previewInvoice() {
         <tr class="ig-sumrow ig-due"><td></td><td>TOTAL DUE</td><td>£ ${esc(p.total_due || '—')}</td></tr>
       </tbody>
     </table>
-    <div class="ig-contact-line">If you have any questions concerning this invoice, contact accounts.payable@lpgpconnect.com</div>
+    <div class="ig-contact-line">If you have any questions concerning this invoice, contact accounts@lpgpconnect.com</div>
     <div class="ig-bank">
       <div>LPGPCONNECT.COM LTD</div>
       <div>Account number: 42247054</div>
