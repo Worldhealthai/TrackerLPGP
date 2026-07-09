@@ -3959,16 +3959,22 @@ function renderExpSummary() {
   const byCur = {};
   rows.forEach(r => {
     const cur = r.currency || 'GBP';
-    byCur[cur] = byCur[cur] || { vat: 0, nonVat: 0, total: 0 };
+    byCur[cur] = byCur[cur] || { vat: 0, nonVat: 0, total: 0, vatPortion: 0 };
     const amt = parseFloat(r.amount) || 0;
     byCur[cur].total += amt;
-    if (r.vat_status === 'vat') byCur[cur].vat += amt; else byCur[cur].nonVat += amt;
+    if (r.vat_status === 'vat') {
+      byCur[cur].vat += amt;
+      byCur[cur].vatPortion += parseFloat(r.vat_amount) || 0;
+    } else {
+      byCur[cur].nonVat += amt;
+    }
   });
   const fmtN = n => n.toLocaleString('en-GB', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   const cards = Object.entries(byCur).map(([cur, s]) => `
     <div class="hotel-fin-card">
       <div class="hotel-fin-currency">${cur}</div>
-      <div class="hotel-fin-row"><span class="hotel-fin-lbl">VAT Expenses</span><span class="hotel-fin-val">${expCurSymbol(cur)}${fmtN(s.vat)}</span></div>
+      <div class="hotel-fin-row"><span class="hotel-fin-lbl">VAT Expenses (inc VAT)</span><span class="hotel-fin-val">${expCurSymbol(cur)}${fmtN(s.vat)}</span></div>
+      <div class="hotel-fin-row"><span class="hotel-fin-lbl">of which VAT</span><span class="hotel-fin-val hotel-fin-green">${expCurSymbol(cur)}${fmtN(s.vatPortion)}</span></div>
       <div class="hotel-fin-row"><span class="hotel-fin-lbl">Non-VAT Expenses</span><span class="hotel-fin-val">${expCurSymbol(cur)}${fmtN(s.nonVat)}</span></div>
       <div class="hotel-fin-row hotel-fin-total-row"><span class="hotel-fin-lbl">Total</span><span class="hotel-fin-val hotel-fin-blue">${expCurSymbol(cur)}${fmtN(s.total)}</span></div>
     </div>`).join('');
@@ -3999,7 +4005,9 @@ function renderExpTable() {
       <td>${r.expense_date ? r.expense_date.slice(0,10) : '—'}</td>
       <td><span class="badge badge-grey">${esc(EXP_CATEGORY_LABEL[r.category] || r.category)}</span></td>
       <td>${esc(r.description)}</td>
-      <td>${r.vat_status === 'vat' ? '<span class="badge badge-blue">VAT</span>' : '<span class="badge badge-yellow">Non-VAT</span>'}</td>
+      <td>${r.vat_status === 'vat'
+        ? '<span class="badge badge-blue">VAT</span>' + (r.vat_amount != null && parseFloat(r.vat_amount) > 0 ? `<div style="font:600 10px/1 var(--font-mono);color:var(--muted);margin-top:3px">${expCurSymbol(r.currency)}${parseFloat(r.vat_amount).toLocaleString('en-GB',{minimumFractionDigits:2,maximumFractionDigits:2})} VAT</div>` : '')
+        : '<span class="badge badge-yellow">Non-VAT</span>'}</td>
       <td style="text-align:right;font-family:var(--font-mono);font-weight:600">${expCurSymbol(r.currency)}${parseFloat(r.amount||0).toLocaleString('en-GB',{minimumFractionDigits:2,maximumFractionDigits:2})}</td>
       <td>${r.has_receipt ? `<a href="/api/expenses/${r.id}/receipt" target="_blank" class="badge badge-green" style="text-decoration:none">🧾 View</a>` : '<span style="color:var(--muted)">—</span>'}</td>
       <td style="text-align:right;white-space:nowrap">
@@ -4007,6 +4015,14 @@ function renderExpTable() {
         <button class="btn btn-danger btn-sm" onclick="deleteExpense(${r.id})">✕</button>
       </td>
     </tr>`).join('');
+}
+
+// VAT expenses: Amount is the gross total and the VAT portion is entered separately
+function expVatToggle() {
+  const isVat = document.getElementById('expVatStatus').value === 'vat';
+  document.getElementById('expVatAmountRow').classList.toggle('hidden', !isVat);
+  document.getElementById('expAmountLbl').textContent = isVat ? 'Total Amount (inc VAT)' : 'Amount';
+  if (!isVat) document.getElementById('expVatAmount').value = '';
 }
 
 function openExpModal(id) {
@@ -4019,6 +4035,8 @@ function openExpModal(id) {
   document.getElementById('expAmount').value = r ? r.amount : '';
   document.getElementById('expCurrency').value = r ? (r.currency || 'GBP') : 'GBP';
   document.getElementById('expVatStatus').value = r ? r.vat_status : 'non_vat';
+  document.getElementById('expVatAmount').value = r && r.vat_amount != null ? r.vat_amount : '';
+  expVatToggle();
   document.getElementById('expNotes').value = r ? (r.notes || '') : '';
   document.getElementById('expReceiptFile').value = '';
   _expReceiptBase64 = null; _expReceiptName = null;
@@ -4060,17 +4078,21 @@ async function expRemoveReceipt() {
 
 async function saveExpense() {
   const id = document.getElementById('expEditId').value;
+  const isVat = document.getElementById('expVatStatus').value === 'vat';
   const payload = {
     category: document.getElementById('expCategory').value,
     description: document.getElementById('expDescription').value.trim(),
     vat_status: document.getElementById('expVatStatus').value,
     amount: parseFloat(document.getElementById('expAmount').value) || 0,
+    vat_amount: isVat ? (parseFloat(document.getElementById('expVatAmount').value) || 0) : null,
     currency: document.getElementById('expCurrency').value,
     expense_date: document.getElementById('expDate').value,
     notes: document.getElementById('expNotes').value.trim()
   };
   if (!payload.expense_date) { showToast('Date is required', 'error'); return; }
   if (!payload.description) { showToast('Description is required', 'error'); return; }
+  if (isVat && !payload.vat_amount) { showToast('Enter the VAT amount included in the total', 'error'); return; }
+  if (isVat && payload.vat_amount >= payload.amount) { showToast('VAT amount must be less than the total (the total should include VAT)', 'error'); return; }
   if (!id && _expReceiptBase64) { payload.receipt_name = _expReceiptName; payload.receipt_data = _expReceiptBase64; }
   const method = id ? 'PUT' : 'POST';
   const url = id ? `/api/expenses/${id}` : '/api/expenses';

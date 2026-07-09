@@ -1330,7 +1330,7 @@
     </div>
     <div class="form-row hm-3col">
       <div class="form-group">
-        <label>Amount</label>
+        <label id="expAmountLbl">Amount</label>
         <input type="number" id="expAmount" step="0.01" placeholder="0.00" />
       </div>
       <div class="form-group">
@@ -1341,11 +1341,15 @@
       </div>
       <div class="form-group">
         <label>VAT Status</label>
-        <select id="expVatStatus">
+        <select id="expVatStatus" onchange="expVatToggle()">
           <option value="non_vat">Non-VAT</option>
           <option value="vat">VAT</option>
         </select>
       </div>
+    </div>
+    <div class="form-group hidden" id="expVatAmountRow">
+      <label>VAT Amount <span style="font-weight:400;color:var(--muted)">(the VAT portion included in the total above)</span></label>
+      <input type="number" id="expVatAmount" step="0.01" placeholder="0.00" />
     </div>
     <div class="form-group">
       <label>Notes</label>

@@ -100,6 +100,7 @@ async function runLateMigrations() {
     `ALTER TABLE deal_events ADD COLUMN IF NOT EXISTS package_label TEXT NOT NULL DEFAULT ''`,
     // One-time cleanup: 'Bank' was a junk default the modal used to apply to every deal
     `UPDATE deals SET bank='' WHERE bank='Bank'`,
+    `ALTER TABLE company_expenses ADD COLUMN IF NOT EXISTS vat_amount NUMERIC(12,2)`,
     `CREATE TABLE IF NOT EXISTS event_kits (
       id SERIAL PRIMARY KEY,
       event_id INT NOT NULL,
@@ -1673,19 +1674,21 @@ app.patch('/api/hotel-expenses/:id', requireAuth, async (req, res) => {
 
 app.get('/api/expenses', requireAuth, requireAdminOrManager, async (req, res) => {
   try {
-    const { rows } = await q('SELECT id, category, description, vat_status, amount, currency, expense_date, notes, receipt_name, (receipt_data IS NOT NULL) AS has_receipt, created_at FROM company_expenses ORDER BY expense_date DESC, id DESC');
+    const { rows } = await q('SELECT id, category, description, vat_status, amount, vat_amount, currency, expense_date, notes, receipt_name, (receipt_data IS NOT NULL) AS has_receipt, created_at FROM company_expenses ORDER BY expense_date DESC, id DESC');
     res.json(rows);
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
 app.post('/api/expenses', requireAuth, requireAdminOrManager, async (req, res) => {
   try {
-    const { category, description, vat_status, amount, currency, expense_date, notes, receipt_name, receipt_data } = req.body;
+    const { category, description, vat_status, amount, vat_amount, currency, expense_date, notes, receipt_name, receipt_data } = req.body;
     if (!expense_date) return res.status(400).json({ error: 'expense_date required' });
+    const isVat = vat_status === 'vat';
     const { rows } = await q(
-      `INSERT INTO company_expenses (category, description, vat_status, amount, currency, expense_date, notes, receipt_name, receipt_data, created_by)
-       VALUES (?,?,?,?,?,?,?,?,?,?) RETURNING id, category, description, vat_status, amount, currency, expense_date, notes, receipt_name, (receipt_data IS NOT NULL) AS has_receipt, created_at`,
-      [category||'other', description||'', vat_status==='vat'?'vat':'non_vat', amount||0, currency||'GBP',
+      `INSERT INTO company_expenses (category, description, vat_status, amount, vat_amount, currency, expense_date, notes, receipt_name, receipt_data, created_by)
+       VALUES (?,?,?,?,?,?,?,?,?,?,?) RETURNING id, category, description, vat_status, amount, vat_amount, currency, expense_date, notes, receipt_name, (receipt_data IS NOT NULL) AS has_receipt, created_at`,
+      [category||'other', description||'', isVat?'vat':'non_vat', amount||0,
+       isVat && vat_amount != null && vat_amount !== '' ? parseFloat(vat_amount) : null, currency||'GBP',
        expense_date, notes||'', receipt_name||null, receipt_data||null, req.user?.id||null]
     );
     res.json(rows[0]);
@@ -1694,11 +1697,13 @@ app.post('/api/expenses', requireAuth, requireAdminOrManager, async (req, res) =
 
 app.put('/api/expenses/:id', requireAuth, requireAdminOrManager, async (req, res) => {
   try {
-    const { category, description, vat_status, amount, currency, expense_date, notes } = req.body;
+    const { category, description, vat_status, amount, vat_amount, currency, expense_date, notes } = req.body;
+    const isVat = vat_status === 'vat';
     const { rows } = await q(
-      `UPDATE company_expenses SET category=?, description=?, vat_status=?, amount=?, currency=?, expense_date=?, notes=?
-       WHERE id=? RETURNING id, category, description, vat_status, amount, currency, expense_date, notes, receipt_name, (receipt_data IS NOT NULL) AS has_receipt, created_at`,
-      [category||'other', description||'', vat_status==='vat'?'vat':'non_vat', amount||0, currency||'GBP',
+      `UPDATE company_expenses SET category=?, description=?, vat_status=?, amount=?, vat_amount=?, currency=?, expense_date=?, notes=?
+       WHERE id=? RETURNING id, category, description, vat_status, amount, vat_amount, currency, expense_date, notes, receipt_name, (receipt_data IS NOT NULL) AS has_receipt, created_at`,
+      [category||'other', description||'', isVat?'vat':'non_vat', amount||0,
+       isVat && vat_amount != null && vat_amount !== '' ? parseFloat(vat_amount) : null, currency||'GBP',
        expense_date, notes||'', req.params.id]
     );
     if (!rows.length) return res.status(404).json({ error: 'Not found' });
