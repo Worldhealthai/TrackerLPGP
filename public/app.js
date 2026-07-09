@@ -8643,6 +8643,23 @@ function igAddEventRow(name, pkg, amount, benefits) {
   wrap.appendChild(card);
 }
 
+// Fill the generator's invoice number with the next in sequence,
+// same as the deal modal's Use Next
+async function igUseNextInvoice() {
+  try {
+    const res = await fetch('/api/deals/last-invoice');
+    const d = res.ok ? await res.json() : {};
+    if (d.invoice_number && d.next_number) {
+      const prefix = d.invoice_number.replace(/\d+$/, '');
+      document.getElementById('igInvoiceNum').value = prefix + String(d.next_number).padStart(3, '0');
+      return;
+    }
+  } catch { /* fall through to cached value */ }
+  const el = document.getElementById('dealNextInvNum');
+  if (el && el.textContent) document.getElementById('igInvoiceNum').value = el.textContent;
+  else showToast('No previous invoice number found', 'error');
+}
+
 function igParseMoney(v) {
   return parseFloat(String(v || '').replace(/[^0-9.\-]/g, '')) || 0;
 }

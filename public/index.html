@@ -1863,7 +1863,10 @@
       </div>
       <div class="form-group">
         <label>Invoice Number *</label>
-        <input type="text" id="igInvoiceNum" placeholder="e.g. 680">
+        <div style="display:flex;gap:6px;align-items:center">
+          <input type="text" id="igInvoiceNum" placeholder="e.g. 680" style="flex:1;min-width:0">
+          <button type="button" class="btn btn-ghost" style="padding:6px 10px;font-size:0.75rem;white-space:nowrap;flex-shrink:0" onclick="igUseNextInvoice()">Use Next</button>
+        </div>
       </div>
     </div>
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px">
