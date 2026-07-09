@@ -120,7 +120,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   // Deep-link / PWA shortcut support: /?page=salary opens that page directly
   try {
     const startPage = new URLSearchParams(window.location.search).get('page');
-    const validPages = ['dashboard','tracking','salary','employees','reports','calendar','admins','hotels','subscriptions','portfolio','deals','eventkit'];
+    const validPages = ['dashboard','tracking','salary','employees','reports','calendar','admins','hotels','expenses','subscriptions','portfolio','deals','eventkit'];
     if (startPage && validPages.includes(startPage)) {
       navigate(startPage);
       // tidy the URL so a manual refresh doesn't re-trigger
@@ -178,13 +178,14 @@ function navigate(page) {
   document.getElementById('page-' + page).classList.add('active');
   document.querySelector(`.nav-item[data-page="${page}"]`)?.classList.add('active');
   document.querySelector(`.bottom-nav-item[data-page="${page}"]`)?.classList.add('active');
-  const titles = { dashboard:'Dashboard', tracking:'Daily Tracking', salary:'Salary Tracker', employees:'Employees', reports:'Reports', calendar:'Calendar', admins:'Admin Users', hotels:'Hotel Expenses', subscriptions:'Subscriptions', portfolio:'Portfolio', deals:'Deal Tracker', eventkit:'Event Kit' };
+  const titles = { dashboard:'Dashboard', tracking:'Daily Tracking', salary:'Salary Tracker', employees:'Employees', reports:'Reports', calendar:'Calendar', admins:'Admin Users', hotels:'Hotel Expenses', expenses:'Expenses', subscriptions:'Subscriptions', portfolio:'Portfolio', deals:'Deal Tracker', eventkit:'Event Kit' };
   document.getElementById('pageTitle').textContent = titles[page] || page;
   if (page === 'employees') loadEmpTable();
   if (page === 'admins') loadAdmins();
   if (page === 'calendar') loadCalendar();
   if (page === 'salary') { loadSalaryPage(); }
   if (page === 'hotels') loadHotelExpenses();
+  if (page === 'expenses') loadExpenses();
   if (page === 'subscriptions') loadSubscriptions();
   if (page === 'portfolio') { loadPortfolio(); }
   if (page === 'deals') { loadDeals(); }
@@ -930,12 +931,9 @@ function renderHeadcountPanel(activeEmps, payrollCount, seCount, totalHeadcount,
             <div class="hc-dept-track"><div class="hc-dept-fill" style="width:${pct}%;background:${color}"></div></div>
             <div class="hc-emp-list">
               ${info.emps.map(e => {
-                const initials = (e.name||'?').split(' ').map(w=>w[0]).join('').slice(0,2).toUpperCase();
                 const isSE = e.employment_type === 'self_employed';
-                const avatarBg = isSE ? '#d97706' : color;
                 const role = e.job_title || (isSE ? 'Self-Employed' : 'Payroll');
-                return `<div class="hc-emp-row" onclick="event.stopPropagation();goToTracking(${e.id})">
-                  <div class="hc-emp-av" style="background:${avatarBg}">${initials}</div>
+                return `<div class="hc-emp-row" onclick="event.stopPropagation();goToEmployee(${e.id})" title="Open employee record">
                   <div class="hc-emp-info">
                     <div class="hc-emp-name">${esc(e.name)}</div>
                     <div class="hc-emp-role">${esc(role)}</div>
@@ -1077,6 +1075,17 @@ function goToTracking(empId) {
   navigate('tracking');
   document.getElementById('trackEmp').value = empId;
   loadEmployeeRecords();
+}
+
+// Open the Employees page and pop the clicked employee's record
+async function goToEmployee(empId) {
+  navigate('employees');
+  // navigate() kicks off loadEmpTable(); wait for the data to arrive
+  for (let i = 0; i < 20 && !(allEmployeesData || []).find(e => e.id === empId); i++) {
+    await new Promise(r => setTimeout(r, 150));
+  }
+  const emp = (allEmployeesData || []).find(e => e.id === empId);
+  if (emp) openEmpModal(emp);
 }
 
 // ─── TRACKING ────────────────────────────────────────────────────────────────
@@ -3889,6 +3898,226 @@ async function reviewHolidayRequest(id, action) {
   refreshNotifBadge();
 }
 
+// ─── COMPANY EXPENSES ─────────────────────────────────────────────────────────
+let expData = [];
+let _expQuarter = 'all';
+let _expVat = 'all';
+let _expReceiptBase64 = null;
+let _expReceiptName = null;
+
+const EXP_CATEGORY_LABEL = { office:'Office', travel:'Travel', marketing:'Marketing', software:'Software', staff:'Staff / HR', event:'Event Costs', legal:'Legal / Professional', other:'Other' };
+
+function expQuarterOf(dateStr) {
+  if (!dateStr) return null;
+  const m = parseInt(String(dateStr).slice(5, 7), 10);
+  if (m === 11 || m === 12 || m === 1) return 'Q1';
+  if (m === 2 || m === 3 || m === 4)   return 'Q2';
+  if (m === 5 || m === 6 || m === 7)   return 'Q3';
+  if (m === 8 || m === 9 || m === 10)  return 'Q4';
+  return null;
+}
+
+async function loadExpenses() {
+  const res = await fetch('/api/expenses');
+  if (!res.ok) { showToast('Failed to load expenses', 'error'); return; }
+  expData = await res.json();
+  renderExpSummary();
+  renderExpTable();
+}
+
+function setExpQuarter(btn, q) {
+  _expQuarter = q;
+  document.querySelectorAll('#expQFilters .deal-q-btn').forEach(b => b.classList.toggle('active', b.dataset.eq === q));
+  renderExpSummary();
+  renderExpTable();
+}
+
+function setExpVat(btn, v) {
+  _expVat = v;
+  document.querySelectorAll('#expVatFilters .deal-q-btn').forEach(b => b.classList.toggle('active', b.dataset.ev === v));
+  renderExpSummary();
+  renderExpTable();
+}
+
+function expFiltered() {
+  return expData.filter(r => {
+    if (_expQuarter !== 'all' && expQuarterOf(r.expense_date) !== _expQuarter) return false;
+    if (_expVat !== 'all' && r.vat_status !== _expVat) return false;
+    return true;
+  });
+}
+
+function expCurSymbol(c) {
+  if (c === 'GBP') return '£';
+  if (c === 'EUR') return '€';
+  if (c === 'AED') return 'AED ';
+  return '$';
+}
+
+function renderExpSummary() {
+  const rows = expFiltered();
+  const byCur = {};
+  rows.forEach(r => {
+    const cur = r.currency || 'GBP';
+    byCur[cur] = byCur[cur] || { vat: 0, nonVat: 0, total: 0, vatPortion: 0 };
+    const amt = parseFloat(r.amount) || 0;
+    byCur[cur].total += amt;
+    if (r.vat_status === 'vat') {
+      byCur[cur].vat += amt;
+      byCur[cur].vatPortion += parseFloat(r.vat_amount) || 0;
+    } else {
+      byCur[cur].nonVat += amt;
+    }
+  });
+  const fmtN = n => n.toLocaleString('en-GB', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  const cards = Object.entries(byCur).map(([cur, s]) => `
+    <div class="hotel-fin-card">
+      <div class="hotel-fin-currency">${cur}</div>
+      <div class="hotel-fin-row"><span class="hotel-fin-lbl">VAT Expenses (inc VAT)</span><span class="hotel-fin-val">${expCurSymbol(cur)}${fmtN(s.vat)}</span></div>
+      <div class="hotel-fin-row"><span class="hotel-fin-lbl">of which VAT</span><span class="hotel-fin-val hotel-fin-green">${expCurSymbol(cur)}${fmtN(s.vatPortion)}</span></div>
+      <div class="hotel-fin-row"><span class="hotel-fin-lbl">Non-VAT Expenses</span><span class="hotel-fin-val">${expCurSymbol(cur)}${fmtN(s.nonVat)}</span></div>
+      <div class="hotel-fin-row hotel-fin-total-row"><span class="hotel-fin-lbl">Total</span><span class="hotel-fin-val hotel-fin-blue">${expCurSymbol(cur)}${fmtN(s.total)}</span></div>
+    </div>`).join('');
+  const qLabel = _expQuarter !== 'all' ? ` · ${_expQuarter}` : '';
+  const vLabel = _expVat !== 'all' ? ` · ${_expVat === 'vat' ? 'VAT' : 'Non-VAT'}` : '';
+  document.getElementById('expSummary').innerHTML = `
+    <div class="hotel-fin-strip">
+      ${cards || '<div class="hotel-fin-card"><div class="hotel-fin-currency">TOTALS${qLabel}${vLabel}</div><div class="hotel-fin-row"><span class="hotel-fin-lbl">No expenses in this filter</span></div></div>'}
+      <div class="hotel-fin-card hotel-fin-card--status">
+        <div class="hotel-fin-currency">STATUS${qLabel}${vLabel}</div>
+        <div class="hotel-fin-row"><span class="hotel-fin-lbl">Line Items</span><span class="hotel-fin-val">${rows.length}</span></div>
+        <div class="hotel-fin-row"><span class="hotel-fin-lbl">With Receipt</span><span class="hotel-fin-val hotel-fin-green">${rows.filter(r=>r.has_receipt).length}</span></div>
+        <div class="hotel-fin-row hotel-fin-total-row"><span class="hotel-fin-lbl">Missing Receipt</span><span class="hotel-fin-val hotel-fin-red">${rows.filter(r=>!r.has_receipt).length}</span></div>
+      </div>
+    </div>`;
+}
+
+function renderExpTable() {
+  const search = (document.getElementById('expSearch')?.value || '').toLowerCase();
+  const rows = expFiltered().filter(r => !search || (r.description||'').toLowerCase().includes(search) || (r.category||'').toLowerCase().includes(search));
+  const tbody = document.getElementById('expTableBody');
+  const empty = document.getElementById('expEmpty');
+  document.getElementById('expRowCount').textContent = `${rows.length} item${rows.length !== 1 ? 's' : ''}`;
+  if (!rows.length) { tbody.innerHTML = ''; empty.classList.remove('hidden'); return; }
+  empty.classList.add('hidden');
+  tbody.innerHTML = rows.map(r => `
+    <tr>
+      <td>${r.expense_date ? r.expense_date.slice(0,10) : '—'}</td>
+      <td><span class="badge badge-grey">${esc(EXP_CATEGORY_LABEL[r.category] || r.category)}</span></td>
+      <td>${esc(r.description)}</td>
+      <td>${r.vat_status === 'vat'
+        ? '<span class="badge badge-blue">VAT</span>' + (r.vat_amount != null && parseFloat(r.vat_amount) > 0 ? `<div style="font:600 10px/1 var(--font-mono);color:var(--muted);margin-top:3px">${expCurSymbol(r.currency)}${parseFloat(r.vat_amount).toLocaleString('en-GB',{minimumFractionDigits:2,maximumFractionDigits:2})} VAT</div>` : '')
+        : '<span class="badge badge-yellow">Non-VAT</span>'}</td>
+      <td style="text-align:right;font-family:var(--font-mono);font-weight:600">${expCurSymbol(r.currency)}${parseFloat(r.amount||0).toLocaleString('en-GB',{minimumFractionDigits:2,maximumFractionDigits:2})}</td>
+      <td>${r.has_receipt ? `<a href="/api/expenses/${r.id}/receipt" target="_blank" class="badge badge-green" style="text-decoration:none">🧾 View</a>` : '<span style="color:var(--muted)">—</span>'}</td>
+      <td style="text-align:right;white-space:nowrap">
+        <button class="btn btn-ghost btn-sm" onclick="openExpModal(${r.id})">Edit</button>
+        <button class="btn btn-danger btn-sm" onclick="deleteExpense(${r.id})">✕</button>
+      </td>
+    </tr>`).join('');
+}
+
+// VAT expenses: Amount is the gross total and the VAT portion is entered separately
+function expVatToggle() {
+  const isVat = document.getElementById('expVatStatus').value === 'vat';
+  document.getElementById('expVatAmountRow').classList.toggle('hidden', !isVat);
+  document.getElementById('expAmountLbl').textContent = isVat ? 'Total Amount (inc VAT)' : 'Amount';
+  if (!isVat) document.getElementById('expVatAmount').value = '';
+}
+
+function openExpModal(id) {
+  const r = id ? expData.find(x => x.id === id) : null;
+  document.getElementById('expModalTitle').textContent = r ? 'Edit Expense' : 'Add Expense';
+  document.getElementById('expEditId').value = r ? r.id : '';
+  document.getElementById('expDate').value = r ? (r.expense_date || '').slice(0,10) : today();
+  document.getElementById('expCategory').value = r ? r.category : 'other';
+  document.getElementById('expDescription').value = r ? r.description : '';
+  document.getElementById('expAmount').value = r ? r.amount : '';
+  document.getElementById('expCurrency').value = r ? (r.currency || 'GBP') : 'GBP';
+  document.getElementById('expVatStatus').value = r ? r.vat_status : 'non_vat';
+  document.getElementById('expVatAmount').value = r && r.vat_amount != null ? r.vat_amount : '';
+  expVatToggle();
+  document.getElementById('expNotes').value = r ? (r.notes || '') : '';
+  document.getElementById('expReceiptFile').value = '';
+  _expReceiptBase64 = null; _expReceiptName = null;
+  const cur = document.getElementById('expReceiptCurrent');
+  if (r && r.has_receipt) {
+    cur.classList.remove('hidden');
+    document.getElementById('expReceiptLink').href = `/api/expenses/${r.id}/receipt`;
+    document.getElementById('expReceiptLink').textContent = r.receipt_name || 'View receipt';
+  } else {
+    cur.classList.add('hidden');
+  }
+  openModal('expModal');
+}
+
+function expReceiptPreview(input) {
+  const file = input.files[0];
+  if (!file) return;
+  if (file.size > 8 * 1024 * 1024) { showToast('File must be under 8 MB', 'error'); input.value = ''; return; }
+  const reader = new FileReader();
+  reader.onload = e => {
+    _expReceiptBase64 = e.target.result.split(',')[1];
+    _expReceiptName = file.name;
+    showToast('Receipt ready — will attach on save', 'success');
+  };
+  reader.readAsDataURL(file);
+}
+
+async function expRemoveReceipt() {
+  const id = document.getElementById('expEditId').value;
+  if (id) {
+    if (!confirm('Remove stored receipt?')) return;
+    const res = await fetch(`/api/expenses/${id}/receipt`, { method: 'DELETE' });
+    if (!res.ok) { showToast('Failed', 'error'); return; }
+    const idx = expData.findIndex(r => r.id == id);
+    if (idx !== -1) expData[idx].has_receipt = false;
+  }
+  document.getElementById('expReceiptCurrent').classList.add('hidden');
+}
+
+async function saveExpense() {
+  const id = document.getElementById('expEditId').value;
+  const isVat = document.getElementById('expVatStatus').value === 'vat';
+  const payload = {
+    category: document.getElementById('expCategory').value,
+    description: document.getElementById('expDescription').value.trim(),
+    vat_status: document.getElementById('expVatStatus').value,
+    amount: parseFloat(document.getElementById('expAmount').value) || 0,
+    vat_amount: isVat ? (parseFloat(document.getElementById('expVatAmount').value) || 0) : null,
+    currency: document.getElementById('expCurrency').value,
+    expense_date: document.getElementById('expDate').value,
+    notes: document.getElementById('expNotes').value.trim()
+  };
+  if (!payload.expense_date) { showToast('Date is required', 'error'); return; }
+  if (!payload.description) { showToast('Description is required', 'error'); return; }
+  if (isVat && !payload.vat_amount) { showToast('Enter the VAT amount included in the total', 'error'); return; }
+  if (isVat && payload.vat_amount >= payload.amount) { showToast('VAT amount must be less than the total (the total should include VAT)', 'error'); return; }
+  if (!id && _expReceiptBase64) { payload.receipt_name = _expReceiptName; payload.receipt_data = _expReceiptBase64; }
+  const method = id ? 'PUT' : 'POST';
+  const url = id ? `/api/expenses/${id}` : '/api/expenses';
+  const res = await fetch(url, { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+  if (!res.ok) { const e = await res.json(); showToast(e.error || 'Save failed', 'error'); return; }
+  const saved = await res.json();
+  if (id && _expReceiptBase64) {
+    await fetch(`/api/expenses/${id}/receipt`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ receipt_name: _expReceiptName, receipt_data: _expReceiptBase64 })
+    });
+  }
+  showToast(id ? 'Updated' : 'Added', 'success');
+  closeModal('expModal');
+  loadExpenses();
+}
+
+async function deleteExpense(id) {
+  if (!confirm('Delete this expense?')) return;
+  const res = await fetch(`/api/expenses/${id}`, { method: 'DELETE' });
+  if (!res.ok) { showToast('Delete failed', 'error'); return; }
+  showToast('Deleted', 'success');
+  loadExpenses();
+}
+
 // ─── SUBSCRIPTIONS ────────────────────────────────────────────────────────────
 
 const SUB_FX = { GBP: 1, USD: 0.79, AED: 1/4.67, PHP: 0.014 };
@@ -4160,7 +4389,7 @@ function renderPortfolioGrid() {
         `<button class="deal-q-btn${_portYearFilter === 'all' ? ' active' : ''}" onclick="setPortYear('all')">All</button>` +
         `<button class="deal-q-btn" onclick="addPortYear()" title="Add year">+</button>` +
       `</div>` +
-      `<input class="port-search" id="portSearch" placeholder="🔍 Search events…" oninput="portFilterCards(this.value)" value="${esc(_portSearch)}">` +
+      `<input class="port-search" id="portSearch" placeholder="Search events…" oninput="portFilterCards(this.value)" value="${esc(_portSearch)}">` +
       `<button class="btn btn-primary btn-sm" onclick="openPortfolioModal()">+ Add Event</button>` +
     `</div>`;
 
@@ -4225,12 +4454,12 @@ function renderPortfolioEventCard(ev) {
         <div class="pec-name">${esc(ev.name)}</div>
         <div class="pec-chips">
           ${dateChip ? `<span class="pec-date-chip">${dateChip}</span>` : '<span class="pec-date-chip pec-date-tbd">TBD</span>'}
-          ${ev.location ? `<span class="pec-loc-chip">📍 ${esc(ev.location)}</span>` : ''}
+          ${ev.location ? `<span class="pec-loc-chip">${esc(ev.location)}</span>` : ''}
         </div>
       </div>
       <div class="sub-actions" style="flex-shrink:0">
-        <button class="sub-action-btn" onclick="openPortfolioModal(${ev.id})">✏️ Edit</button>
-        <button class="sub-action-btn sub-action-btn--danger" onclick="deletePortfolioEvent(${ev.id})">🗑 Delete</button>
+        <button class="sub-action-btn" onclick="openPortfolioModal(${ev.id})">Edit</button>
+        <button class="sub-action-btn sub-action-btn--danger" onclick="deletePortfolioEvent(${ev.id})">Delete</button>
       </div>
     </div>
 
@@ -4304,6 +4533,7 @@ async function togglePortfolioDeals(btn, eventId) {
       return `<div style="display:flex;align-items:center;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--border)">
         <div>
           <div style="font:600 13px/1.3 var(--font-sans);color:var(--text)">${esc(d.company)}</div>
+          ${d.package_label ? `<div style="font:600 10px/1 var(--font-mono);color:var(--accent);margin-top:3px;text-transform:uppercase;letter-spacing:.03em">📦 ${esc(d.package_label)}</div>` : ''}
           <div style="margin-top:2px">${statusDot}</div>
         </div>
         <div style="text-align:right;flex-shrink:0">
@@ -4406,6 +4636,8 @@ const DEAL_VAT_QUARTERS = {
 let dealsData = [];
 let _dealInv1 = null;
 let _dealInv2 = null;
+let _dealPackageMode = false;
+let _dealPackages = {}; // { [eventId]: { amount, label } }
 let _dealQFilter = 'all';
 let _dealYearFilter = 'all';
 let _dealEventFilter = '';
@@ -4661,16 +4893,23 @@ function renderDealsTable() {
       ${ec('tax_vat','number',d.tax_vat??'', d.tax_vat ? `${sym}${fmt(parseFloat(d.tax_vat))}` : '<span style="color:var(--muted)">—</span>', 'class="deal-num dt-r"')}
       ${ec('invoice_date','date',d.invoice_date||'', `${invDateStr||'<span style="color:var(--muted)">—</span>'}`)}
       ${ec('bank','select-bank',d.bank||'', `${esc(d.bank||'')||'<span style="color:var(--muted)">—</span>'}`)}
-      <td class="deal-cell-inv" data-id="${d.id}" onclick="openDealInvoicePanel(${d.id})" title="Click to upload / view invoices" style="cursor:pointer">
+      <td class="deal-cell-inv" data-id="${d.id}" onclick="openDealInvoicePanel(${d.id})" title="Click to upload / view invoice files" style="cursor:pointer">
         <span style="font-family:monospace;font-size:0.72rem;color:${d.invoice_number?'var(--text)':'var(--muted)'}">${d.invoice_number ? esc(d.invoice_number) : '—'}</span>
-        ${(d.invoice1_name||d.invoice2_name) ? `<span style="margin-left:4px;font-size:11px" title="${[d.invoice1_name,d.invoice2_name].filter(Boolean).join(', ')}">📎</span>` : ''}
+        ${(d.invoice1_name||d.invoice2_name)
+          ? `<span class="deal-inv-filed-badge" title="${[d.invoice1_name,d.invoice2_name].filter(Boolean).join(', ')}">📎 Filed</span>`
+          : `<span class="deal-inv-missing-badge" title="No invoice file uploaded yet">+ Add file</span>`}
       </td>
       <td class="deal-cell-toggle" onclick="dealToggleBool(${d.id},'signature_received',${!!d.signature_received})" style="text-align:center;cursor:pointer" title="Click to toggle">${d.signature_received ? '✅' : '<span style="color:var(--muted)">—</span>'}</td>
       ${ec('initials','text',d.initials||'', d.initials ? `<span class="deal-initials-badge">${esc(d.initials)}</span>` : '<span style="color:var(--muted)">—</span>', 'style="text-align:center"')}
       ${ec('notes','textarea',d.notes||'', notesDisplay)}
-      <td style="text-align:center;white-space:nowrap;padding:4px 6px">
-        <button class="btn btn-ghost btn-sm" onclick="event.stopPropagation();openInvoiceGenModal(${d.id})" style="padding:4px 8px;font-size:0.72rem;margin-bottom:3px;display:block;width:100%">📄 Invoice</button>
-        <button class="btn-icon btn-icon--danger" title="Delete" onclick="deleteDeal(${d.id})">🗑️</button>
+      <td class="deal-act-cell">
+        <button class="deal-act-invoice" onclick="event.stopPropagation();openInvoiceGenModal(${d.id})" title="Generate invoice document for this deal">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
+          Invoice
+        </button>
+        <button class="deal-act-del" onclick="event.stopPropagation();deleteDeal(${d.id})" title="Delete deal">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg>
+        </button>
       </td>
     </tr>`;
   }).join('');
@@ -4818,15 +5057,18 @@ function openDealInvoicePanel(dealId) {
   function slotHtml(n) {
     const name = n === 1 ? deal.invoice1_name : deal.invoice2_name;
     const label = n === 1 ? 'Invoice 1' : 'Invoice 2';
-    return `<div id="dealInvSlot${n}" style="border:1px solid var(--border);border-radius:10px;padding:14px 16px">
-      <div style="font:700 12px/1 var(--font-mono);text-transform:uppercase;letter-spacing:0.5px;color:var(--muted);margin-bottom:10px">${label}</div>
+    return `<div id="dealInvSlot${n}" style="border:1px solid ${name ? 'rgba(95,211,150,0.35)' : 'var(--border)'};background:${name ? 'var(--positive-soft)' : 'transparent'};border-radius:10px;padding:14px 16px">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+        <div style="font:700 12px/1 var(--font-mono);text-transform:uppercase;letter-spacing:0.5px;color:var(--muted)">${label}</div>
+        ${name ? '<span style="font:700 10px/1.6 var(--font-mono);color:var(--positive);background:rgba(95,211,150,0.18);padding:2px 8px;border-radius:20px">✓ ON FILE</span>' : ''}
+      </div>
       ${name
         ? `<div style="display:flex;align-items:center;gap:10px">
-            <a href="/api/deals/${dealId}/invoice/${n}" target="_blank" style="font-size:13px;font-weight:600;color:var(--primary);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(name)}">📄 ${esc(name)}</a>
+            <a href="/api/deals/${dealId}/invoice/${n}" target="_blank" style="font-size:13px;font-weight:600;color:var(--positive);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(name)}">📄 ${esc(name)}</a>
             <button class="btn btn-ghost btn-sm" style="color:var(--negative);flex-shrink:0" onclick="dealInvoiceDelete(${dealId},${n})">Remove</button>
           </div>`
         : `<label style="display:flex;align-items:center;gap:10px;cursor:pointer">
-            <span style="font-size:13px;color:var(--muted)">No file uploaded</span>
+            <span style="font-size:13px;color:var(--muted)">No file uploaded — sales team won't see a package doc here</span>
             <input type="file" accept=".pdf,.doc,.docx" style="display:none" onchange="dealInvoiceUpload(event,${dealId},${n})">
             <button class="btn btn-ghost btn-sm" onclick="this.previousElementSibling.click()">Upload PDF / Word</button>
           </label>`
@@ -6767,12 +7009,20 @@ async function cycleDealStatus(id, newStatus) {
 
 async function openDealModal(id, defaultStage) {
   _dealInv1 = null; _dealInv2 = null;
+  _dealPackageMode = false;
+  _dealPackages = {};
   document.getElementById('dealEditId').value = id || '';
   document.getElementById('dealModalTitle').textContent = id ? 'Edit Deal' : 'Add Deal';
+  document.querySelector('#dealModal .modal').classList.toggle('deal-modal-editing', !!id);
   document.getElementById('dealInv1Preview').textContent = '';
   document.getElementById('dealInv2Preview').textContent = '';
   document.getElementById('dealInv1File').value = '';
   document.getElementById('dealInv2File').value = '';
+  document.getElementById('dealPackageRows').classList.add('hidden');
+  document.getElementById('dealPackageRows').innerHTML = '';
+  document.getElementById('dealSplitPreview').classList.remove('hidden');
+  const pkgBtn = document.getElementById('dealPackageToggleBtn');
+  if (pkgBtn) pkgBtn.textContent = '📦 Custom Package Split';
 
   // Load events into checkbox picker
   let _evs = [];
@@ -6795,14 +7045,19 @@ async function openDealModal(id, defaultStage) {
     document.getElementById('dealTaxVat').value = d.tax_vat || '';
     document.getElementById('dealInvoiceNumber').value = d.invoice_number || '';
     document.getElementById('dealInvoiceDate').value = d.invoice_date ? d.invoice_date.split('T')[0] : '';
-    document.getElementById('dealMonth').value = d.deal_month || '';
+    document.getElementById('dealMonth').value = d.deal_month || dealMonthLabel(d.invoice_date || d.created_at || new Date());
     document.getElementById('dealInvSent').value = d.invoice_agreement_sent ? 'true' : 'false';
     document.getElementById('dealSigReceived').value = d.signature_received ? 'true' : 'false';
     document.getElementById('dealNotes').value = d.notes || '';
     _selectedEvIds = Array.isArray(d.events) ? d.events.map(e => e.event_id).filter(Boolean) : [];
+    // If this deal has any per-event package label or an uneven split, restore custom package mode
+    if (Array.isArray(d.events) && d.events.some(e => e.package_label)) {
+      _dealPackageMode = true;
+      d.events.forEach(e => { _dealPackages[e.event_id] = { amount: e.allocated_amount, label: e.package_label || '' }; });
+    }
     if (d.invoice1_name) document.getElementById('dealInv1Preview').textContent = `Current: ${d.invoice1_name}`;
     if (d.invoice2_name) document.getElementById('dealInv2Preview').textContent = `Current: ${d.invoice2_name}`;
-    selectDealPayment(d.bank === 'Stripe' ? 'Stripe' : 'Bank');
+    setDealPayment(d.bank === 'Stripe' ? 'Stripe' : d.bank ? 'HSBC' : '');
   } else {
     document.getElementById('dealTitle').value = '';
     document.getElementById('dealCompany').value = '';
@@ -6814,12 +7069,13 @@ async function openDealModal(id, defaultStage) {
     document.getElementById('dealTaxVat').value = '';
     document.getElementById('dealInvoiceNumber').value = '';
     document.getElementById('dealInvoiceDate').value = '';
-    document.getElementById('dealMonth').value = '';
+    // Business month auto-fills from when the deal is entered (e.g. "26 - Jul")
+    document.getElementById('dealMonth').value = dealMonthLabel(new Date());
     document.getElementById('dealInvSent').value = 'false';
     document.getElementById('dealSigReceived').value = 'false';
     document.getElementById('dealNotes').value = '';
     _selectedEvIds = [];
-    selectDealPayment('Bank');
+    setDealPayment('');
   }
 
   // Render checkbox list (sorted by date desc, then name)
@@ -6843,23 +7099,34 @@ async function openDealModal(id, defaultStage) {
   const searchEl = document.getElementById('dealEventsSearch');
   if (searchEl) searchEl.value = '';
   updateDealSplitPreview();
+  if (_dealPackageMode) { _dealPackageMode = false; toggleDealPackageMode(); }
   openModal('dealModal');
+}
+
+// "26 - Jul" style label from a Date (or parseable date string)
+function dealMonthLabel(d) {
+  const dt = d instanceof Date ? d : new Date(d);
+  if (isNaN(dt.getTime())) return '';
+  const MONS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  return String(dt.getFullYear()).slice(2) + ' - ' + MONS[dt.getMonth()];
 }
 
 function autofillDealMonth() {
   const dateVal = document.getElementById('dealInvoiceDate').value;
   const monthEl = document.getElementById('dealMonth');
   if (!dateVal || monthEl.value.trim()) return; // don't overwrite if already set
-  const MONS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
-  const yy = dateVal.slice(2, 4);
-  const mo = parseInt(dateVal.slice(5, 7), 10) - 1;
-  monthEl.value = `${yy} - ${MONS[mo]}`;
+  monthEl.value = dealMonthLabel(dateVal + 'T12:00:00');
 }
 
+function setDealPayment(value) {
+  document.getElementById('dealBank').value = value || '';
+  document.getElementById('dealPayBank')?.classList.toggle('active', value === 'HSBC');
+  document.getElementById('dealPayStripe')?.classList.toggle('active', value === 'Stripe');
+}
 function selectDealPayment(method) {
-  document.getElementById('dealBank').value = method;
-  document.getElementById('dealPayBank')?.classList.toggle('active', method === 'Bank');
-  document.getElementById('dealPayStripe')?.classList.toggle('active', method === 'Stripe');
+  // Clicking the already-active method unsets it — no payment method by default
+  const cur = document.getElementById('dealBank').value;
+  setDealPayment(cur === method ? '' : method);
 }
 
 function fillNextInvoiceNumber() {
@@ -6885,6 +7152,7 @@ function updateDealSplitPreview() {
   const checked = Array.from(document.querySelectorAll('#dealEventsCheckboxes input[type="checkbox"]:checked'));
   const countEl = document.getElementById('dealEventsCount');
   if (countEl) countEl.textContent = checked.length ? `· ${checked.length} selected` : '';
+  if (_dealPackageMode) { renderDealPackageRows(); return; }
   const amount = parseFloat(document.getElementById('dealAmount').value) || 0;
   const sym = { GBP:'£', USD:'$', AED:'AED ', PHP:'₱', EUR:'€' }[document.getElementById('dealCurrency')?.value] || '';
   const preview = document.getElementById('dealSplitPreview');
@@ -6896,6 +7164,72 @@ function updateDealSplitPreview() {
     preview.textContent = `${sym}${fmt(amount)} allocated to ${label}`;
   } else {
     preview.textContent = '';
+  }
+}
+
+function toggleDealPackageMode() {
+  _dealPackageMode = !_dealPackageMode;
+  const btn = document.getElementById('dealPackageToggleBtn');
+  const rows = document.getElementById('dealPackageRows');
+  const preview = document.getElementById('dealSplitPreview');
+  if (_dealPackageMode) {
+    btn.textContent = '↩ Use Even Split';
+    btn.classList.add('active');
+    rows.classList.remove('hidden');
+    preview.classList.add('hidden');
+    renderDealPackageRows();
+  } else {
+    btn.textContent = '📦 Custom Package Split';
+    btn.classList.remove('active');
+    rows.classList.add('hidden');
+    preview.classList.remove('hidden');
+    updateDealSplitPreview();
+  }
+}
+
+function renderDealPackageRows() {
+  const rows = document.getElementById('dealPackageRows');
+  if (!rows) return;
+  const checked = Array.from(document.querySelectorAll('#dealEventsCheckboxes input[type="checkbox"]:checked'));
+  const sym = { GBP:'£', USD:'$', AED:'AED ', PHP:'₱', EUR:'€' }[document.getElementById('dealCurrency')?.value] || '';
+  if (!checked.length) {
+    rows.innerHTML = '<div style="font:500 12px/1 var(--font-mono);color:var(--muted);padding:6px 0">Select events above to allocate a custom package to each.</div>';
+    return;
+  }
+  rows.innerHTML = checked.map(cb => {
+    const evId = parseInt(cb.value);
+    const label = cb.closest('label')?.querySelector('span')?.textContent || '';
+    const existing = _dealPackages[evId] || {};
+    return `<div class="deal-package-row">
+      <span class="dpr-name" title="${esc(label)}">${esc(label)}</span>
+      <input type="text" placeholder="Package e.g. Exhibitor" value="${esc(existing.label || '')}"
+        style="width:150px" oninput="dealPackageEdit(${evId},'label',this.value)">
+      <span style="font:600 12px/1 var(--font-mono);color:var(--muted)">${sym}</span>
+      <input type="number" min="0" step="0.01" placeholder="0.00" value="${existing.amount != null ? existing.amount : ''}"
+        style="width:100px" oninput="dealPackageEdit(${evId},'amount',this.value)">
+    </div>`;
+  }).join('');
+  const total = Object.values(_dealPackages).reduce((s, p) => s + (parseFloat(p.amount) || 0), 0);
+  const dealAmount = parseFloat(document.getElementById('dealAmount').value) || 0;
+  const diff = dealAmount - total;
+  rows.innerHTML += `<div style="font:600 11px/1 var(--font-mono);color:${Math.abs(diff) < 0.01 ? 'var(--positive)' : 'var(--warning)'};padding:2px 2px 0">
+    Allocated ${sym}${fmt(total)} of ${sym}${fmt(dealAmount)} deal value ${Math.abs(diff) >= 0.01 ? `(${diff > 0 ? sym+fmt(diff)+' unallocated' : 'over-allocated by '+sym+fmt(Math.abs(diff))})` : '— fully allocated'}
+  </div>`;
+}
+
+function dealPackageEdit(evId, field, value) {
+  if (!_dealPackages[evId]) _dealPackages[evId] = {};
+  _dealPackages[evId][field] = field === 'amount' ? value : value;
+  // Re-render just the totals line without losing focus: recompute totals only
+  const rows = document.getElementById('dealPackageRows');
+  const totalLine = rows?.lastElementChild;
+  const sym = { GBP:'£', USD:'$', AED:'AED ', PHP:'₱', EUR:'€' }[document.getElementById('dealCurrency')?.value] || '';
+  const total = Object.values(_dealPackages).reduce((s, p) => s + (parseFloat(p.amount) || 0), 0);
+  const dealAmount = parseFloat(document.getElementById('dealAmount').value) || 0;
+  const diff = dealAmount - total;
+  if (totalLine && totalLine.tagName === 'DIV' && totalLine.textContent.includes('Allocated')) {
+    totalLine.style.color = Math.abs(diff) < 0.01 ? 'var(--positive)' : 'var(--warning)';
+    totalLine.textContent = `Allocated ${sym}${fmt(total)} of ${sym}${fmt(dealAmount)} deal value ${Math.abs(diff) >= 0.01 ? `(${diff > 0 ? sym+fmt(diff)+' unallocated' : 'over-allocated by '+sym+fmt(Math.abs(diff))})` : '— fully allocated'}`;
   }
 }
 
@@ -6944,6 +7278,13 @@ async function saveDeal() {
     notes: document.getElementById('dealNotes').value.trim(),
     event_ids
   };
+  if (_dealPackageMode) {
+    body.event_packages = event_ids.map(evId => ({
+      event_id: evId,
+      amount: parseFloat(_dealPackages[evId]?.amount) || 0,
+      package_label: (_dealPackages[evId]?.label || '').trim()
+    }));
+  }
   if (_dealInv1) { body.invoice1_name = _dealInv1.name; body.invoice1_data = _dealInv1.data; }
   if (_dealInv2) { body.invoice2_name = _dealInv2.name; body.invoice2_data = _dealInv2.data; }
 
@@ -7411,7 +7752,11 @@ async function loadEmployeeCalendar() {
         '<div class="modal-header"><span class="modal-title">Request Day Off</span>' +
           '<button class="modal-close" onclick="closeModal(\'empDayOffModal\')">×</button></div>' +
         '<div style="padding:20px;display:flex;flex-direction:column;gap:14px">' +
-          '<div class="form-group"><label>Date</label><input type="date" id="empDayOffDate"></div>' +
+          '<div id="empDayOffRangeNote" class="hidden" style="font:600 12px/1.4 var(--font-sans);color:var(--accent);background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:8px 10px"></div>' +
+          '<div class="form-row" style="display:flex;gap:10px">' +
+            '<div class="form-group" style="flex:1"><label>From</label><input type="date" id="empDayOffDate" onchange="empDayOffSyncEnd()"></div>' +
+            '<div class="form-group" style="flex:1"><label>To</label><input type="date" id="empDayOffEndDate"></div>' +
+          '</div>' +
           '<div class="form-group"><label>Type</label>' +
             '<select id="empDayOffType"><option value="1">Full Day</option><option value="0.5">Half Day</option></select></div>' +
           '<div class="form-group"><label>Reason <span style="color:var(--muted);font-weight:400">(required)</span></label><textarea id="empDayOffReason" class="form-control" rows="3" placeholder="e.g. Medical appointment, personal matter..."></textarea></div>' +
@@ -7499,8 +7844,8 @@ async function loadEmployeeCalendar() {
       }
 
       gridHtml +=
-        '<div class="emp-cal-day" style="background:' + bg + ';border:' + border + ';border-radius:8px;padding:8px 6px 6px;min-height:72px;cursor:pointer;display:flex;flex-direction:column;align-items:center"'
-        + ' onclick="empDayClick(\'' + dateStr + '\')">' +
+        '<div class="emp-cal-day" data-date="' + dateStr + '" style="background:' + bg + ';border:' + border + ';border-radius:8px;padding:8px 6px 6px;min-height:72px;cursor:pointer;display:flex;flex-direction:column;align-items:center;user-select:none"'
+        + ' onmousedown="empDayMouseDown(event,\'' + dateStr + '\')" onmouseenter="empDayMouseEnter(\'' + dateStr + '\')" ontouchstart="empDayMouseDown(event,\'' + dateStr + '\')">' +
           '<div style="font:' + (isToday?'800':'700') + ' 15px/1 var(--font-mono);color:' + (isToday?'var(--primary)':isPast?'var(--dim)':'var(--text)') + ';width:100%;text-align:center">' + d + '</div>' +
           statusBar + teamHtml +
         '</div>';
@@ -7553,7 +7898,7 @@ async function loadEmployeeCalendar() {
           '<div class="card-header"><span class="card-title">Team Calendar</span>' +
             '<span style="font:700 11px/1 var(--font-mono);color:var(--muted)">' + myRequests.length + ' request' + (myRequests.length!==1?'s':'') + ' this month</span></div>' +
           '<div style="padding:16px">' + gridHtml + '</div>' +
-          '<div style="padding:0 16px 12px;font:500 11px/1 var(--font-mono);color:var(--muted)">Click any date to see details or request a day off</div>' +
+          '<div style="padding:0 16px 12px;font:500 11px/1 var(--font-mono);color:var(--muted)">Click a date for details, or click-and-drag across multiple dates to request them all at once</div>' +
         '</div>' +
         '<div class="card"><div class="card-header"><span class="card-title">What\'s Coming Up</span><span style="font:700 11px/1 var(--font-mono);color:var(--muted)">NEXT 60D</span></div>' +
           '<div style="padding:4px 16px 12px">' + (remHtml || '<div style="color:var(--muted);font-size:0.82rem;padding:12px 0">No upcoming team events or days off</div>') + '</div>' +
@@ -7673,26 +8018,109 @@ function showEmpDeclineReason(reason) {
 }
 
 function openEmpDayOffModal() {
-  document.getElementById('empDayOffDate').value = new Date().toISOString().slice(0,10);
+  const d = new Date().toISOString().slice(0,10);
+  document.getElementById('empDayOffDate').value = d;
+  document.getElementById('empDayOffEndDate').value = d;
   document.getElementById('empDayOffReason').value = '';
+  document.getElementById('empDayOffRangeNote').classList.add('hidden');
   openModal('empDayOffModal');
 }
 function openEmpDayOffModalDate(date) {
   document.getElementById('empDayOffDate').value = date;
+  document.getElementById('empDayOffEndDate').value = date;
   document.getElementById('empDayOffReason').value = '';
+  document.getElementById('empDayOffRangeNote').classList.add('hidden');
   openModal('empDayOffModal');
+}
+function openEmpDayOffModalRange(startDate, endDate) {
+  document.getElementById('empDayOffDate').value = startDate;
+  document.getElementById('empDayOffEndDate').value = endDate;
+  document.getElementById('empDayOffReason').value = '';
+  const days = empDateRange(startDate, endDate).length;
+  const note = document.getElementById('empDayOffRangeNote');
+  note.textContent = '📅 Requesting ' + days + ' day' + (days !== 1 ? 's' : '') + ': ' + startDate + ' → ' + endDate;
+  note.classList.remove('hidden');
+  openModal('empDayOffModal');
+}
+function empDayOffSyncEnd() {
+  const start = document.getElementById('empDayOffDate').value;
+  const endEl = document.getElementById('empDayOffEndDate');
+  if (start && (!endEl.value || endEl.value < start)) endEl.value = start;
+}
+function empDateRange(start, end) {
+  const dates = [];
+  let d = new Date(start + 'T12:00:00');
+  const last = new Date(end + 'T12:00:00');
+  while (d <= last) {
+    dates.push(d.toISOString().slice(0,10));
+    d.setDate(d.getDate() + 1);
+  }
+  return dates;
 }
 
 async function submitEmpDayOff() {
-  const date = document.getElementById('empDayOffDate').value;
+  const start = document.getElementById('empDayOffDate').value;
+  const end = document.getElementById('empDayOffEndDate').value || start;
   const is_day_off = document.getElementById('empDayOffType').value;
   const reason = (document.getElementById('empDayOffReason').value || '').trim();
-  if (!date) return showToast('Please select a date', 'error');
+  if (!start) return showToast('Please select a date', 'error');
   if (!reason) return showToast('Please add a reason for your request', 'error');
-  const res = await fetch('/api/employee/day-off', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ date, is_day_off, reason }) });
-  const data = await res.json();
-  if (res.ok) { closeModal('empDayOffModal'); showToast('Day off submitted!', 'success'); loadEmployeeCalendar(); }
-  else showToast(data.error || 'Failed', 'error');
+  const dates = empDateRange(start, end > start ? end : start);
+  let ok = 0, fail = 0;
+  for (const date of dates) {
+    const res = await fetch('/api/employee/day-off', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ date, is_day_off, reason }) });
+    if (res.ok) ok++; else fail++;
+  }
+  closeModal('empDayOffModal');
+  if (ok > 0) showToast(ok === 1 ? 'Day off submitted!' : ok + ' day-off requests submitted!' + (fail ? ` (${fail} skipped — already booked)` : ''), 'success');
+  else showToast('Request failed — those dates may already be booked', 'error');
+  loadEmployeeCalendar();
+}
+
+// ─── Calendar drag-to-select multiple days ────────────────────────────────
+let _empDragAnchor = null, _empDragCurrent = null, _empDragActive = false, _empDragListenersBound = false;
+
+function empDayMouseDown(e, dateStr) {
+  if (e.type === 'mousedown' && e.button !== 0) return;
+  _empDragAnchor = dateStr; _empDragCurrent = dateStr; _empDragActive = true;
+  empUpdateDragHighlight();
+  if (!_empDragListenersBound) {
+    _empDragListenersBound = true;
+    document.addEventListener('mouseup', empDragFinish);
+    document.addEventListener('touchend', empDragFinish);
+    document.addEventListener('touchmove', e2 => {
+      if (!_empDragActive || !e2.touches.length) return;
+      const t = e2.touches[0];
+      const el = document.elementFromPoint(t.clientX, t.clientY);
+      const cell = el && el.closest ? el.closest('.emp-cal-day') : null;
+      if (cell && cell.dataset.date) { _empDragCurrent = cell.dataset.date; empUpdateDragHighlight(); }
+    }, { passive: true });
+  }
+}
+function empDayMouseEnter(dateStr) {
+  if (!_empDragActive) return;
+  _empDragCurrent = dateStr;
+  empUpdateDragHighlight();
+}
+function empUpdateDragHighlight() {
+  if (!_empDragActive || !_empDragAnchor || !_empDragCurrent) return;
+  const a = _empDragAnchor < _empDragCurrent ? _empDragAnchor : _empDragCurrent;
+  const b = _empDragAnchor < _empDragCurrent ? _empDragCurrent : _empDragAnchor;
+  document.querySelectorAll('.emp-cal-day').forEach(el => {
+    const d = el.dataset.date;
+    el.classList.toggle('emp-cal-day-dragsel', !!d && d >= a && d <= b);
+  });
+}
+function empDragFinish() {
+  if (!_empDragActive) return;
+  _empDragActive = false;
+  document.querySelectorAll('.emp-cal-day-dragsel').forEach(el => el.classList.remove('emp-cal-day-dragsel'));
+  const a = _empDragAnchor, b = _empDragCurrent;
+  _empDragAnchor = null; _empDragCurrent = null;
+  if (!a) return;
+  if (a === b) { empDayClick(a); return; }
+  const start = a < b ? a : b, end = a < b ? b : a;
+  openEmpDayOffModalRange(start, end);
 }
 
 async function cancelEmpDayOff(date) {
@@ -8170,6 +8598,53 @@ async function ekEmpClearAgenda(eid, slot = 1) {
 }
 
 // ── Invoice Generator ──────────────────────────────────────────────────────────
+// Add an event card to the invoice generator. Each event carries its own
+// package and its own benefit bullet points — mirroring the deal tracker's
+// custom package split (e.g. London = Exhibitor, Miami = Delegate Tickets).
+function igAddEventRow(name, pkg, amount, benefits) {
+  const wrap = document.getElementById('igEventsList');
+  if (!wrap) return;
+  const card = document.createElement('div');
+  card.className = 'ig-event-card';
+
+  const row = document.createElement('div');
+  row.className = 'ig-event-row';
+  const n = document.createElement('input');
+  n.type = 'text'; n.className = 'ig-ev-name';
+  n.placeholder = 'Event — e.g. 4th Annual CFO Summit';
+  n.value = name || '';
+  const p = document.createElement('input');
+  p.type = 'text'; p.className = 'ig-ev-pkg';
+  p.placeholder = 'Package — e.g. Exhibitor';
+  p.value = pkg || '';
+  const a = document.createElement('input');
+  a.type = 'text'; a.className = 'ig-ev-amt';
+  a.placeholder = '£3,750';
+  a.value = amount || '';
+  const x = document.createElement('button');
+  x.type = 'button'; x.className = 'ig-ev-del'; x.title = 'Remove event';
+  x.textContent = '✕';
+  x.onclick = () => card.remove();
+  row.append(n, p, a, x);
+
+  const b = document.createElement('textarea');
+  b.className = 'ig-ev-benefits'; b.rows = 3;
+  b.placeholder = 'Package details for this event, one per line — e.g.\nSpeaker on a Panel (subject to availability)\n2 delegate passes';
+  b.value = benefits || '';
+
+  card.append(row, b);
+  wrap.appendChild(card);
+}
+
+function igCollectEventObjs() {
+  return Array.from(document.querySelectorAll('#igEventsList .ig-event-card')).map(c => ({
+    name: c.querySelector('.ig-ev-name').value.trim(),
+    pkg: c.querySelector('.ig-ev-pkg').value.trim(),
+    amount: c.querySelector('.ig-ev-amt').value.trim(),
+    benefits: c.querySelector('.ig-ev-benefits').value.split('\n').map(s => s.trim()).filter(Boolean)
+  })).filter(e => e.name);
+}
+
 function openInvoiceGenModal(dealId) {
   const deal = dealsData.find(d => d.id === dealId);
   if (!deal) return;
@@ -8187,7 +8662,18 @@ function openInvoiceGenModal(dealId) {
   document.getElementById('igEmail').value = '';
   document.getElementById('igInvoiceNum').value = deal.invoice_number || '';
   document.getElementById('igDate').value = new Date().toLocaleDateString('en-GB');
-  document.getElementById('igEventName').value = '';
+  // Pre-fill events from the deal's linked events, carrying over any
+  // custom package allocation (label + per-event amount)
+  document.getElementById('igEventsList').innerHTML = '';
+  const linked = Array.isArray(deal.events) ? deal.events.filter(e => e.event_name) : [];
+  if (linked.length) {
+    linked.forEach(e => {
+      const alloc = parseFloat(e.allocated_amount) || 0;
+      igAddEventRow(e.event_name, e.package_label || '', alloc > 0 ? sym + fmt(alloc) : '', '');
+    });
+  } else {
+    igAddEventRow();
+  }
   document.getElementById('igPackageName').value = '';
   document.getElementById('igAmountExVat').value = amtEx ? Number(amtEx).toLocaleString('en-GB') : '';
   document.getElementById('igVatAmount').value = vatAmt;
@@ -8202,26 +8688,144 @@ function closeInvoiceGenModal() {
   document.getElementById('invoiceGenModal').classList.remove('open');
 }
 
-async function generateInvoice() {
-  const btn = document.getElementById('igGenerateBtn');
-  btn.disabled = true; btn.textContent = 'Generating…';
+function igCollectPayload() {
+  const evs = igCollectEventObjs();
+  const globalBenefits = document.getElementById('igBenefits').value.split('\n').map(s => s.trim()).filter(Boolean);
 
-  const payload = {
+  // Events list on page 2: "Event Name — £3,750" one per line
+  const eventLines = evs.map(e => [e.name, e.amount].filter(Boolean).join(' — '));
+
+  // Benefits: a block per event ("Event — Package" header + its bullets),
+  // then any general benefits that apply to the whole package.
+  let benefits = [];
+  const withDetail = evs.filter(e => e.pkg || e.benefits.length);
+  if (withDetail.length) {
+    withDetail.forEach(e => {
+      benefits.push(e.pkg ? `${e.name} — ${e.pkg}` : e.name);
+      benefits.push(...e.benefits);
+      benefits.push('');
+    });
+    if (globalBenefits.length) benefits.push(...globalBenefits);
+    else benefits.pop(); // drop trailing blank line
+  } else {
+    benefits = globalBenefits;
+  }
+
+  return {
     contact_name:   document.getElementById('igContact').value.trim(),
     company_name:   document.getElementById('igCompany').value.trim(),
     address:        document.getElementById('igAddress').value.trim(),
     email:          document.getElementById('igEmail').value.trim(),
     invoice_number: document.getElementById('igInvoiceNum').value.trim(),
     date:           document.getElementById('igDate').value.trim(),
-    event_name:     document.getElementById('igEventName').value.trim(),
+    event_name:     eventLines.join('\n'),
     package_name:   document.getElementById('igPackageName').value.trim(),
     amount_ex_vat:  document.getElementById('igAmountExVat').value.trim(),
     vat_amount:     document.getElementById('igVatAmount').value.trim(),
     total_due:      document.getElementById('igTotalDue').value.trim(),
     client_name:    document.getElementById('igClientName').value.trim(),
-    benefits:       document.getElementById('igBenefits').value.split('\n').map(s => s.trim()).filter(Boolean),
+    benefits,
     additional_notes: document.getElementById('igAdditionalNotes').value.trim(),
   };
+}
+
+// On-screen replica of invoice_template.docx populated with the exact values
+// that will be sent to it, so details can be checked before generating.
+function previewInvoice() {
+  const p = igCollectPayload();
+  const benefits = p.benefits.map(b =>
+    b === '' ? '<div class="ig-benefit-gap"></div>' : `<div class="ig-benefit">${esc(b)}</div>`
+  ).join('');
+  const amt = esc(p.amount_ex_vat || '—');
+
+  const page1 = `<div class="ig-page">
+    <div class="ig-band"><img src="/invoice_logo.png" alt="LPGP Connect"></div>
+    <div class="ig-inv-title">INVOICE</div>
+    <div class="ig-addr-row">
+      <div class="ig-addr">
+        <div class="ig-addr-co">LPGPCONNECT.COM LTD</div>
+        <div>1 Oakcroft Road</div><div>Trident Court</div><div>Studio 111</div><div>KT9 1BD</div>
+      </div>
+      <div class="ig-date"><strong>Date:</strong> ${esc(p.date || '—')}</div>
+    </div>
+    <div class="ig-client">
+      <div class="ig-client-hd">CLIENT</div>
+      <div>Contact: ${esc(p.contact_name || '—')}</div>
+      <div>Company: ${esc(p.company_name || '—')}</div>
+      <div>Address: ${esc(p.address || '—')}</div>
+      <div>Email: ${esc(p.email || '—')}</div>
+      <div>Invoice Number: ${esc(p.invoice_number || '—')}</div>
+    </div>
+    <table class="ig-items">
+      <thead><tr><th>Description</th><th>Unit price</th><th>Total</th></tr></thead>
+      <tbody>
+        <tr>
+          <td><strong>Please refer to your sponsorship &amp; benefits in Page 2</strong></td>
+          <td>£ ${amt}</td><td>£ ${amt}</td>
+        </tr>
+        <tr class="ig-sumrow"><td></td><td>SUBTOTAL</td><td>£ ${amt}</td></tr>
+        <tr class="ig-sumrow"><td></td><td>VAT 20%</td><td>£ ${esc(p.vat_amount || '—')}</td></tr>
+        <tr class="ig-sumrow ig-due"><td></td><td>TOTAL DUE</td><td>£ ${esc(p.total_due || '—')}</td></tr>
+      </tbody>
+    </table>
+    <div class="ig-contact-line">If you have any questions concerning this invoice, contact accounts.payable@lpgpconnect.com</div>
+    <div class="ig-bank">
+      <div>LPGPCONNECT.COM LTD</div>
+      <div>Account number: 42247054</div>
+      <div>Sort code: 40-26-12</div>
+      <div>Swift/BIC: HBUKGB4B</div>
+      <div>IBAN: GB32 HBUK40261242247054</div>
+      <div>Payment Reference: ${esc(p.company_name || 'Company Name')}</div>
+      <div>VAT Number: 371409111</div>
+    </div>
+    <div class="ig-terms-note">
+      <div>Payment is due within 7 days from invoice date</div>
+      <div class="ig-terms-sub">Immediate payment is due if booking has been made 30 days prior to the start of the conference date.</div>
+    </div>
+  </div>`;
+
+  const page2 = `<div class="ig-page">
+    <div class="ig-band"><img src="/invoice_logo.png" alt="LPGP Connect"></div>
+    <div class="ig-agree-title">LPGP Connect Agreement 2026</div>
+    <div class="ig-sec-hd">Sponsorship &amp; Benefits</div>
+    <div class="ig-events-lbl">Events:</div>
+    <div class="ig-event-name">${p.event_name ? p.event_name.split('\n').map(l => `<div>${esc(l)}</div>`).join('') : '—'}</div>
+    <div class="ig-pkg-name">${esc(p.package_name || '—')}</div>
+    ${benefits || '<div class="ig-benefit" style="color:#999">No benefits listed</div>'}
+    <div class="ig-total-cost">Total Cost - £${amt} plus VAT</div>
+    <div class="ig-sec-hd" style="margin-top:22px">Additional Comments:</div>
+    <div class="ig-comments">${esc(p.additional_notes || '—')}</div>
+  </div>`;
+
+  const page3 = `<div class="ig-page">
+    <div class="ig-agree-title" style="margin-top:6px">LPGP Connect Limited Terms &amp; Conditions</div>
+    <div class="ig-tc">
+      <div class="ig-tc-hd">Scope of Agreement</div>
+      <p>These are the conditions of the contract between you, the Sponsoring Client and LPGP Connect Limited. The above package includes the benefits to each event you are solicitated to (listed above). This agreement constitutes the entire agreement between LPGP Connect Limited and you.</p>
+      <div class="ig-tc-hd">Cancellations</div>
+      <p>Subject to the terms hereof, in the event of your cancellation 100% of the Total Fee is payable and non-refundable unless otherwise agreed to by LPGP Connect Limited. All cancellation requests must be submitted to us in writing…</p>
+      <div class="ig-tc-hd">Force Majeure</div>
+      <p>In the event that a party is prevented, hindered or delayed in or from performing any of its obligations under this agreement for any reason beyond its reasonable control… <em>(full text appears in the generated document)</em></p>
+    </div>
+    <div class="ig-sig">
+      <div class="ig-sig-name">${esc(p.client_name || '—')}</div>
+      <div class="ig-sig-line">Name</div>
+      <div class="ig-sig-line" style="margin-top:26px">Signature</div>
+    </div>
+  </div>`;
+
+  document.getElementById('igPreviewSheet').innerHTML =
+    `<div class="ig-pageno">Page 1 — Invoice</div>${page1}` +
+    `<div class="ig-pageno">Page 2 — Sponsorship &amp; Benefits</div>${page2}` +
+    `<div class="ig-pageno">Page 3 — Terms &amp; Signature</div>${page3}`;
+  openModal('invoicePreviewModal');
+}
+
+async function generateInvoice() {
+  const btn = document.getElementById('igGenerateBtn');
+  btn.disabled = true; btn.textContent = 'Generating…';
+
+  const payload = igCollectPayload();
 
   try {
     const res = await fetch('/api/generate-invoice', {

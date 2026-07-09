@@ -99,6 +99,10 @@
         <span class="icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="7" width="20" height="14" rx="2" ry="2"/><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/></svg></span>
         <span class="nav-label">Portfolio</span>
       </div>
+      <div class="nav-item admin-manager-only hidden" data-page="expenses">
+        <span class="icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h16v16H4z"/><path d="M9 9h6M9 13h6M9 17h3"/></svg></span>
+        <span class="nav-label">Expenses</span>
+      </div>
       <div class="nav-item admin-manager-only hidden" data-page="subscriptions">
         <span class="icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="5" width="20" height="14" rx="2"/><line x1="2" y1="10" x2="22" y2="10"/></svg></span>
         <span class="nav-label">Subscriptions</span>
@@ -483,6 +487,55 @@
         </div>
       </div>
 
+      <!-- ══ EXPENSES ══ -->
+      <div class="page" id="page-expenses">
+        <div class="filter-bar" style="align-items:center;gap:10px;flex-wrap:wrap">
+          <div class="deal-q-filters" id="expQFilters">
+            <button class="deal-q-btn active" data-eq="all" onclick="setExpQuarter(this,'all')">All</button>
+            <button class="deal-q-btn" data-eq="Q1" onclick="setExpQuarter(this,'Q1')">Q1 (Nov–Jan)</button>
+            <button class="deal-q-btn" data-eq="Q2" onclick="setExpQuarter(this,'Q2')">Q2 (Feb–Apr)</button>
+            <button class="deal-q-btn" data-eq="Q3" onclick="setExpQuarter(this,'Q3')">Q3 (May–Jul)</button>
+            <button class="deal-q-btn" data-eq="Q4" onclick="setExpQuarter(this,'Q4')">Q4 (Aug–Oct)</button>
+          </div>
+          <div class="deal-q-filters" id="expVatFilters">
+            <button class="deal-q-btn active" data-ev="all" onclick="setExpVat(this,'all')">All</button>
+            <button class="deal-q-btn" data-ev="vat" onclick="setExpVat(this,'vat')">VAT</button>
+            <button class="deal-q-btn" data-ev="non_vat" onclick="setExpVat(this,'non_vat')">Non-VAT</button>
+          </div>
+          <input type="search" id="expSearch" placeholder="Search expenses…" oninput="renderExpTable()" style="border:1.5px solid var(--border);border-radius:9px;padding:8px 13px;font-size:0.85rem;font-family:inherit;outline:none;background:var(--bg-2);color:var(--text);min-width:180px" />
+          <button class="btn btn-primary" style="margin-left:auto" onclick="openExpModal()">+ Add Expense</button>
+        </div>
+
+        <div id="expSummary" style="margin-bottom:20px"></div>
+
+        <div class="card" style="padding:0;overflow:hidden">
+          <div class="card-header" style="padding:16px 20px;margin:0;border-radius:var(--radius) var(--radius) 0 0">
+            <span class="card-title">Company Expenses</span>
+            <span id="expRowCount" style="font-size:0.78rem;color:var(--muted)"></span>
+          </div>
+          <div class="table-wrap">
+            <table id="expTable">
+              <thead>
+                <tr>
+                  <th>Date</th>
+                  <th>Category</th>
+                  <th>Description</th>
+                  <th>VAT</th>
+                  <th style="text-align:right">Amount</th>
+                  <th>Receipt</th>
+                  <th style="width:36px"></th>
+                </tr>
+              </thead>
+              <tbody id="expTableBody"></tbody>
+            </table>
+          </div>
+          <div id="expEmpty" class="empty-state hidden">
+            <div class="icon">🧾</div>
+            <div>No expenses logged yet. Click "+ Add Expense" to get started.</div>
+          </div>
+        </div>
+      </div>
+
       <!-- ══ SUBSCRIPTIONS ══ -->
       <div class="page" id="page-subscriptions">
         <div class="deal-filter-card deal-filter-actions" style="margin-bottom:16px">
@@ -593,11 +646,11 @@
         <col style="width:96px">   <!-- Tax/VAT -->
         <col style="width:88px">   <!-- Invoice Date -->
         <col style="width:72px">   <!-- Bank -->
-        <col style="width:160px">  <!-- Invoice # -->
-        <col style="width:58px">   <!-- Signed -->
+        <col style="width:150px">  <!-- Invoice # -->
+        <col style="width:66px">   <!-- Signed -->
         <col style="width:46px">   <!-- By -->
         <col>                      <!-- Notes (fills remaining) -->
-        <col style="width:80px">   <!-- Actions -->
+        <col style="width:118px">  <!-- Actions -->
       </colgroup>
       <thead><tr>
         <th></th>
@@ -1244,6 +1297,80 @@
   </div>
 </div>
 
+<!-- Expense Modal -->
+<div class="modal-overlay" id="expModal">
+  <div class="modal">
+    <div class="modal-header">
+      <h2 id="expModalTitle">Add Expense</h2>
+      <button class="modal-close" onclick="closeModal('expModal')">✕</button>
+    </div>
+    <input type="hidden" id="expEditId" />
+    <div class="form-row hm-2col">
+      <div class="form-group">
+        <label>Date *</label>
+        <input type="date" id="expDate" />
+      </div>
+      <div class="form-group">
+        <label>Category</label>
+        <select id="expCategory">
+          <option value="office">Office</option>
+          <option value="travel">Travel</option>
+          <option value="marketing">Marketing</option>
+          <option value="software">Software</option>
+          <option value="staff">Staff / HR</option>
+          <option value="event">Event Costs</option>
+          <option value="legal">Legal / Professional</option>
+          <option value="other" selected>Other</option>
+        </select>
+      </div>
+    </div>
+    <div class="form-group">
+      <label>Description *</label>
+      <input type="text" id="expDescription" placeholder="e.g. Office printer ink" />
+    </div>
+    <div class="form-row hm-3col">
+      <div class="form-group">
+        <label id="expAmountLbl">Amount</label>
+        <input type="number" id="expAmount" step="0.01" placeholder="0.00" />
+      </div>
+      <div class="form-group">
+        <label>Currency</label>
+        <select id="expCurrency">
+          <option>GBP</option><option>USD</option><option>EUR</option><option>AED</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label>VAT Status</label>
+        <select id="expVatStatus" onchange="expVatToggle()">
+          <option value="non_vat">Non-VAT</option>
+          <option value="vat">VAT</option>
+        </select>
+      </div>
+    </div>
+    <div class="form-group hidden" id="expVatAmountRow">
+      <label>VAT Amount <span style="font-weight:400;color:var(--muted)">(the VAT portion included in the total above)</span></label>
+      <input type="number" id="expVatAmount" step="0.01" placeholder="0.00" />
+    </div>
+    <div class="form-group">
+      <label>Notes</label>
+      <textarea id="expNotes" rows="2" placeholder="Optional notes"></textarea>
+    </div>
+    <div class="form-group">
+      <label>Receipt</label>
+      <div id="expReceiptCurrent" class="hidden" style="display:flex;align-items:center;gap:10px;padding:10px 12px;background:var(--surface);border:1px solid var(--border);border-radius:8px;margin-bottom:8px">
+        <span style="font-size:18px">🧾</span>
+        <a id="expReceiptLink" href="#" target="_blank" style="font-weight:600;color:var(--accent);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"></a>
+        <button class="btn btn-ghost btn-sm" onclick="expRemoveReceipt()">Remove</button>
+      </div>
+      <input type="file" id="expReceiptFile" accept=".pdf,.png,.jpg,.jpeg" onchange="expReceiptPreview(this)" />
+    </div>
+    <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:12px">
+      <button class="btn btn-ghost" onclick="closeModal('expModal')">Cancel</button>
+      <button class="btn btn-primary" onclick="saveExpense()">Save Expense</button>
+    </div>
+  </div>
+</div>
+
 <!-- Hotel Expense Modal -->
 <div class="modal-overlay" id="hotelModal">
   <div class="modal hotel-modal">
@@ -1566,67 +1693,80 @@
         <div class="deal-modal-sec-label">Financials</div>
         <div class="form-row" style="margin:0;gap:10px">
           <div class="form-group" style="width:90px;margin:0">
+            <label class="deal-mini-lbl">Currency</label>
             <select id="dealCurrency" style="width:100%">
               <option value="GBP">£ GBP</option><option value="USD">$ USD</option>
               <option value="AED">AED</option><option value="PHP">₱ PHP</option><option value="EUR">€ EUR</option>
             </select>
           </div>
           <div class="form-group" style="flex:1;margin:0">
-            <input type="number" id="dealAmount" min="0" step="0.01" placeholder="Deal value *" oninput="updateDealSplitPreview()" style="width:100%">
-          </div>
-          <div class="form-group" style="flex:1;margin:0">
-            <input type="number" id="dealPaidIncVat" min="0" step="0.01" placeholder="Paid inc VAT" style="width:100%">
+            <label class="deal-mini-lbl">Deal Value *</label>
+            <input type="number" id="dealAmount" min="0" step="0.01" placeholder="0.00" oninput="updateDealSplitPreview()" style="width:100%">
           </div>
           <div class="form-group" style="width:100px;margin:0">
-            <input type="number" id="dealTaxVat" min="0" step="0.01" placeholder="VAT" style="width:100%">
+            <label class="deal-mini-lbl">VAT</label>
+            <input type="number" id="dealTaxVat" min="0" step="0.01" placeholder="0.00" style="width:100%">
+          </div>
+        </div>
+        <div class="deal-edit-only-row form-row" style="margin:10px 0 0;gap:10px">
+          <div class="form-group" style="flex:1;margin:0">
+            <label class="deal-mini-lbl">Paid (inc VAT)</label>
+            <input type="number" id="dealPaidIncVat" min="0" step="0.01" placeholder="Paid inc VAT" style="width:100%">
           </div>
         </div>
       </div>
 
-      <!-- Invoice -->
-      <div>
+      <!-- Invoice (edit only) -->
+      <div class="deal-edit-only-row">
         <div class="deal-modal-sec-label">Invoice</div>
         <div class="form-row" style="margin:0;gap:10px">
-          <div class="form-group" style="flex:1;margin:0">
-            <div style="display:flex;gap:6px;align-items:center">
-              <input type="text" id="dealInvoiceNumber" placeholder="Invoice number" style="flex:1;min-width:0">
-              <button type="button" class="btn btn-ghost" style="padding:6px 10px;font-size:0.75rem;white-space:nowrap;flex-shrink:0" onclick="fillNextInvoiceNumber()">Use Next</button>
-            </div>
-          </div>
           <div class="form-group" style="width:150px;margin:0">
-            <input type="date" id="dealInvoiceDate" style="width:100%">
+            <label class="deal-mini-lbl">Invoice Date</label>
+            <input type="date" id="dealInvoiceDate" style="width:100%" onchange="autofillDealMonth()">
           </div>
-          <div class="form-group" style="width:110px;margin:0">
-            <input type="text" id="dealMonth" placeholder="Month e.g. 26 - Jan" style="width:100%;font-size:0.82rem" title="Business month (e.g. 26 - Jan). Auto-filled from invoice date.">
+          <div class="form-group" style="width:130px;margin:0">
+            <label class="deal-mini-lbl">Business Month</label>
+            <input type="text" id="dealMonth" placeholder="e.g. 26 - Jul" style="width:100%;font-size:0.82rem" title="Auto-filled from the month the deal was added.">
+          </div>
+        </div>
+        <div class="form-row" style="margin:10px 0 0;gap:10px">
+          <div class="form-group" style="flex:1;margin:0;min-width:0">
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">
+              <label class="deal-mini-lbl" style="margin:0">Invoice Number</label>
+              <button type="button" class="btn btn-ghost" style="padding:3px 9px;font-size:0.7rem;white-space:nowrap" onclick="fillNextInvoiceNumber()">Use Next</button>
+            </div>
+            <input type="text" id="dealInvoiceNumber" placeholder="Invoice number" style="width:100%;font-family:var(--font-mono);font-size:0.85rem">
           </div>
         </div>
       </div>
 
-      <!-- Payment method -->
-      <div>
+      <!-- Payment method (edit only) -->
+      <div class="deal-edit-only-row">
         <div class="deal-modal-sec-label">Payment Method</div>
         <div class="deal-payment-toggle">
-          <button type="button" class="deal-pay-btn active" id="dealPayBank" onclick="selectDealPayment('Bank')">
-            <span class="deal-pay-icon">🏦</span> Bank Transfer
+          <button type="button" class="deal-pay-btn" id="dealPayBank" onclick="selectDealPayment('HSBC')">
+            <span class="deal-pay-icon">🏦</span> HSBC
           </button>
           <button type="button" class="deal-pay-btn" id="dealPayStripe" onclick="selectDealPayment('Stripe')">
             <span class="deal-pay-icon">⚡</span> Stripe
           </button>
         </div>
-        <input type="hidden" id="dealBank" value="Bank">
+        <div style="font:500 10px/1 var(--font-mono);color:var(--muted);margin-top:6px">Optional — click again to unset</div>
+        <input type="hidden" id="dealBank" value="">
       </div>
 
       <!-- Events -->
       <div>
-        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;flex-wrap:wrap;gap:6px">
           <div class="deal-modal-sec-label" style="margin:0">Linked Events <span id="dealEventsCount" style="font-weight:400;text-transform:none;letter-spacing:0;color:var(--accent)"></span></div>
-          <span style="font:500 10px/1 var(--font-mono);color:var(--muted)">value splits equally across selected</span>
+          <button type="button" class="btn btn-ghost btn-sm" id="dealPackageToggleBtn" onclick="toggleDealPackageMode()" style="font-size:0.72rem">📦 Custom Package Split</button>
         </div>
         <div class="deal-event-picker">
           <input type="text" id="dealEventsSearch" class="deal-event-search" placeholder="🔍  Search events…" oninput="filterDealEvents()">
           <div id="dealEventsCheckboxes" class="deal-event-checkboxes"></div>
         </div>
         <div id="dealSplitPreview" style="font-size:0.75rem;color:var(--muted);margin-top:5px"></div>
+        <div id="dealPackageRows" class="hidden" style="margin-top:10px;display:flex;flex-direction:column;gap:8px"></div>
       </div>
 
       <!-- Notes -->
@@ -1635,8 +1775,8 @@
         <textarea id="dealNotes" rows="2" placeholder="Deal notes…" style="width:100%;resize:vertical"></textarea>
       </div>
 
-      <!-- Documents -->
-      <div>
+      <!-- Documents (edit only) -->
+      <div class="deal-edit-only-row">
         <div class="deal-modal-sec-label">Documents</div>
         <div class="form-row" style="margin:0;gap:12px">
           <div class="form-group" style="flex:1;margin:0">
@@ -1698,7 +1838,7 @@
 <div class="modal-overlay" id="invoiceGenModal">
   <div class="modal" style="max-width:560px">
     <div class="modal-header">
-      <span class="modal-title">📄 Generate Invoice</span>
+      <span class="modal-title">Generate Invoice</span>
       <button class="modal-close" onclick="closeInvoiceGenModal()">✕</button>
     </div>
     <input type="hidden" id="igDealId">
@@ -1732,13 +1872,16 @@
         <input type="text" id="igDate" placeholder="DD/MM/YYYY">
       </div>
       <div class="form-group">
-        <label>Event Name *</label>
-        <input type="text" id="igEventName" placeholder="e.g. 4th Annual CFO Summit">
+        <label>Package Name *</label>
+        <input type="text" id="igPackageName" placeholder="e.g. Event Partner, Gold Sponsor">
       </div>
     </div>
     <div class="form-group" style="margin-bottom:14px">
-      <label>Package Name *</label>
-      <input type="text" id="igPackageName" placeholder="e.g. Event Partner, Gold Sponsor">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
+        <label style="margin:0">Events * <span style="font-weight:400;color:var(--muted)">(one line per event — pre-filled from the deal's linked events)</span></label>
+        <button type="button" class="btn btn-ghost" style="padding:3px 9px;font-size:0.7rem;white-space:nowrap" onclick="igAddEventRow()">+ Add Event</button>
+      </div>
+      <div id="igEventsList" style="display:flex;flex-direction:column;gap:8px"></div>
     </div>
     <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:14px;margin-bottom:14px">
       <div class="form-group">
@@ -1759,8 +1902,8 @@
       <input type="text" id="igClientName" placeholder="Name as it appears in the agreement (e.g. Kroll LLC)">
     </div>
     <div class="form-group" style="margin-bottom:14px">
-      <label>Package Benefits <span style="font-weight:400;color:var(--muted)">(one per line)</span></label>
-      <textarea id="igBenefits" rows="5" style="width:100%;resize:vertical;font-family:var(--font-mono);font-size:0.82rem" placeholder="Speaker on a Panel (subject to availability)&#10;2 delegate passes&#10;LinkedIn post before the conference"></textarea>
+      <label>General Benefits <span style="font-weight:400;color:var(--muted)">(optional, one per line — applies to the whole package; per-event details go on each event above)</span></label>
+      <textarea id="igBenefits" rows="4" style="width:100%;resize:vertical;font-family:var(--font-mono);font-size:0.82rem" placeholder="LinkedIn post before the conference&#10;Logo on all event marketing"></textarea>
     </div>
     <div class="form-group" style="margin-bottom:20px">
       <label>Additional Notes <span style="font-weight:400;color:var(--muted)">(optional)</span></label>
@@ -1768,7 +1911,28 @@
     </div>
     <div style="display:flex;gap:10px;justify-content:flex-end">
       <button class="btn btn-ghost" onclick="closeInvoiceGenModal()">Cancel</button>
+      <button class="btn btn-ghost" onclick="previewInvoice()" style="border-color:var(--accent);color:var(--accent)">Preview</button>
       <button class="btn btn-primary" id="igGenerateBtn" onclick="generateInvoice()">Generate & Download</button>
+    </div>
+  </div>
+</div>
+
+<!-- ══ MODAL: Invoice Preview ══ -->
+<div class="modal-overlay" id="invoicePreviewModal">
+  <div class="modal" style="max-width:740px;padding:0;overflow:hidden">
+    <div class="modal-header" style="padding:16px 20px;margin:0;border-bottom:1px solid var(--border)">
+      <span class="modal-title">Invoice Preview</span>
+      <button class="modal-close" onclick="closeModal('invoicePreviewModal')">✕</button>
+    </div>
+    <div class="ig-preview-scroll">
+      <div class="ig-sheet" id="igPreviewSheet"></div>
+    </div>
+    <div class="ig-preview-footer">
+      <span class="ig-preview-note">Preview mirrors the Word template — check every detail before generating</span>
+      <div style="display:flex;gap:10px;flex-shrink:0">
+        <button class="btn btn-ghost" onclick="closeModal('invoicePreviewModal')">Back to Edit</button>
+        <button class="btn btn-primary" onclick="closeModal('invoicePreviewModal');generateInvoice()">Generate & Download</button>
+      </div>
     </div>
   </div>
 </div>
