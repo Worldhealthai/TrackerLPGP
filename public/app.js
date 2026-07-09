@@ -4359,7 +4359,7 @@ function renderPortfolioGrid() {
         `<button class="deal-q-btn${_portYearFilter === 'all' ? ' active' : ''}" onclick="setPortYear('all')">All</button>` +
         `<button class="deal-q-btn" onclick="addPortYear()" title="Add year">+</button>` +
       `</div>` +
-      `<input class="port-search" id="portSearch" placeholder="🔍 Search events…" oninput="portFilterCards(this.value)" value="${esc(_portSearch)}">` +
+      `<input class="port-search" id="portSearch" placeholder="Search events…" oninput="portFilterCards(this.value)" value="${esc(_portSearch)}">` +
       `<button class="btn btn-primary btn-sm" onclick="openPortfolioModal()">+ Add Event</button>` +
     `</div>`;
 
@@ -4424,12 +4424,12 @@ function renderPortfolioEventCard(ev) {
         <div class="pec-name">${esc(ev.name)}</div>
         <div class="pec-chips">
           ${dateChip ? `<span class="pec-date-chip">${dateChip}</span>` : '<span class="pec-date-chip pec-date-tbd">TBD</span>'}
-          ${ev.location ? `<span class="pec-loc-chip">📍 ${esc(ev.location)}</span>` : ''}
+          ${ev.location ? `<span class="pec-loc-chip">${esc(ev.location)}</span>` : ''}
         </div>
       </div>
       <div class="sub-actions" style="flex-shrink:0">
-        <button class="sub-action-btn" onclick="openPortfolioModal(${ev.id})">✏️ Edit</button>
-        <button class="sub-action-btn sub-action-btn--danger" onclick="deletePortfolioEvent(${ev.id})">🗑 Delete</button>
+        <button class="sub-action-btn" onclick="openPortfolioModal(${ev.id})">Edit</button>
+        <button class="sub-action-btn sub-action-btn--danger" onclick="deletePortfolioEvent(${ev.id})">Delete</button>
       </div>
     </div>
 

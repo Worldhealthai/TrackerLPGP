@@ -4100,7 +4100,7 @@ tbody tr:last-child td { border-bottom: none; }
 /* ── Portfolio summary bar ────────────────────────────────────────────── */
 .port-summary-bar {
   display: flex; background: var(--surface); border: 1px solid var(--border);
-  border-radius: 12px; overflow: hidden; margin-bottom: 16px;
+  border-radius: 8px; overflow: hidden; margin-bottom: 16px;
 }
 .psb-item {
   flex: 1; padding: 13px 16px; border-right: 1px solid var(--border);
@@ -4121,38 +4121,39 @@ tbody tr:last-child td { border-bottom: none; }
 .port-search:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
 .port-search::placeholder { color: var(--dim); }
 
-.pec-list { display: flex; flex-direction: column; gap: 12px; }
+.pec-list { display: flex; flex-direction: column; gap: 10px; }
 .pec-card {
   background: var(--surface); border: 1px solid var(--border);
-  border-left: 3px solid var(--accent); border-radius: 14px;
-  padding: 18px 20px 14px; transition: border-color .15s, box-shadow .15s;
+  border-left: 3px solid var(--accent); border-radius: 8px;
+  padding: 16px 18px 12px; transition: border-color .15s, box-shadow .15s;
 }
-.pec-card:hover { border-color: var(--accent-line); box-shadow: 0 2px 18px rgba(0,0,0,.08); }
-.pec-hd { display: flex; align-items: flex-start; justify-content: space-between; gap: 14px; margin-bottom: 14px; }
-.pec-name { font: 700 16px/1.2 var(--font-sans); color: var(--text); margin-bottom: 6px; }
-.pec-chips { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.pec-card:hover { border-color: var(--accent-line); box-shadow: 0 2px 14px rgba(0,0,0,.06); }
+.pec-hd { display: flex; align-items: flex-start; justify-content: space-between; gap: 14px; margin-bottom: 12px; }
+.pec-name { font: 700 15px/1.2 var(--font-sans); color: var(--text); margin-bottom: 6px; letter-spacing: -0.01em; }
+.pec-chips { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
 .pec-date-chip {
-  font: 600 11px/1 var(--font-sans); color: var(--accent);
-  background: var(--accent-soft); border: 1px solid var(--accent-line);
-  border-radius: 20px; padding: 3px 10px; white-space: nowrap;
+  font: 700 10.5px/1 var(--font-mono); color: var(--text-2);
+  background: var(--bg); border: 1px solid var(--border);
+  border-radius: 4px; padding: 3px 8px; white-space: nowrap; letter-spacing: .03em;
 }
 .pec-date-tbd { opacity: .5; }
 .pec-loc-chip { font: 500 11px/1 var(--font-sans); color: var(--muted); }
+.pec-loc-chip::before { content: "· "; color: var(--border); }
 .pec-stats {
   display: grid; grid-template-columns: repeat(4, 1fr);
-  border: 1px solid var(--border); border-radius: 10px;
+  border: 1px solid var(--border); border-radius: 6px;
   overflow: hidden; margin-bottom: 12px;
 }
 .pec-stats--3 { grid-template-columns: repeat(3, 1fr); }
-.pec-stat { padding: 10px 14px; border-right: 1px solid var(--border); background: var(--bg); }
+.pec-stat { padding: 9px 14px; border-right: 1px solid var(--border); background: var(--bg); }
 .pec-stat:last-child { border-right: none; }
 .pec-stat-lbl { font: 600 9px/1 var(--font-sans); text-transform: uppercase; letter-spacing: .07em; color: var(--muted); margin-bottom: 5px; }
-.pec-stat-num { font: 700 15px/1 var(--font-sans); color: var(--text); letter-spacing: -0.01em; }
+.pec-stat-num { font: 700 14.5px/1 var(--font-mono); color: var(--text); letter-spacing: -0.01em; }
 .pec-green { color: var(--positive) !important; }
 .pec-amber { color: var(--warning) !important; }
-.pec-bar-wrap { height: 5px; background: var(--border); border-radius: 3px; overflow: hidden; margin-bottom: 12px; }
-.pec-bar { height: 100%; width: 0%; border-radius: 3px; transition: width .8s cubic-bezier(.4,0,.2,1); }
-.pec-notes { font: 400 12px/1.5 var(--font-sans); color: var(--muted); font-style: italic; padding: 8px 0 10px; border-top: 1px solid var(--border); }
+.pec-bar-wrap { height: 4px; background: var(--border); border-radius: 2px; overflow: hidden; margin-bottom: 12px; }
+.pec-bar { height: 100%; width: 0%; border-radius: 2px; transition: width .8s cubic-bezier(.4,0,.2,1); }
+.pec-notes { font: 400 12px/1.5 var(--font-sans); color: var(--muted); font-style: normal; padding: 8px 0 10px; border-top: 1px solid var(--border); }
 .pec-footer { display: flex; align-items: center; gap: 8px; padding-top: 10px; border-top: 1px solid var(--border); }
 .pec-deals-btn {
   background: none; border: none; cursor: pointer; padding: 0;
