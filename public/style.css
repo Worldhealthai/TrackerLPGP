@@ -1259,7 +1259,6 @@ tbody tr:last-child td { border-bottom: none; }
 .ig-sec-hd { font: 700 12.5px/1.4 Calibri, var(--font-sans); color: #000; margin-bottom: 8px; }
 .ig-events-lbl { font: 700 11.5px/1.4 Calibri, var(--font-sans); margin-bottom: 3px; }
 .ig-event-name { font: 400 13px/1.5 Calibri, var(--font-sans); color: #262626; margin-bottom: 14px; }
-.ig-pkg-name { font: 700 13px/1.4 Calibri, var(--font-sans); margin-bottom: 8px; }
 .ig-benefit { font: 400 12.5px/1.7 Calibri, var(--font-sans); color: #262626; }
 .ig-total-cost { font: 700 12px/1.4 Calibri, var(--font-sans); margin-top: 14px; }
 .ig-comments { font: 700 11.5px/1.6 Calibri, var(--font-sans); color: #121C23; }
