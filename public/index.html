@@ -646,11 +646,11 @@
         <col style="width:96px">   <!-- Tax/VAT -->
         <col style="width:88px">   <!-- Invoice Date -->
         <col style="width:72px">   <!-- Bank -->
-        <col style="width:160px">  <!-- Invoice # -->
-        <col style="width:58px">   <!-- Signed -->
+        <col style="width:150px">  <!-- Invoice # -->
+        <col style="width:66px">   <!-- Signed -->
         <col style="width:46px">   <!-- By -->
         <col>                      <!-- Notes (fills remaining) -->
-        <col style="width:80px">   <!-- Actions -->
+        <col style="width:118px">  <!-- Actions -->
       </colgroup>
       <thead><tr>
         <th></th>
@@ -1703,26 +1703,28 @@
         </div>
         <div class="deal-edit-only-row form-row" style="margin:10px 0 0;gap:10px">
           <div class="form-group" style="flex:1;margin:0">
-            <label style="font:600 10px/1 var(--font-mono);color:var(--muted);margin-bottom:4px;display:block">Paid (inc VAT) — set on edit</label>
+            <label class="deal-mini-lbl">Paid (inc VAT)</label>
             <input type="number" id="dealPaidIncVat" min="0" step="0.01" placeholder="Paid inc VAT" style="width:100%">
           </div>
         </div>
       </div>
 
-      <!-- Invoice -->
-      <div>
+      <!-- Invoice (edit only) -->
+      <div class="deal-edit-only-row">
         <div class="deal-modal-sec-label">Invoice</div>
         <div class="form-row" style="margin:0;gap:10px">
           <div class="form-group" style="width:150px;margin:0">
-            <input type="date" id="dealInvoiceDate" style="width:100%">
+            <label class="deal-mini-lbl">Invoice Date</label>
+            <input type="date" id="dealInvoiceDate" style="width:100%" onchange="autofillDealMonth()">
           </div>
           <div class="form-group" style="width:130px;margin:0">
-            <input type="text" id="dealMonth" placeholder="Month e.g. 26 - Jan" style="width:100%;font-size:0.82rem" title="Business month (e.g. 26 - Jan). Auto-filled from invoice date.">
+            <label class="deal-mini-lbl">Business Month</label>
+            <input type="text" id="dealMonth" placeholder="e.g. 26 - Jul" style="width:100%;font-size:0.82rem" title="Auto-filled from the month the deal was added.">
           </div>
         </div>
-        <div class="deal-edit-only-row form-row" style="margin:10px 0 0;gap:10px">
+        <div class="form-row" style="margin:10px 0 0;gap:10px">
           <div class="form-group" style="flex:1;margin:0">
-            <label style="font:600 10px/1 var(--font-mono);color:var(--muted);margin-bottom:4px;display:block">Invoice Number — set on edit</label>
+            <label class="deal-mini-lbl">Invoice Number</label>
             <div style="display:flex;gap:6px;align-items:center">
               <input type="text" id="dealInvoiceNumber" placeholder="Invoice number" style="flex:1;min-width:0">
               <button type="button" class="btn btn-ghost" style="padding:6px 10px;font-size:0.75rem;white-space:nowrap;flex-shrink:0" onclick="fillNextInvoiceNumber()">Use Next</button>
@@ -1828,7 +1830,7 @@
 <div class="modal-overlay" id="invoiceGenModal">
   <div class="modal" style="max-width:560px">
     <div class="modal-header">
-      <span class="modal-title">📄 Generate Invoice</span>
+      <span class="modal-title">Generate Invoice</span>
       <button class="modal-close" onclick="closeInvoiceGenModal()">✕</button>
     </div>
     <input type="hidden" id="igDealId">
@@ -1898,7 +1900,28 @@
     </div>
     <div style="display:flex;gap:10px;justify-content:flex-end">
       <button class="btn btn-ghost" onclick="closeInvoiceGenModal()">Cancel</button>
+      <button class="btn btn-ghost" onclick="previewInvoice()" style="border-color:var(--accent);color:var(--accent)">Preview</button>
       <button class="btn btn-primary" id="igGenerateBtn" onclick="generateInvoice()">Generate & Download</button>
+    </div>
+  </div>
+</div>
+
+<!-- ══ MODAL: Invoice Preview ══ -->
+<div class="modal-overlay" id="invoicePreviewModal">
+  <div class="modal" style="max-width:740px;padding:0;overflow:hidden">
+    <div class="modal-header" style="padding:16px 20px;margin:0;border-bottom:1px solid var(--border)">
+      <span class="modal-title">Invoice Preview</span>
+      <button class="modal-close" onclick="closeModal('invoicePreviewModal')">✕</button>
+    </div>
+    <div class="ig-preview-scroll">
+      <div class="ig-sheet" id="igPreviewSheet"></div>
+    </div>
+    <div class="ig-preview-footer">
+      <span class="ig-preview-note">Layout approximation — the download is generated from the official Word template</span>
+      <div style="display:flex;gap:10px;flex-shrink:0">
+        <button class="btn btn-ghost" onclick="closeModal('invoicePreviewModal')">Back to Edit</button>
+        <button class="btn btn-primary" onclick="closeModal('invoicePreviewModal');generateInvoice()">Generate & Download</button>
+      </div>
     </div>
   </div>
 </div>

@@ -4872,9 +4872,14 @@ function renderDealsTable() {
       <td class="deal-cell-toggle" onclick="dealToggleBool(${d.id},'signature_received',${!!d.signature_received})" style="text-align:center;cursor:pointer" title="Click to toggle">${d.signature_received ? '✅' : '<span style="color:var(--muted)">—</span>'}</td>
       ${ec('initials','text',d.initials||'', d.initials ? `<span class="deal-initials-badge">${esc(d.initials)}</span>` : '<span style="color:var(--muted)">—</span>', 'style="text-align:center"')}
       ${ec('notes','textarea',d.notes||'', notesDisplay)}
-      <td style="text-align:center;white-space:nowrap;padding:4px 6px">
-        <button class="btn deal-invoice-gen-btn" onclick="event.stopPropagation();openInvoiceGenModal(${d.id})" title="Generate a branded invoice PDF for this deal">🧾 Generate Invoice</button>
-        <button class="btn-icon btn-icon--danger" title="Delete" onclick="deleteDeal(${d.id})">🗑️</button>
+      <td class="deal-act-cell">
+        <button class="deal-act-invoice" onclick="event.stopPropagation();openInvoiceGenModal(${d.id})" title="Generate invoice document for this deal">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
+          Invoice
+        </button>
+        <button class="deal-act-del" onclick="event.stopPropagation();deleteDeal(${d.id})" title="Delete deal">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg>
+        </button>
       </td>
     </tr>`;
   }).join('');
@@ -7010,7 +7015,7 @@ async function openDealModal(id, defaultStage) {
     document.getElementById('dealTaxVat').value = d.tax_vat || '';
     document.getElementById('dealInvoiceNumber').value = d.invoice_number || '';
     document.getElementById('dealInvoiceDate').value = d.invoice_date ? d.invoice_date.split('T')[0] : '';
-    document.getElementById('dealMonth').value = d.deal_month || '';
+    document.getElementById('dealMonth').value = d.deal_month || dealMonthLabel(d.invoice_date || d.created_at || new Date());
     document.getElementById('dealInvSent').value = d.invoice_agreement_sent ? 'true' : 'false';
     document.getElementById('dealSigReceived').value = d.signature_received ? 'true' : 'false';
     document.getElementById('dealNotes').value = d.notes || '';
@@ -7034,7 +7039,8 @@ async function openDealModal(id, defaultStage) {
     document.getElementById('dealTaxVat').value = '';
     document.getElementById('dealInvoiceNumber').value = '';
     document.getElementById('dealInvoiceDate').value = '';
-    document.getElementById('dealMonth').value = '';
+    // Business month auto-fills from when the deal is entered (e.g. "26 - Jul")
+    document.getElementById('dealMonth').value = dealMonthLabel(new Date());
     document.getElementById('dealInvSent').value = 'false';
     document.getElementById('dealSigReceived').value = 'false';
     document.getElementById('dealNotes').value = '';
@@ -7067,14 +7073,19 @@ async function openDealModal(id, defaultStage) {
   openModal('dealModal');
 }
 
+// "26 - Jul" style label from a Date (or parseable date string)
+function dealMonthLabel(d) {
+  const dt = d instanceof Date ? d : new Date(d);
+  if (isNaN(dt.getTime())) return '';
+  const MONS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  return String(dt.getFullYear()).slice(2) + ' - ' + MONS[dt.getMonth()];
+}
+
 function autofillDealMonth() {
   const dateVal = document.getElementById('dealInvoiceDate').value;
   const monthEl = document.getElementById('dealMonth');
   if (!dateVal || monthEl.value.trim()) return; // don't overwrite if already set
-  const MONS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
-  const yy = dateVal.slice(2, 4);
-  const mo = parseInt(dateVal.slice(5, 7), 10) - 1;
-  monthEl.value = `${yy} - ${MONS[mo]}`;
+  monthEl.value = dealMonthLabel(dateVal + 'T12:00:00');
 }
 
 function selectDealPayment(method) {
@@ -8584,11 +8595,8 @@ function closeInvoiceGenModal() {
   document.getElementById('invoiceGenModal').classList.remove('open');
 }
 
-async function generateInvoice() {
-  const btn = document.getElementById('igGenerateBtn');
-  btn.disabled = true; btn.textContent = 'Generating…';
-
-  const payload = {
+function igCollectPayload() {
+  return {
     contact_name:   document.getElementById('igContact').value.trim(),
     company_name:   document.getElementById('igCompany').value.trim(),
     address:        document.getElementById('igAddress').value.trim(),
@@ -8604,6 +8612,60 @@ async function generateInvoice() {
     benefits:       document.getElementById('igBenefits').value.split('\n').map(s => s.trim()).filter(Boolean),
     additional_notes: document.getElementById('igAdditionalNotes').value.trim(),
   };
+}
+
+// On-screen mock-up of the invoice using the exact values that will be sent
+// to the docx template, so details can be sanity-checked before generating.
+function previewInvoice() {
+  const p = igCollectPayload();
+  const benefits = p.benefits.map(b => `<li>${esc(b)}</li>`).join('');
+  document.getElementById('igPreviewSheet').innerHTML = `
+    <div class="ig-sheet-head">
+      <div>
+        <div class="ig-brand">LPGP CONNECT COM LTD</div>
+        <div class="ig-brand-sub">Private Markets Events &amp; Networking</div>
+      </div>
+      <div style="text-align:right">
+        <div class="ig-inv-title">INVOICE</div>
+        <div class="ig-inv-meta">No. ${esc(p.invoice_number || '—')}</div>
+        <div class="ig-inv-meta">${esc(p.date || '—')}</div>
+      </div>
+    </div>
+    <div class="ig-billto">
+      <div class="ig-sec-lbl">BILL TO</div>
+      ${p.contact_name ? `<div class="ig-billto-name">${esc(p.contact_name)}</div>` : ''}
+      ${p.company_name ? `<div>${esc(p.company_name)}</div>` : ''}
+      ${p.address ? `<div>${esc(p.address)}</div>` : ''}
+      ${p.email ? `<div>${esc(p.email)}</div>` : ''}
+    </div>
+    <table class="ig-table">
+      <thead><tr><th>Description</th><th style="text-align:right">Amount</th></tr></thead>
+      <tbody><tr>
+        <td>
+          <strong>${esc(p.package_name || 'Package')}</strong>${p.event_name ? ' — ' + esc(p.event_name) : ''}
+          ${benefits ? `<ul>${benefits}</ul>` : ''}
+        </td>
+        <td style="text-align:right">${esc(p.amount_ex_vat || '—')}</td>
+      </tr></tbody>
+      <tfoot>
+        <tr><td>Subtotal (ex VAT)</td><td>${esc(p.amount_ex_vat || '—')}</td></tr>
+        <tr><td>VAT</td><td>${esc(p.vat_amount || '—')}</td></tr>
+        <tr class="ig-total"><td>Total Due</td><td>${esc(p.total_due || '—')}</td></tr>
+      </tfoot>
+    </table>
+    ${p.additional_notes ? `<div class="ig-notes"><div class="ig-sec-lbl">NOTES</div>${esc(p.additional_notes)}</div>` : ''}
+    <div class="ig-sign">
+      <div class="ig-sec-lbl">CLIENT</div>
+      <div>${esc(p.client_name || '—')}</div>
+    </div>`;
+  openModal('invoicePreviewModal');
+}
+
+async function generateInvoice() {
+  const btn = document.getElementById('igGenerateBtn');
+  btn.disabled = true; btn.textContent = 'Generating…';
+
+  const payload = igCollectPayload();
 
   try {
     const res = await fetch('/api/generate-invoice', {
