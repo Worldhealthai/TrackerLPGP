@@ -8568,37 +8568,51 @@ async function ekEmpClearAgenda(eid, slot = 1) {
 }
 
 // ── Invoice Generator ──────────────────────────────────────────────────────────
-// Add a row to the invoice generator's events list.
-// Each event can carry an optional package/allocation detail — mirrors the
-// deal tracker's custom package split (e.g. "Exhibitor — £3,000").
-function igAddEventRow(name, detail) {
+// Add an event card to the invoice generator. Each event carries its own
+// package and its own benefit bullet points — mirroring the deal tracker's
+// custom package split (e.g. London = Exhibitor, Miami = Delegate Tickets).
+function igAddEventRow(name, pkg, amount, benefits) {
   const wrap = document.getElementById('igEventsList');
   if (!wrap) return;
+  const card = document.createElement('div');
+  card.className = 'ig-event-card';
+
   const row = document.createElement('div');
   row.className = 'ig-event-row';
   const n = document.createElement('input');
   n.type = 'text'; n.className = 'ig-ev-name';
-  n.placeholder = 'Event name — e.g. 4th Annual CFO Summit';
+  n.placeholder = 'Event — e.g. 4th Annual CFO Summit';
   n.value = name || '';
-  const d = document.createElement('input');
-  d.type = 'text'; d.className = 'ig-ev-detail';
-  d.placeholder = 'Package / amount (optional) — e.g. Exhibitor £3,000';
-  d.value = detail || '';
+  const p = document.createElement('input');
+  p.type = 'text'; p.className = 'ig-ev-pkg';
+  p.placeholder = 'Package — e.g. Exhibitor';
+  p.value = pkg || '';
+  const a = document.createElement('input');
+  a.type = 'text'; a.className = 'ig-ev-amt';
+  a.placeholder = '£3,750';
+  a.value = amount || '';
   const x = document.createElement('button');
   x.type = 'button'; x.className = 'ig-ev-del'; x.title = 'Remove event';
   x.textContent = '✕';
-  x.onclick = () => row.remove();
-  row.append(n, d, x);
-  wrap.appendChild(row);
+  x.onclick = () => card.remove();
+  row.append(n, p, a, x);
+
+  const b = document.createElement('textarea');
+  b.className = 'ig-ev-benefits'; b.rows = 3;
+  b.placeholder = 'Package details for this event, one per line — e.g.\nSpeaker on a Panel (subject to availability)\n2 delegate passes';
+  b.value = benefits || '';
+
+  card.append(row, b);
+  wrap.appendChild(card);
 }
 
-// One line per event: "Event Name — Package £3,000"
-function igCollectEvents() {
-  return Array.from(document.querySelectorAll('#igEventsList .ig-event-row')).map(r => {
-    const n = r.querySelector('.ig-ev-name').value.trim();
-    const d = r.querySelector('.ig-ev-detail').value.trim();
-    return n ? (d ? `${n} — ${d}` : n) : '';
-  }).filter(Boolean);
+function igCollectEventObjs() {
+  return Array.from(document.querySelectorAll('#igEventsList .ig-event-card')).map(c => ({
+    name: c.querySelector('.ig-ev-name').value.trim(),
+    pkg: c.querySelector('.ig-ev-pkg').value.trim(),
+    amount: c.querySelector('.ig-ev-amt').value.trim(),
+    benefits: c.querySelector('.ig-ev-benefits').value.split('\n').map(s => s.trim()).filter(Boolean)
+  })).filter(e => e.name);
 }
 
 function openInvoiceGenModal(dealId) {
@@ -8625,9 +8639,7 @@ function openInvoiceGenModal(dealId) {
   if (linked.length) {
     linked.forEach(e => {
       const alloc = parseFloat(e.allocated_amount) || 0;
-      const detail = [e.package_label, alloc > 0 ? sym + fmt(alloc) : '']
-        .filter(Boolean).join(' ');
-      igAddEventRow(e.event_name, detail);
+      igAddEventRow(e.event_name, e.package_label || '', alloc > 0 ? sym + fmt(alloc) : '', '');
     });
   } else {
     igAddEventRow();
@@ -8647,6 +8659,28 @@ function closeInvoiceGenModal() {
 }
 
 function igCollectPayload() {
+  const evs = igCollectEventObjs();
+  const globalBenefits = document.getElementById('igBenefits').value.split('\n').map(s => s.trim()).filter(Boolean);
+
+  // Events list on page 2: "Event Name — £3,750" one per line
+  const eventLines = evs.map(e => [e.name, e.amount].filter(Boolean).join(' — '));
+
+  // Benefits: a block per event ("Event — Package" header + its bullets),
+  // then any general benefits that apply to the whole package.
+  let benefits = [];
+  const withDetail = evs.filter(e => e.pkg || e.benefits.length);
+  if (withDetail.length) {
+    withDetail.forEach(e => {
+      benefits.push(e.pkg ? `${e.name} — ${e.pkg}` : e.name);
+      benefits.push(...e.benefits);
+      benefits.push('');
+    });
+    if (globalBenefits.length) benefits.push(...globalBenefits);
+    else benefits.pop(); // drop trailing blank line
+  } else {
+    benefits = globalBenefits;
+  }
+
   return {
     contact_name:   document.getElementById('igContact').value.trim(),
     company_name:   document.getElementById('igCompany').value.trim(),
@@ -8654,13 +8688,13 @@ function igCollectPayload() {
     email:          document.getElementById('igEmail').value.trim(),
     invoice_number: document.getElementById('igInvoiceNum').value.trim(),
     date:           document.getElementById('igDate').value.trim(),
-    event_name:     igCollectEvents().join('\n'),
+    event_name:     eventLines.join('\n'),
     package_name:   document.getElementById('igPackageName').value.trim(),
     amount_ex_vat:  document.getElementById('igAmountExVat').value.trim(),
     vat_amount:     document.getElementById('igVatAmount').value.trim(),
     total_due:      document.getElementById('igTotalDue').value.trim(),
     client_name:    document.getElementById('igClientName').value.trim(),
-    benefits:       document.getElementById('igBenefits').value.split('\n').map(s => s.trim()).filter(Boolean),
+    benefits,
     additional_notes: document.getElementById('igAdditionalNotes').value.trim(),
   };
 }
@@ -8669,7 +8703,9 @@ function igCollectPayload() {
 // that will be sent to it, so details can be checked before generating.
 function previewInvoice() {
   const p = igCollectPayload();
-  const benefits = p.benefits.map(b => `<div class="ig-benefit">${esc(b)}</div>`).join('');
+  const benefits = p.benefits.map(b =>
+    b === '' ? '<div class="ig-benefit-gap"></div>' : `<div class="ig-benefit">${esc(b)}</div>`
+  ).join('');
   const amt = esc(p.amount_ex_vat || '—');
 
   const page1 = `<div class="ig-page">

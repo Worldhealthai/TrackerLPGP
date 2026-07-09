@@ -1188,15 +1188,28 @@ tbody tr:last-child td { border-bottom: none; }
   border: 1px dashed var(--border); white-space: nowrap;
 }
 .deal-inv-missing-badge:hover { color: var(--accent); border-color: var(--accent); }
+.ig-event-card {
+  display: flex; flex-direction: column; gap: 8px;
+  border: 1px solid var(--border); border-left: 3px solid var(--accent);
+  border-radius: 8px; padding: 10px;
+  background: var(--bg-2);
+}
 .ig-event-row { display: flex; gap: 8px; align-items: center; }
-.ig-event-row .ig-ev-name { flex: 1.2; min-width: 0; }
-.ig-event-row .ig-ev-detail { flex: 1; min-width: 0; font-size: 0.82rem; }
+.ig-event-row .ig-ev-name { flex: 1.3; min-width: 0; }
+.ig-event-row .ig-ev-pkg { flex: 1; min-width: 0; font-size: 0.82rem; }
+.ig-event-row .ig-ev-amt { width: 92px; flex-shrink: 0; font-size: 0.82rem; font-family: var(--font-mono); }
+.ig-ev-benefits { width: 100%; resize: vertical; font-family: var(--font-mono); font-size: 0.78rem; }
 .ig-ev-del {
   width: 28px; height: 28px; flex-shrink: 0; border-radius: 6px; cursor: pointer;
   background: transparent; color: var(--muted); border: 1px solid var(--border);
   font-size: 12px; line-height: 1;
 }
 .ig-ev-del:hover { color: #fff; background: var(--negative); border-color: var(--negative); }
+.ig-benefit-gap { height: 10px; }
+@media (max-width: 640px) {
+  .ig-event-row { flex-wrap: wrap; }
+  .ig-event-row .ig-ev-name { flex-basis: 100%; }
+}
 
 /* ── Invoice preview sheet (always renders as light "paper" in both themes) ── */
 .ig-preview-scroll { background: var(--bg-2); padding: 22px; max-height: 68vh; overflow-y: auto; }
@@ -4201,7 +4214,8 @@ tbody tr:last-child td { border-bottom: none; }
 .port-search:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
 .port-search::placeholder { color: var(--dim); }
 
-.pec-list { display: flex; flex-direction: column; gap: 10px; }
+.pec-list { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; align-items: start; }
+@media (max-width: 900px) { .pec-list { grid-template-columns: 1fr; } }
 .pec-card {
   background: var(--surface); border: 1px solid var(--border);
   border-left: 3px solid var(--accent); border-radius: 8px;
