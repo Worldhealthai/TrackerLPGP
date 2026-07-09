@@ -1689,16 +1689,19 @@
         <div class="deal-modal-sec-label">Financials</div>
         <div class="form-row" style="margin:0;gap:10px">
           <div class="form-group" style="width:90px;margin:0">
+            <label class="deal-mini-lbl">Currency</label>
             <select id="dealCurrency" style="width:100%">
               <option value="GBP">£ GBP</option><option value="USD">$ USD</option>
               <option value="AED">AED</option><option value="PHP">₱ PHP</option><option value="EUR">€ EUR</option>
             </select>
           </div>
           <div class="form-group" style="flex:1;margin:0">
-            <input type="number" id="dealAmount" min="0" step="0.01" placeholder="Deal value *" oninput="updateDealSplitPreview()" style="width:100%">
+            <label class="deal-mini-lbl">Deal Value *</label>
+            <input type="number" id="dealAmount" min="0" step="0.01" placeholder="0.00" oninput="updateDealSplitPreview()" style="width:100%">
           </div>
           <div class="form-group" style="width:100px;margin:0">
-            <input type="number" id="dealTaxVat" min="0" step="0.01" placeholder="VAT" style="width:100%">
+            <label class="deal-mini-lbl">VAT</label>
+            <input type="number" id="dealTaxVat" min="0" step="0.01" placeholder="0.00" style="width:100%">
           </div>
         </div>
         <div class="deal-edit-only-row form-row" style="margin:10px 0 0;gap:10px">
@@ -1723,12 +1726,12 @@
           </div>
         </div>
         <div class="form-row" style="margin:10px 0 0;gap:10px">
-          <div class="form-group" style="flex:1;margin:0">
-            <label class="deal-mini-lbl">Invoice Number</label>
-            <div style="display:flex;gap:6px;align-items:center">
-              <input type="text" id="dealInvoiceNumber" placeholder="Invoice number" style="flex:1;min-width:0">
-              <button type="button" class="btn btn-ghost" style="padding:6px 10px;font-size:0.75rem;white-space:nowrap;flex-shrink:0" onclick="fillNextInvoiceNumber()">Use Next</button>
+          <div class="form-group" style="flex:1;margin:0;min-width:0">
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">
+              <label class="deal-mini-lbl" style="margin:0">Invoice Number</label>
+              <button type="button" class="btn btn-ghost" style="padding:3px 9px;font-size:0.7rem;white-space:nowrap" onclick="fillNextInvoiceNumber()">Use Next</button>
             </div>
+            <input type="text" id="dealInvoiceNumber" placeholder="Invoice number" style="width:100%;font-family:var(--font-mono);font-size:0.85rem">
           </div>
         </div>
       </div>
