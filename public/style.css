@@ -1151,7 +1151,14 @@ tbody tr:last-child td { border-bottom: none; }
 }
 /* Deal modal redesign */
 .deal-modal-redesign { padding: 24px 28px; }
-.deal-modal-redesign .modal-header { padding: 0 0 16px; margin: 0 0 0; }
+/* Pull the header to the modal's edges so it stays pinned (and opaque)
+   while the body scrolls beneath it */
+.deal-modal-redesign .modal-header {
+  padding: 20px 28px 14px;
+  margin: -24px -28px 0;
+  background: var(--surface-2);
+  z-index: 5;
+}
 .deal-modal-sec-label {
   font: 700 10px/1 var(--font-mono); text-transform: uppercase;
   letter-spacing: .08em; color: var(--primary); margin-bottom: 8px;
