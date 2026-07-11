@@ -3973,10 +3973,9 @@ function renderExpSummary() {
   const cards = Object.entries(byCur).map(([cur, s]) => `
     <div class="hotel-fin-card">
       <div class="hotel-fin-currency">${cur}</div>
-      <div class="hotel-fin-row"><span class="hotel-fin-lbl">VAT Expenses (inc VAT)</span><span class="hotel-fin-val">${expCurSymbol(cur)}${fmtN(s.vat)}</span></div>
+      <div class="hotel-fin-row"><span class="hotel-fin-lbl">Vatable Expenses</span><span class="hotel-fin-val">${expCurSymbol(cur)}${fmtN(s.vat)}</span></div>
       <div class="hotel-fin-row"><span class="hotel-fin-lbl">of which VAT</span><span class="hotel-fin-val hotel-fin-green">${expCurSymbol(cur)}${fmtN(s.vatPortion)}</span></div>
-      <div class="hotel-fin-row"><span class="hotel-fin-lbl">Non-VAT Expenses</span><span class="hotel-fin-val">${expCurSymbol(cur)}${fmtN(s.nonVat)}</span></div>
-      <div class="hotel-fin-row hotel-fin-total-row"><span class="hotel-fin-lbl">Total</span><span class="hotel-fin-val hotel-fin-blue">${expCurSymbol(cur)}${fmtN(s.total)}</span></div>
+      <div class="hotel-fin-row hotel-fin-total-row"><span class="hotel-fin-lbl">Total Expenses</span><span class="hotel-fin-val hotel-fin-blue">${expCurSymbol(cur)}${fmtN(s.total)}</span></div>
     </div>`).join('');
   const qLabel = _expQuarter !== 'all' ? ` · ${_expQuarter}` : '';
   const vLabel = _expVat !== 'all' ? ` · ${_expVat === 'vat' ? 'VAT' : 'Non-VAT'}` : '';
