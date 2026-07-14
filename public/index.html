@@ -506,6 +506,15 @@
           <button class="btn btn-primary" style="margin-left:auto" onclick="openExpModal()">+ Add Expense</button>
         </div>
 
+        <!-- Invoices waiting to be paid — check off to allocate as a normal expense -->
+        <div class="card" style="padding:0;overflow:hidden;margin-bottom:20px">
+          <div class="card-header" style="padding:16px 20px;margin:0;border-radius:var(--radius) var(--radius) 0 0">
+            <span class="card-title">Invoices to Pay <span id="expPendingCount" class="badge badge-yellow" style="margin-left:6px"></span></span>
+            <button class="btn btn-ghost btn-sm" onclick="openExpModal(null,'pending')">+ Add Invoice</button>
+          </div>
+          <div id="expPendingList"></div>
+        </div>
+
         <div id="expSummary" style="margin-bottom:20px"></div>
 
         <div class="card" style="padding:0;overflow:hidden">
@@ -1307,7 +1316,7 @@
     <input type="hidden" id="expEditId" />
     <div class="form-row hm-2col">
       <div class="form-group">
-        <label>Date *</label>
+        <label id="expDateLbl">Date *</label>
         <input type="date" id="expDate" />
       </div>
       <div class="form-group">
@@ -1356,7 +1365,7 @@
       <textarea id="expNotes" rows="2" placeholder="Optional notes"></textarea>
     </div>
     <div class="form-group">
-      <label>Receipt</label>
+      <label id="expReceiptLbl">Receipt</label>
       <div id="expReceiptCurrent" class="hidden" style="display:flex;align-items:center;gap:10px;padding:10px 12px;background:var(--surface);border:1px solid var(--border);border-radius:8px;margin-bottom:8px">
         <span style="font-size:18px">🧾</span>
         <a id="expReceiptLink" href="#" target="_blank" style="font-weight:600;color:var(--accent);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"></a>

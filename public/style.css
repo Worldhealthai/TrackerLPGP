@@ -1214,6 +1214,35 @@ tbody tr:last-child td { border-bottom: none; }
 .ig-ev-del:hover { color: #fff; background: var(--negative); border-color: var(--negative); }
 .ig-benefit-gap { height: 10px; }
 
+/* ── Expenses: invoices-to-pay section ── */
+.exp-pend-row {
+  display: flex; align-items: center; gap: 14px;
+  padding: 12px 20px; border-bottom: 1px solid var(--border);
+}
+.exp-pend-row:last-child { border-bottom: none; }
+.exp-pend-check {
+  width: 22px; height: 22px; flex-shrink: 0; border-radius: 50%; cursor: pointer;
+  border: 2px solid var(--border); background: transparent;
+  transition: border-color .12s, background .12s;
+  position: relative;
+}
+.exp-pend-check:hover { border-color: var(--positive); background: var(--positive-soft); }
+.exp-pend-check:hover::after {
+  content: "✓"; position: absolute; inset: 0;
+  display: flex; align-items: center; justify-content: center;
+  font: 800 12px/1 var(--font-sans); color: var(--positive);
+}
+.exp-due-chip {
+  font: 700 9.5px/1.5 var(--font-mono); letter-spacing: .04em;
+  padding: 2px 8px; border-radius: 20px; white-space: nowrap;
+  background: var(--surface-2); color: var(--muted); border: 1px solid var(--border);
+}
+.exp-due-soon { background: var(--warning-soft); color: var(--warning); border-color: rgba(245,184,96,0.3); }
+.exp-due-overdue { background: rgba(239,68,68,0.12); color: var(--negative); border-color: rgba(239,68,68,0.3); }
+@media (max-width: 640px) {
+  .exp-pend-row { flex-wrap: wrap; padding: 12px 14px; }
+}
+
 /* ── Invoice preview sheet (always renders as light "paper" in both themes) ── */
 .ig-preview-scroll { background: var(--bg-2); padding: 22px; max-height: 68vh; overflow-y: auto; }
 .ig-preview-footer {
