@@ -3921,8 +3921,66 @@ async function loadExpenses() {
   const res = await fetch('/api/expenses');
   if (!res.ok) { showToast('Failed to load expenses', 'error'); return; }
   expData = await res.json();
+  renderExpPending();
   renderExpSummary();
   renderExpTable();
+}
+
+// ── Invoices waiting to be paid ─────────────────────────────────────────
+function renderExpPending() {
+  const listEl = document.getElementById('expPendingList');
+  const countEl = document.getElementById('expPendingCount');
+  if (!listEl) return;
+  const pending = expData.filter(r => r.status === 'pending')
+    .sort((a, b) => String(a.due_date || '9999').localeCompare(String(b.due_date || '9999')));
+  if (countEl) {
+    countEl.textContent = pending.length || '';
+    countEl.style.display = pending.length ? '' : 'none';
+  }
+  if (!pending.length) {
+    listEl.innerHTML = '<div style="padding:16px 20px;font:500 12px/1.4 var(--font-mono);color:var(--muted)">Nothing waiting to be paid. Use "+ Add Invoice" to log an invoice you still owe.</div>';
+    return;
+  }
+  const todayStr = new Date().toISOString().slice(0, 10);
+  const soonStr = new Date(Date.now() + 7 * 86400000).toISOString().slice(0, 10);
+  listEl.innerHTML = pending.map(r => {
+    const due = (r.due_date || '').slice(0, 10);
+    const overdue = due && due < todayStr;
+    const dueSoon = !overdue && due && due <= soonStr;
+    const dueChip = due
+      ? `<span class="exp-due-chip${overdue ? ' exp-due-overdue' : dueSoon ? ' exp-due-soon' : ''}">${overdue ? 'OVERDUE ' : 'DUE '}${due}</span>`
+      : '';
+    return `<div class="exp-pend-row">
+      <button class="exp-pend-check" title="Mark as paid" onclick="markExpensePaid(${r.id})"></button>
+      <div style="flex:1;min-width:0">
+        <div style="font:600 13px/1.3 var(--font-sans);color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(r.description)}</div>
+        <div style="display:flex;gap:8px;align-items:center;margin-top:4px;flex-wrap:wrap">
+          <span class="badge badge-grey" style="font-size:0.62rem">${esc(EXP_CATEGORY_LABEL[r.category] || r.category)}</span>
+          ${r.vat_status === 'vat' ? '<span class="badge badge-blue" style="font-size:0.62rem">VAT</span>' : ''}
+          ${dueChip}
+        </div>
+      </div>
+      <div style="font:700 13.5px/1 var(--font-mono);color:var(--text);white-space:nowrap">${expCurSymbol(r.currency)}${parseFloat(r.amount || 0).toLocaleString('en-GB', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
+      ${r.has_receipt ? `<a href="/api/expenses/${r.id}/receipt" target="_blank" class="badge badge-green" style="text-decoration:none;flex-shrink:0">📄 Invoice</a>` : ''}
+      <div style="display:flex;gap:4px;flex-shrink:0">
+        <button class="btn btn-ghost btn-sm" onclick="openExpModal(${r.id},'pending')">Edit</button>
+        <button class="btn btn-danger btn-sm" onclick="deleteExpense(${r.id})">✕</button>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+async function markExpensePaid(id) {
+  const r = expData.find(x => x.id === id);
+  if (!r) return;
+  if (!confirm(`Mark "${r.description}" as paid today? It will move into your expenses under today's date and quarter.`)) return;
+  const res = await fetch(`/api/expenses/${id}/paid`, {
+    method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ paid_date: new Date().toISOString().slice(0, 10) })
+  });
+  if (!res.ok) { showToast('Failed to mark paid', 'error'); return; }
+  showToast('Paid — allocated to today\'s expenses', 'success');
+  loadExpenses();
 }
 
 function setExpQuarter(btn, q) {
@@ -3941,6 +3999,7 @@ function setExpVat(btn, v) {
 
 function expFiltered() {
   return expData.filter(r => {
+    if (r.status === 'pending') return false; // unpaid invoices live in their own section
     if (_expQuarter !== 'all' && expQuarterOf(r.expense_date) !== _expQuarter) return false;
     if (_expVat !== 'all' && r.vat_status !== _expVat) return false;
     return true;
@@ -4024,11 +4083,21 @@ function expVatToggle() {
   if (!isVat) document.getElementById('expVatAmount').value = '';
 }
 
-function openExpModal(id) {
+let _expModalMode = 'paid'; // 'paid' = normal expense, 'pending' = invoice to pay
+
+function openExpModal(id, mode) {
   const r = id ? expData.find(x => x.id === id) : null;
-  document.getElementById('expModalTitle').textContent = r ? 'Edit Expense' : 'Add Expense';
+  _expModalMode = r ? (r.status === 'pending' ? 'pending' : 'paid') : (mode === 'pending' ? 'pending' : 'paid');
+  const isPending = _expModalMode === 'pending';
+  document.getElementById('expModalTitle').textContent = isPending
+    ? (r ? 'Edit Invoice to Pay' : 'Add Invoice to Pay')
+    : (r ? 'Edit Expense' : 'Add Expense');
+  document.getElementById('expDateLbl').textContent = isPending ? 'Due Date *' : 'Date *';
+  document.getElementById('expReceiptLbl').textContent = isPending ? 'Invoice File' : 'Receipt';
   document.getElementById('expEditId').value = r ? r.id : '';
-  document.getElementById('expDate').value = r ? (r.expense_date || '').slice(0,10) : today();
+  document.getElementById('expDate').value = r
+    ? ((isPending ? r.due_date : r.expense_date) || r.expense_date || '').slice(0,10)
+    : today();
   document.getElementById('expCategory').value = r ? r.category : 'other';
   document.getElementById('expDescription').value = r ? r.description : '';
   document.getElementById('expAmount').value = r ? r.amount : '';
@@ -4078,6 +4147,8 @@ async function expRemoveReceipt() {
 async function saveExpense() {
   const id = document.getElementById('expEditId').value;
   const isVat = document.getElementById('expVatStatus').value === 'vat';
+  const isPending = _expModalMode === 'pending';
+  const dateVal = document.getElementById('expDate').value;
   const payload = {
     category: document.getElementById('expCategory').value,
     description: document.getElementById('expDescription').value.trim(),
@@ -4085,7 +4156,9 @@ async function saveExpense() {
     amount: parseFloat(document.getElementById('expAmount').value) || 0,
     vat_amount: isVat ? (parseFloat(document.getElementById('expVatAmount').value) || 0) : null,
     currency: document.getElementById('expCurrency').value,
-    expense_date: document.getElementById('expDate').value,
+    expense_date: dateVal,
+    status: isPending ? 'pending' : 'paid',
+    due_date: isPending ? dateVal : null,
     notes: document.getElementById('expNotes').value.trim()
   };
   if (!payload.expense_date) { showToast('Date is required', 'error'); return; }

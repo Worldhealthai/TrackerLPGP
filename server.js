@@ -101,6 +101,8 @@ async function runLateMigrations() {
     // One-time cleanup: 'Bank' was a junk default the modal used to apply to every deal
     `UPDATE deals SET bank='' WHERE bank='Bank'`,
     `ALTER TABLE company_expenses ADD COLUMN IF NOT EXISTS vat_amount NUMERIC(12,2)`,
+    `ALTER TABLE company_expenses ADD COLUMN IF NOT EXISTS status TEXT NOT NULL DEFAULT 'paid'`,
+    `ALTER TABLE company_expenses ADD COLUMN IF NOT EXISTS due_date DATE`,
     `CREATE TABLE IF NOT EXISTS event_kits (
       id SERIAL PRIMARY KEY,
       event_id INT NOT NULL,
@@ -1674,22 +1676,24 @@ app.patch('/api/hotel-expenses/:id', requireAuth, async (req, res) => {
 
 app.get('/api/expenses', requireAuth, requireAdminOrManager, async (req, res) => {
   try {
-    const { rows } = await q('SELECT id, category, description, vat_status, amount, vat_amount, currency, expense_date, notes, receipt_name, (receipt_data IS NOT NULL) AS has_receipt, created_at FROM company_expenses ORDER BY expense_date DESC, id DESC');
+    const { rows } = await q('SELECT id, category, description, vat_status, amount, vat_amount, currency, expense_date, notes, status, due_date, receipt_name, (receipt_data IS NOT NULL) AS has_receipt, created_at FROM company_expenses ORDER BY expense_date DESC, id DESC');
     res.json(rows);
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
 app.post('/api/expenses', requireAuth, requireAdminOrManager, async (req, res) => {
   try {
-    const { category, description, vat_status, amount, vat_amount, currency, expense_date, notes, receipt_name, receipt_data } = req.body;
+    const { category, description, vat_status, amount, vat_amount, currency, expense_date, notes, status, due_date, receipt_name, receipt_data } = req.body;
     if (!expense_date) return res.status(400).json({ error: 'expense_date required' });
     const isVat = vat_status === 'vat';
+    const isPending = status === 'pending';
     const { rows } = await q(
-      `INSERT INTO company_expenses (category, description, vat_status, amount, vat_amount, currency, expense_date, notes, receipt_name, receipt_data, created_by)
-       VALUES (?,?,?,?,?,?,?,?,?,?,?) RETURNING id, category, description, vat_status, amount, vat_amount, currency, expense_date, notes, receipt_name, (receipt_data IS NOT NULL) AS has_receipt, created_at`,
+      `INSERT INTO company_expenses (category, description, vat_status, amount, vat_amount, currency, expense_date, notes, status, due_date, receipt_name, receipt_data, created_by)
+       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?) RETURNING id, category, description, vat_status, amount, vat_amount, currency, expense_date, notes, status, due_date, receipt_name, (receipt_data IS NOT NULL) AS has_receipt, created_at`,
       [category||'other', description||'', isVat?'vat':'non_vat', amount||0,
        isVat && vat_amount != null && vat_amount !== '' ? parseFloat(vat_amount) : null, currency||'GBP',
-       expense_date, notes||'', receipt_name||null, receipt_data||null, req.user?.id||null]
+       expense_date, notes||'', isPending?'pending':'paid', isPending ? (due_date||expense_date) : null,
+       receipt_name||null, receipt_data||null, req.user?.id||null]
     );
     res.json(rows[0]);
   } catch (e) { res.status(500).json({ error: e.message }); }
@@ -1697,16 +1701,32 @@ app.post('/api/expenses', requireAuth, requireAdminOrManager, async (req, res) =
 
 app.put('/api/expenses/:id', requireAuth, requireAdminOrManager, async (req, res) => {
   try {
-    const { category, description, vat_status, amount, vat_amount, currency, expense_date, notes } = req.body;
+    const { category, description, vat_status, amount, vat_amount, currency, expense_date, notes, status, due_date } = req.body;
     const isVat = vat_status === 'vat';
+    const isPending = status === 'pending';
     const { rows } = await q(
-      `UPDATE company_expenses SET category=?, description=?, vat_status=?, amount=?, vat_amount=?, currency=?, expense_date=?, notes=?
-       WHERE id=? RETURNING id, category, description, vat_status, amount, vat_amount, currency, expense_date, notes, receipt_name, (receipt_data IS NOT NULL) AS has_receipt, created_at`,
+      `UPDATE company_expenses SET category=?, description=?, vat_status=?, amount=?, vat_amount=?, currency=?, expense_date=?, notes=?, status=?, due_date=?
+       WHERE id=? RETURNING id, category, description, vat_status, amount, vat_amount, currency, expense_date, notes, status, due_date, receipt_name, (receipt_data IS NOT NULL) AS has_receipt, created_at`,
       [category||'other', description||'', isVat?'vat':'non_vat', amount||0,
        isVat && vat_amount != null && vat_amount !== '' ? parseFloat(vat_amount) : null, currency||'GBP',
-       expense_date, notes||'', req.params.id]
+       expense_date, notes||'', isPending?'pending':'paid', isPending ? (due_date||expense_date) : null, req.params.id]
     );
     if (!rows.length) return res.status(404).json({ error: 'Not found' });
+    res.json(rows[0]);
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// Mark a pending invoice as paid — stamps the payment date so it is
+// allocated to the right month/quarter alongside regular expenses
+app.patch('/api/expenses/:id/paid', requireAuth, requireAdminOrManager, async (req, res) => {
+  try {
+    const paidDate = req.body?.paid_date || new Date().toISOString().slice(0, 10);
+    const { rows } = await q(
+      `UPDATE company_expenses SET status='paid', expense_date=? WHERE id=? AND status='pending'
+       RETURNING id, expense_date, status`,
+      [paidDate, req.params.id]
+    );
+    if (!rows.length) return res.status(404).json({ error: 'Not found or already paid' });
     res.json(rows[0]);
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
