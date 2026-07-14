@@ -3938,7 +3938,13 @@ function renderExpPending() {
     countEl.style.display = pending.length ? '' : 'none';
   }
   if (!pending.length) {
-    listEl.innerHTML = '<div style="padding:16px 20px;font:500 12px/1.4 var(--font-mono);color:var(--muted)">Nothing waiting to be paid. Use "+ Add Invoice" to log an invoice you still owe.</div>';
+    listEl.innerHTML = `<div class="exp-pending-empty">
+      <div class="epe-icon">✓</div>
+      <div>
+        <div class="epe-title">All settled — nothing waiting to be paid</div>
+        <div class="epe-sub">Log an invoice you still owe with + Add Invoice, then tick it off once it's paid and it joins your expenses automatically.</div>
+      </div>
+    </div>`;
     return;
   }
   const todayStr = new Date().toISOString().slice(0, 10);

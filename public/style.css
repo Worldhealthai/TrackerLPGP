@@ -1215,6 +1215,34 @@ tbody tr:last-child td { border-bottom: none; }
 .ig-benefit-gap { height: 10px; }
 
 /* ── Expenses: invoices-to-pay section ── */
+.exp-pending-card {
+  padding: 0; overflow: hidden; margin-bottom: 20px;
+  border-left: 3px solid var(--accent);
+}
+.exp-pending-hd {
+  padding: 14px 20px; margin: 0;
+  border-radius: var(--radius) var(--radius) 0 0;
+  border-bottom: 1px solid var(--border);
+  background: linear-gradient(90deg, rgba(217,164,65,0.07), transparent 55%);
+}
+.exp-pending-badge {
+  display: inline-flex; align-items: center; justify-content: center;
+  min-width: 20px; height: 20px; padding: 0 6px; border-radius: 20px;
+  font: 800 11px/1 var(--font-mono);
+  background: var(--accent); color: #fff;
+}
+.exp-pending-empty {
+  display: flex; align-items: center; gap: 12px;
+  padding: 18px 20px;
+}
+.exp-pending-empty .epe-icon {
+  width: 34px; height: 34px; border-radius: 50%; flex-shrink: 0;
+  display: flex; align-items: center; justify-content: center;
+  background: var(--positive-soft); color: var(--positive);
+  font: 800 15px/1 var(--font-sans);
+}
+.exp-pending-empty .epe-title { font: 600 13px/1.3 var(--font-sans); color: var(--text); }
+.exp-pending-empty .epe-sub { font: 500 11px/1.5 var(--font-sans); color: var(--muted); margin-top: 2px; }
 .exp-pend-row {
   display: flex; align-items: center; gap: 14px;
   padding: 12px 20px; border-bottom: 1px solid var(--border);

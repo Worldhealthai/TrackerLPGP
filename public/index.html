@@ -507,10 +507,13 @@
         </div>
 
         <!-- Invoices waiting to be paid — check off to allocate as a normal expense -->
-        <div class="card" style="padding:0;overflow:hidden;margin-bottom:20px">
-          <div class="card-header" style="padding:16px 20px;margin:0;border-radius:var(--radius) var(--radius) 0 0">
-            <span class="card-title">Invoices to Pay <span id="expPendingCount" class="badge badge-yellow" style="margin-left:6px"></span></span>
-            <button class="btn btn-ghost btn-sm" onclick="openExpModal(null,'pending')">+ Add Invoice</button>
+        <div class="card exp-pending-card">
+          <div class="card-header exp-pending-hd">
+            <span class="card-title" style="display:flex;align-items:center;gap:9px">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+              Invoices to Pay <span id="expPendingCount" class="exp-pending-badge"></span>
+            </span>
+            <button class="btn btn-primary btn-sm" onclick="openExpModal(null,'pending')">+ Add Invoice</button>
           </div>
           <div id="expPendingList"></div>
         </div>
