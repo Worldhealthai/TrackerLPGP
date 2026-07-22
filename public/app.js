@@ -2196,8 +2196,14 @@ async function loadSalaryPage() {
                   '<div style="font-size:1.3rem;font-weight:700;color:#f59e0b">' + sym + Math.round(suggestedFirstMonthNet).toLocaleString('en-GB') + '</div>' +
                   (fmMeta ? '<div style="font-size:0.7rem;color:var(--muted);margin-top:3px">' + fmMeta.daysWorked + ' of ' + fmMeta.daysTotal + ' days · ' + (fmMeta.monthName||'') + '</div>' : '')
                 : (() => {
+                    // Latest by year+month; same-month payments tie-break on id
+                    // (highest id = most recently recorded)
+                    const payKey = p => (Number(p.payment_year)||0)*100 + (Number(p.payment_month)||0);
                     const lastPay = payments.length
-                      ? payments.reduce((a,b) => ((Number(b.payment_year)||0)*100+(Number(b.payment_month)||0)) > ((Number(a.payment_year)||0)*100+(Number(a.payment_month)||0)) ? b : a, payments[0])
+                      ? payments.reduce((a,b) => {
+                          const ka = payKey(a), kb = payKey(b);
+                          return kb > ka || (kb === ka && (Number(b.id)||0) > (Number(a.id)||0)) ? b : a;
+                        }, payments[0])
                       : null;
                     if (!lastPay) return '<div style="font-size:0.68rem;text-transform:uppercase;letter-spacing:0.5px;color:var(--muted);margin-bottom:6px">Last Payment</div>' +
                       '<div style="font-size:1.3rem;font-weight:700;color:var(--muted)">—</div>' +
@@ -5743,8 +5749,13 @@ async function loadEmployeeDashboard(user) {
                 '</div>'
               : '') +
             (() => {
+              // Latest by year+month; same-month payments tie-break on id
+              const payKey2 = p => (Number(p.payment_year)||0)*100 + (Number(p.payment_month)||0);
               const lastPay2 = payments.length
-                ? payments.reduce((a,b) => ((Number(b.payment_year)||0)*100+(Number(b.payment_month)||0)) > ((Number(a.payment_year)||0)*100+(Number(a.payment_month)||0)) ? b : a, payments[0])
+                ? payments.reduce((a,b) => {
+                    const ka = payKey2(a), kb = payKey2(b);
+                    return kb > ka || (kb === ka && (Number(b.id)||0) > (Number(a.id)||0)) ? b : a;
+                  }, payments[0])
                 : null;
               const lp2Amt   = lastPay2 ? sSym + parseFloat(lastPay2.amount||0).toLocaleString('en-GB',{maximumFractionDigits:0}) : '—';
               const lp2Date  = lastPay2 ? (MONTHS[Number(lastPay2.payment_month)]||'') + (lastPay2.payment_year ? ' '+lastPay2.payment_year : '') : 'No payments yet';
