@@ -1576,6 +1576,8 @@ app.get('/api/export/payroll-csv', requireAuth, requireAdmin, async (req, res) =
 app.get('/api/hotel-expenses', requireAuth, async (req, res) => {
   try {
     const { rows } = await q('SELECT * FROM hotel_expenses ORDER BY sort_order, id');
+    // Blob is streamed on demand via /api/hotel-expenses/:id/invoice
+    rows.forEach(r => { delete r.invoice_data; });
     res.json(rows);
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
@@ -1898,6 +1900,9 @@ app.get('/api/deals', requireAuth, requireAdminOrManager, async (req, res) => {
       LEFT JOIN deal_events de ON de.deal_id = d.id
       LEFT JOIN portfolio_events pe ON pe.id = de.event_id
       GROUP BY d.id ORDER BY d.created_at DESC`);
+    // Strip base64 file blobs from the list payload — files are streamed
+    // on demand via /api/deals/:id/invoice/:n (names are enough for the UI)
+    deals.forEach(d => { delete d.invoice1_data; delete d.invoice2_data; });
     res.json(deals);
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
