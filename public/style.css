@@ -3879,53 +3879,55 @@ tbody tr:last-child td { border-bottom: none; }
 [data-theme="dark"] {
   --primary:        #d9a441;
   --primary-dark:   #c08d2e;
-  --primary-dim:    rgba(217,164,65,0.12);
-  --primary-light:  rgba(217,164,65,0.08);
+  --primary-dim:    rgba(217,164,65,0.14);
+  --primary-light:  rgba(217,164,65,0.10);
   --accent:         #d9a441;
-  --accent-dim:     rgba(217,164,65,0.10);
-  --accent-soft:    rgba(217,164,65,0.10);
-  --accent-line:    rgba(217,164,65,0.30);
-  --danger:         #e5675f;
-  --danger-light:   rgba(229,103,95,0.12);
-  --negative:       #e5675f;
-  --negative-soft:  rgba(229,103,95,0.12);
-  --warning:        #e0a838;
-  --warning-light:  rgba(224,168,56,0.12);
-  --warning-soft:   rgba(224,168,56,0.12);
-  --success:        #4fb286;
-  --success-light:  rgba(79,178,134,0.12);
-  --positive:       #4fb286;
-  --positive-soft:  rgba(79,178,134,0.12);
+  --accent-dim:     rgba(217,164,65,0.12);
+  --accent-soft:    rgba(217,164,65,0.12);
+  --accent-line:    rgba(217,164,65,0.35);
+  --danger:         #ee7b74;
+  --danger-light:   rgba(238,123,116,0.13);
+  --negative:       #ee7b74;
+  --negative-soft:  rgba(238,123,116,0.13);
+  --warning:        #e6b04c;
+  --warning-light:  rgba(230,176,76,0.13);
+  --warning-soft:   rgba(230,176,76,0.13);
+  --success:        #55c58d;
+  --success-light:  rgba(85,197,141,0.13);
+  --positive:       #55c58d;
+  --positive-soft:  rgba(85,197,141,0.13);
   --info:           #d9a441;
-  --info-light:     rgba(217,164,65,0.10);
-  --info-soft:      rgba(217,164,65,0.10);
+  --info-light:     rgba(217,164,65,0.12);
+  --info-soft:      rgba(217,164,65,0.12);
 
-  --bg:             #0a0a0c;
-  --bg-2:           #0d0d10;
-  --surface:        #141417;
-  --surface-2:      #1a1a1e;
-  --surface-3:      #202025;
-  --card:           #141417;
-  --card-raised:    #1a1a1e;
-  --border:         rgba(255,255,255,0.08);
-  --border-bright:  rgba(255,255,255,0.14);
-  --border-light:   rgba(255,255,255,0.05);
-  --border-white:   rgba(255,255,255,0.06);
-  --line:           rgba(255,255,255,0.06);
+  /* Layered slate surfaces — lifted from near-black for legibility,
+     each elevation step clearly distinct */
+  --bg:             #15171c;
+  --bg-2:           #191c22;
+  --surface:        #1e222a;
+  --surface-2:      #262b34;
+  --surface-3:      #2d333e;
+  --card:           #1e222a;
+  --card-raised:    #262b34;
+  --border:         #303644;
+  --border-bright:  #3d4454;
+  --border-light:   #282d38;
+  --border-white:   #333947;
+  --line:           #2a2f3a;
 
-  --text:           #f4f4f5;
-  --text-2:         #c4c4c9;
-  --muted:          #8e8e96;
-  --muted-light:    #5f5f67;
-  --dim:            #6a6a72;
+  --text:           #eef1f6;
+  --text-2:         #c6cddb;
+  --muted:          #98a2b5;
+  --muted-light:    #67718a;
+  --dim:            #78829a;
 
-  --sidebar-bg:     #050506;
+  --sidebar-bg:     #111318;
 
-  --shadow-sm:  0 1px 2px rgba(0,0,0,0.4);
-  --shadow:     0 8px 24px rgba(0,0,0,0.45);
-  --shadow-lg:  0 24px 64px rgba(0,0,0,0.6);
-  --shadow-card: 0 1px 2px rgba(0,0,0,0.3), 0 0 0 1px rgba(255,255,255,0.03);
-  --shadow-hover: 0 10px 30px rgba(0,0,0,0.5);
+  --shadow-sm:  0 1px 2px rgba(0,0,0,0.25);
+  --shadow:     0 8px 24px rgba(0,0,0,0.32);
+  --shadow-lg:  0 24px 64px rgba(0,0,0,0.45);
+  --shadow-card: 0 1px 2px rgba(0,0,0,0.20), 0 0 0 1px rgba(255,255,255,0.02);
+  --shadow-hover: 0 10px 30px rgba(0,0,0,0.35);
 
   --glow-p: none;
   --glow-a: none;
@@ -3970,7 +3972,7 @@ tbody tr:last-child td { border-bottom: none; }
   box-shadow: 0 0 0 3px rgba(217,164,65,0.15);
 }
 [data-theme="dark"] .form-group input::placeholder { color: var(--muted-light); }
-[data-theme="dark"] select option { background: #141417; color: var(--text); }
+[data-theme="dark"] select option { background: #262b34; color: var(--text); }
 
 /* Dark table */
 [data-theme="dark"] table thead th {
@@ -4003,12 +4005,12 @@ tbody tr:last-child td { border-bottom: none; }
 
 /* Dark modal */
 [data-theme="dark"] .modal {
-  background: #151518;
+  background: var(--surface);
   border-color: var(--border-bright);
   border-top-color: var(--primary);
-  box-shadow: 0 32px 80px rgba(0,0,0,0.7);
+  box-shadow: 0 32px 80px rgba(0,0,0,0.55);
 }
-[data-theme="dark"] .modal-overlay { background: rgba(0,0,0,0.7); }
+[data-theme="dark"] .modal-overlay { background: rgba(8,10,14,0.68); }
 [data-theme="dark"] .modal-close { background: rgba(255,255,255,0.04); border-color: var(--border); color: var(--muted); }
 
 /* Dark hm-body panels in hotel modal */
@@ -4016,7 +4018,7 @@ tbody tr:last-child td { border-bottom: none; }
 
 /* Dark hero dashboard card — clean, minimal with subtle gold edge */
 [data-theme="dark"] .dash-hero-card {
-  background: linear-gradient(135deg, #161617 0%, #1a1a1d 100%);
+  background: linear-gradient(135deg, var(--surface) 0%, var(--surface-2) 100%);
   border-color: var(--border-bright);
   box-shadow: var(--shadow-card);
 }
@@ -4054,13 +4056,13 @@ tbody tr:last-child td { border-bottom: none; }
 }
 [data-theme="dark"] .btn-ghost {
   background: rgba(255,255,255,0.04);
-  border-color: rgba(255,255,255,0.1);
+  border-color: var(--border-bright);
   color: var(--text-2);
 }
 [data-theme="dark"] .btn-ghost:hover { background: rgba(255,255,255,0.08); border-color: var(--primary); color: var(--text); }
 
 /* Dark badges */
-[data-theme="dark"] .badge-blue   { background: rgba(217,164,65,0.18); color: #a5b4fc; border-color: rgba(217,164,65,0.3); }
+[data-theme="dark"] .badge-blue   { background: rgba(217,164,65,0.16); color: #ecc57c; border-color: rgba(217,164,65,0.32); }
 [data-theme="dark"] .badge-green  { background: rgba(52,211,153,0.14); color: #6ee7b7; border-color: rgba(52,211,153,0.25); }
 [data-theme="dark"] .badge-red    { background: rgba(248,113,113,0.14); color: #fca5a5; border-color: rgba(248,113,113,0.25); }
 [data-theme="dark"] .badge-yellow { background: rgba(251,191,36,0.14); color: #fde68a; border-color: rgba(251,191,36,0.25); }
@@ -4078,9 +4080,9 @@ tbody tr:last-child td { border-bottom: none; }
 
 /* Dark salary overview card */
 [data-theme="dark"] .salary-overview-card {
-  background: rgba(255,255,255,0.04);
-  border-color: rgba(255,255,255,0.08);
-  box-shadow: 0 2px 16px rgba(0,0,0,0.3);
+  background: var(--card-raised);
+  border-color: var(--border);
+  box-shadow: 0 2px 16px rgba(0,0,0,0.22);
 }
 [data-theme="dark"] .salary-overview-card:hover {
   border-color: rgba(217,164,65,0.35);
@@ -4141,13 +4143,13 @@ tbody tr:last-child td { border-bottom: none; }
 [data-theme="dark"] .theme-toggle-btn {
   background: rgba(217,164,65,0.1);
   border-color: rgba(217,164,65,0.2);
-  color: #a5b4fc;
+  color: #ecc57c;
 }
 [data-theme="dark"] .theme-toggle-btn:hover {
   background: rgba(217,164,65,0.18);
   border-color: rgba(217,164,65,0.4);
   box-shadow: 0 0 16px rgba(217,164,65,0.25);
-  color: #c7d2fe;
+  color: #f3d79e;
 }
 
 /* Dark login page */
