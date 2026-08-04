@@ -700,10 +700,10 @@ function renderRevenueIntelPanel(deals, expiring, evtRevData) {
     const dotHtml = clients.slice(0,12).map(c => {
       const p=parseFloat(c.paid_inc_vat)||0; const a=parseFloat(c.amount)||0;
       const status = p>=a && a>0 ? 'paid' : p>0 ? 'partial' : 'unpaid';
-      const dotCol = status==='paid' ? '#22c55e' : status==='partial' ? '#f59e0b' : '#6b7280';
+      const dotCol = status==='paid' ? '#22c55e' : status==='partial' ? '#f59e0b' : 'var(--muted)';
       const co = c.company || '?';
       return `<span title="${esc(co)}: ${status}" style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${dotCol};margin:1px"></span>`;
-    }).join('') + (clients.length > 12 ? `<span style="font-size:0.7rem;color:rgba(255,255,255,0.4)">+${clients.length-12}</span>` : '');
+    }).join('') + (clients.length > 12 ? `<span style="font-size:0.7rem;color:var(--muted)">+${clients.length-12}</span>` : '');
 
     return `<div class="ri-evt-card" onclick="navigate('portfolio')" title="View in Portfolio" style="cursor:pointer">
       <div class="ri-evt-hd">
@@ -730,7 +730,7 @@ function renderRevenueIntelPanel(deals, expiring, evtRevData) {
         <span class="ri-evt-counts ri-evt-foot-label">
           <span style="color:#22c55e;font-weight:700">${paidC}✓</span>
           ${partC > 0 ? `<span style="color:#f59e0b;font-weight:700"> ${partC}◑</span>` : ''}
-          <span style="color:#9ca3af;font-weight:700"> ${unpC}✗</span>
+          <span style="color:var(--muted);font-weight:700"> ${unpC}✗</span>
         </span>
       </div>
     </div>`;
@@ -792,7 +792,7 @@ function renderRevenueIntelPanel(deals, expiring, evtRevData) {
             <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-top:2px">
               <span style="font-size:0.72rem;color:#22c55e">●  ${fullPaidDeals} paid</span>
               <span style="font-size:0.72rem;color:#f59e0b">● ${partialDeals} partial</span>
-              <span style="font-size:0.72rem;color:#6b7280">● ${unpaidDeals} unpaid</span>
+              <span style="font-size:0.72rem;color:var(--muted)">● ${unpaidDeals} unpaid</span>
             </div>
           </div>
         </div>
@@ -1144,7 +1144,7 @@ async function loadEmployeeRecords() {
             </span>
             <span style="font-size:1rem;font-weight:800;color:var(--danger)">−£${deduction.toFixed(2)} deduction</span>
           </div>
-          <div style="font-size:0.78rem;background:rgba(0,0,0,0.25);border-radius:6px;padding:6px 10px;display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+          <div style="font-size:0.78rem;background:var(--surface-2);border-radius:6px;padding:6px 10px;display:flex;gap:8px;align-items:center;flex-wrap:wrap">
             <span>📐</span>
             <span>${used} used − ${allowance} free = <strong>${excess} excess</strong></span>
             <span style="opacity:0.4">·</span>
@@ -1430,8 +1430,8 @@ async function loadPaymentsSection(empId, emp) {
         const pr = empData.pro_rated;
         if (pr) {
           proRatedHtml = `
-          <div style="margin-top:14px;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:10px;padding:14px 16px">
-            <div style="font-size:0.72rem;font-weight:700;text-transform:uppercase;letter-spacing:0.5px;color:#059669;margin-bottom:8px">Pro-Rated Reference · Started ${pr.start_date}</div>
+          <div style="margin-top:14px;background:var(--positive-soft);border:1px solid rgba(22,163,74,0.30);border-radius:10px;padding:14px 16px">
+            <div style="font-size:0.72rem;font-weight:700;text-transform:uppercase;letter-spacing:0.5px;color:var(--positive);margin-bottom:8px">Pro-Rated Reference · Started ${pr.start_date}</div>
             <div style="font-size:0.85rem;display:flex;justify-content:space-between;font-weight:600">
               <span style="color:var(--muted)">Expected to date</span>
               <span style="color:#059669;font-weight:800">${sym}${pr.total_expected.toLocaleString('en-GB',{minimumFractionDigits:2})}</span>
@@ -1615,7 +1615,7 @@ async function loadReport() {
       var barH = val > 0 ? Math.max(10, Math.round((val / maxVal) * 110)) : 4;
       var lbl  = val > 0 ? (val >= 1000 ? '£' + (val/1000).toFixed(1) + 'k' : '£' + Math.round(val)) : '';
       var isNow = (i === curMonth);
-      var barBg = isNow ? 'var(--primary)' : '#2a3040';
+      var barBg = isNow ? 'var(--primary)' : 'var(--surface-3)';
       html += '<div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:4px;min-width:0">';
       html += '<div style="font:600 9px/1 var(--font-mono);color:' + (isNow ? 'var(--primary)' : 'var(--muted)') + ';text-align:center;white-space:nowrap">' + lbl + '</div>';
       html += '<div style="background:' + barBg + ';border-radius:3px 3px 0 0;width:100%;height:' + barH + 'px"></div>';
@@ -2308,10 +2308,10 @@ async function loadSalaryPage() {
             </button>
             <div class="sc-sec-body">
               <div class="sc-sec-actions">
-                <button class="btn btn-ghost btn-sm" style="border-color:#fde68a;color:#b45309" onclick="openBonusModal(${emp.employee_id})">+ Add Bonus</button>
+                <button class="btn btn-ghost btn-sm" style="border-color:rgba(245,158,11,0.4);color:var(--warning)" onclick="openBonusModal(${emp.employee_id})">+ Add Bonus</button>
               </div>
               ${bonuses.length ? bonuses.map(b => `
-                <div class="sc-item" style="background:#fffbeb;border-color:#fde68a">
+                <div class="sc-item" style="background:var(--warning-soft);border-color:rgba(245,158,11,0.35)">
                   <span class="sc-item-date">${b.bonus_date||''}</span>
                   <span class="sc-item-amt amb">+${sym}${parseFloat(b.amount||0).toLocaleString('en-GB',{minimumFractionDigits:2})}</span>
                   <span class="sc-item-note">${esc(b.reason||'')}${b.notes?` · ${esc(b.notes)}`:''}</span>
@@ -4990,7 +4990,7 @@ function renderDealsTable() {
       ${ec('invoice_date','date',d.invoice_date||'', `${invDateStr||'<span style="color:var(--muted)">—</span>'}`)}
       ${ec('bank','select-bank',d.bank||'', `${esc(d.bank||'')||'<span style="color:var(--muted)">—</span>'}`)}
       <td class="deal-cell-inv" data-id="${d.id}" onclick="openDealInvoicePanel(${d.id})" title="Click to upload / view invoice files" style="cursor:pointer">
-        <span style="font-family:monospace;font-size:0.72rem;color:${d.invoice_number?'var(--text)':'var(--muted)'}">${d.invoice_number ? esc(d.invoice_number) : '—'}</span>
+        <div style="font-family:monospace;font-size:0.72rem;color:${d.invoice_number?'var(--text)':'var(--muted)'}">${d.invoice_number ? esc(d.invoice_number) : '—'}</div>
         ${(d.invoice1_name||d.invoice2_name)
           ? `<span class="deal-inv-filed-badge" title="${[d.invoice1_name,d.invoice2_name].filter(Boolean).join(', ')}">📎 Filed</span>`
           : `<span class="deal-inv-missing-badge" title="No invoice file uploaded yet">+ Add file</span>`}
@@ -5258,7 +5258,7 @@ function showDealColorPicker(e, id) {
   e.stopPropagation();
   document.querySelectorAll('.deal-color-picker').forEach(el => el.remove());
   const colors = [
-    { status:'none',    label:'Clear',   bg:'transparent', border:'#aaa', icon:'⬜' },
+    { status:'none',    label:'Clear',   bg:'transparent', border:'var(--border-bright)', icon:'⬜' },
     { status:'paid',    label:'Paid',    bg:'#16a34a',      icon:'🟢' },
     { status:'flagged', label:'Flag',    bg:'#ca8a04',      icon:'🚩' },
     { status:'issue',   label:'Issue',   bg:'#ea580c',      icon:'🟠' },
