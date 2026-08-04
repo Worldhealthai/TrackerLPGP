@@ -3177,6 +3177,18 @@ function calNextMonth() {
 // ─── HELPERS ─────────────────────────────────────────────────────────────────
 function openModal(id) { document.getElementById(id).classList.add('open'); }
 function closeModal(id) { document.getElementById(id).classList.remove('open'); }
+
+// Esc closes the topmost open modal (covers class-based and inline-display overlays)
+document.addEventListener('keydown', e => {
+  if (e.key !== 'Escape') return;
+  const overlays = Array.from(document.querySelectorAll('.modal-overlay')).filter(m =>
+    m.classList.contains('open') || m.classList.contains('active') || m.style.display === 'flex');
+  const top = overlays[overlays.length - 1];
+  if (!top) return;
+  if (top.classList.contains('open')) top.classList.remove('open');
+  else if (top.classList.contains('active')) top.remove();
+  else top.style.display = 'none';
+});
 function today() { return new Date().toISOString().slice(0, 10); }
 function formatDate(d) {
   return new Date(d + 'T12:00:00').toLocaleDateString('en-US', { weekday:'long', year:'numeric', month:'long', day:'numeric' });
@@ -6111,7 +6123,7 @@ function renderDealTracker() {
     return '<div style="display:flex;align-items:stretch;border-bottom:1px solid var(--border);background:' + c.bg + ';border-left:3px solid ' + c.dot + ';transition:filter .15s" onmouseenter="this.style.filter=\'brightness(1.08)\'" onmouseleave="this.style.filter=\'\'">' +
       flagBtn +
       mkCell(colW[0],  '<span style="font:600 11px/1.3 var(--font-mono);color:var(--muted)">' + esc(r.month_label||'') + '</span>', ie('month_label')) +
-      mkCell(colW[1],  '<span style="font:600 13px/1.3 var(--font-sans);color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:block">' + esc(r.company) + '</span>', 'openDealModal(' + r.id + ')', 'pointer') +
+      mkCell(colW[1],  '<span style="font:600 13px/1.3 var(--font-sans);color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:block">' + esc(r.company) + '</span>', 'accOpenDealModal(' + r.id + ')', 'pointer') +
       mkCell(colW[2],  '<span style="font:700 12px/1 var(--font-mono);color:var(--text)">' + esc(fmtAmt(r.paid_inc_vat)) + '</span>', ie('paid_inc_vat')) +
       mkCell(colW[3],  '<span style="font:600 12px/1 var(--font-mono);color:var(--muted)">' + esc(fmtAmt(r.deal_amount)) + '</span>', ie('deal_amount')) +
       mkCell(colW[4],  '<span style="font:500 11px/1 var(--font-mono);color:var(--muted)">' + esc(fmtAmt(r.tax_vat)) + '</span>', ie('tax_vat')) +
@@ -6138,8 +6150,8 @@ function renderDealTracker() {
     '<div style="padding:20px 24px 0;display:flex;align-items:center;gap:12px;flex-wrap:wrap">' +
       '<h2 style="font:700 20px/1 var(--font-sans);color:var(--text);flex:1">Deal Tracker</h2>' +
       '<button class="btn btn-ghost btn-sm" onclick="dealAutoColour()" title="Set green where paid, no colour where unpaid">Auto-colour rows</button>' +
-      '<button class="btn btn-ghost btn-sm" onclick="openDealImport()" style="gap:6px"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg> Import Excel / CSV</button>' +
-      '<button class="btn btn-primary btn-sm" onclick="openDealModal(null)">+ Add Deal</button>' +
+      '<button class="btn btn-ghost btn-sm" onclick="accOpenDealImport()" style="gap:6px"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg> Import Excel / CSV</button>' +
+      '<button class="btn btn-primary btn-sm" onclick="accOpenDealModal(null)">+ Add Deal</button>' +
     '</div>' +
 
     // Summary cards
@@ -6320,7 +6332,7 @@ function dealClearFilters() {
   renderDealTracker();
 }
 
-function openDealModal(id) {
+function accOpenDealModal(id) {
   const deal = id ? _dealData.find(d => d.id === id) : null;
   const v = k => deal ? (deal[k] != null ? deal[k] : '') : '';
   const fmtDateInput = d => { if (!d) return ''; return String(d).slice(0,10); };
@@ -6337,11 +6349,11 @@ function openDealModal(id) {
   const statusSel = ['active','cancelled'].map(o => '<option value="' + o + '"' + ((v('status')||'active')===o?' selected':'') + '>' + (o==='active'?'Active':'Cancelled') + '</option>').join('');
 
   const html =
-    '<div class="modal-overlay active" id="dealModal" onclick="if(event.target===this)closeDealModal()">' +
+    '<div class="modal-overlay active" id="accDealModal" onclick="if(event.target===this)accCloseDealModal()">' +
     '<div class="modal" style="max-width:680px;width:95vw">' +
     '<div class="modal-header">' +
       '<h2>' + (deal ? 'Edit Deal' : 'Add Deal') + '</h2>' +
-      '<button class="modal-close" onclick="closeDealModal()">✕</button>' +
+      '<button class="modal-close" onclick="accCloseDealModal()">✕</button>' +
     '</div>' +
     '<div style="padding:20px;display:grid;grid-template-columns:1fr 1fr;gap:14px">' +
       '<div class="form-group" style="grid-column:1/-1">' +
@@ -6406,24 +6418,24 @@ function openDealModal(id) {
       '</div>' +
     '</div>' +
     '<div style="padding:0 20px 20px;display:flex;gap:10px;justify-content:flex-end">' +
-      (deal ? '<button class="btn btn-ghost btn-sm" style="color:var(--negative)" onclick="deleteDeal(' + id + ')">Delete</button><span style="flex:1"></span>' : '') +
-      '<button class="btn btn-ghost btn-sm" onclick="closeDealModal()">Cancel</button>' +
-      '<button class="btn btn-primary btn-sm" onclick="saveDeal(' + (id||'null') + ')">Save</button>' +
+      (deal ? '<button class="btn btn-ghost btn-sm" style="color:var(--negative)" onclick="accDeleteDeal(' + id + ')">Delete</button><span style="flex:1"></span>' : '') +
+      '<button class="btn btn-ghost btn-sm" onclick="accCloseDealModal()">Cancel</button>' +
+      '<button class="btn btn-primary btn-sm" onclick="accSaveDeal(' + (id||'null') + ')">Save</button>' +
     '</div>' +
     '</div></div>';
 
-  let existing = document.getElementById('dealModal');
+  let existing = document.getElementById('accDealModal');
   if (existing) existing.remove();
   document.body.insertAdjacentHTML('beforeend', html);
   document.getElementById('dlCompany').focus();
 }
 
-function closeDealModal() {
-  const m = document.getElementById('dealModal');
+function accCloseDealModal() {
+  const m = document.getElementById('accDealModal');
   if (m) m.remove();
 }
 
-async function saveDeal(id) {
+async function accSaveDeal(id) {
   const company = document.getElementById('dlCompany').value.trim();
   if (!company) { showToast('Company name is required', 'error'); return; }
   const payload = {
@@ -6455,19 +6467,19 @@ async function saveDeal(id) {
     } else {
       _dealData.push(data);
     }
-    closeDealModal();
+    accCloseDealModal();
     renderDealTracker();
     showToast(id ? 'Deal updated' : 'Deal added', 'success');
   } catch(e) { showToast('Error: ' + e.message, 'error'); }
 }
 
-async function deleteDeal(id) {
+async function accDeleteDeal(id) {
   if (!confirm('Delete this deal?')) return;
   try {
     const res = await fetch('/api/deal-tracker/' + id, { method: 'DELETE' });
     if (!res.ok) throw new Error('Delete failed');
     _dealData = _dealData.filter(d => d.id !== id);
-    closeDealModal();
+    accCloseDealModal();
     renderDealTracker();
     showToast('Deal deleted', 'success');
   } catch(e) { showToast('Error: ' + e.message, 'error'); }
@@ -6714,35 +6726,35 @@ async function deleteInvoiceFile(id, dealId) {
 }
 
 // ─── DEAL IMPORT ──────────────────────────────────────────────────────────────
-function openDealImport() {
-  let existing = document.getElementById('dealImportModal');
+function accOpenDealImport() {
+  let existing = document.getElementById('accDealImportModal');
   if (existing) existing.remove();
   const html =
-    '<div class="modal-overlay active" id="dealImportModal" onclick="if(event.target===this)closeDealImport()">' +
+    '<div class="modal-overlay active" id="accDealImportModal" onclick="if(event.target===this)closeDealImport()">' +
     '<div class="modal" style="max-width:560px;width:95vw">' +
     '<div class="modal-header"><h2>Import from Excel / CSV</h2><button class="modal-close" onclick="closeDealImport()">✕</button></div>' +
     '<div style="padding:20px">' +
       '<p style="font:500 13px/1.6 var(--font-sans);color:var(--muted);margin-bottom:16px">Select your Excel (.xlsx) or CSV file. Columns are matched automatically by header name.</p>' +
-      '<div style="border:2px dashed var(--border);border-radius:10px;padding:36px;text-align:center;cursor:pointer;transition:border-color .2s" id="dealDropZone" onclick="document.getElementById(\'dealImportFile\').click()" ondragover="event.preventDefault();this.style.borderColor=\'var(--primary)\'" ondragleave="this.style.borderColor=\'\'" ondrop="event.preventDefault();this.style.borderColor=\'\';processDealImportFile({files:event.dataTransfer.files})">' +
+      '<div style="border:2px dashed var(--border);border-radius:10px;padding:36px;text-align:center;cursor:pointer;transition:border-color .2s" id="accDealDropZone" onclick="document.getElementById(\'accDealImportFile\').click()" ondragover="event.preventDefault();this.style.borderColor=\'var(--primary)\'" ondragleave="this.style.borderColor=\'\'" ondrop="event.preventDefault();this.style.borderColor=\'\';processDealImportFile({files:event.dataTransfer.files})">' +
         '<div style="font-size:36px;margin-bottom:8px">📂</div>' +
         '<div style="font:600 13px/1 var(--font-sans);color:var(--text)">Click to choose file or drag &amp; drop</div>' +
         '<div style="font:500 11px/1 var(--font-mono);color:var(--muted);margin-top:6px">.xlsx · .xls · .csv</div>' +
       '</div>' +
-      '<input type="file" id="dealImportFile" accept=".xlsx,.xls,.csv" style="display:none" onchange="processDealImportFile(this)">' +
-      '<div id="dealImportPreview" style="margin-top:16px"></div>' +
+      '<input type="file" id="accDealImportFile" accept=".xlsx,.xls,.csv" style="display:none" onchange="processDealImportFile(this)">' +
+      '<div id="accDealImportPreview" style="margin-top:16px"></div>' +
     '</div></div></div>';
   document.body.insertAdjacentHTML('beforeend', html);
 }
 
 function closeDealImport() {
-  const m = document.getElementById('dealImportModal');
+  const m = document.getElementById('accDealImportModal');
   if (m) m.remove();
 }
 
 async function processDealImportFile(input) {
   const file = (input.files||[])[0];
   if (!file) return;
-  const preview = document.getElementById('dealImportPreview');
+  const preview = document.getElementById('accDealImportPreview');
   preview.innerHTML = '<div style="text-align:center;padding:16px;color:var(--muted);font:500 12px/1 var(--font-mono)">Parsing file…</div>';
 
   // Lazy-load SheetJS
@@ -6828,7 +6840,7 @@ function mapDealImportRow(row) {
 }
 
 function showDealImportPreview(rows) {
-  const preview = document.getElementById('dealImportPreview');
+  const preview = document.getElementById('accDealImportPreview');
   if (!rows.length) {
     preview.innerHTML = '<div class="alert alert-error">No valid rows found. Make sure your file has a "Company" column header.</div>';
     return;
@@ -6869,7 +6881,7 @@ function showDealImportPreview(rows) {
 async function confirmDealImport() {
   const rows = window._dealImportRows || [];
   if (!rows.length) return;
-  const btn = document.querySelector('#dealImportModal .btn-primary');
+  const btn = document.querySelector('#accDealImportModal .btn-primary');
   if (btn) { btn.disabled = true; btn.textContent = 'Importing…'; }
   try {
     const res = await fetch('/api/deal-tracker/bulk', {
