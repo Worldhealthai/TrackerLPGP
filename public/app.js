@@ -5726,6 +5726,32 @@ async function loadEmployeeDashboard(user) {
           '</div>'
         : '';
 
+      // Deductions (office deductions + day-off excess) — shown so the
+      // remaining figure visibly reconciles with what the admin sees
+      const officeDeds = Array.isArray(s.office_deductions) ? s.office_deductions : [];
+      const totalOfficeDeds = parseFloat(s.total_office_deductions) || 0;
+      const excessDed = parseFloat(s.excess_deduction) || 0;
+      const totalDeds = totalOfficeDeds + excessDed;
+      const deductionsHtml = totalDeds > 0
+        ? '<div style="padding:16px 20px;border-top:1px solid var(--border)">' +
+            '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">' +
+              '<span style="font:600 10px/1 var(--font-mono);text-transform:uppercase;letter-spacing:1px;color:var(--muted)">Deductions</span>' +
+              '<span style="font:700 12px/1 var(--font-mono);color:var(--negative)">−' + sSym + totalDeds.toLocaleString('en-GB',{minimumFractionDigits:2}) + '</span>' +
+            '</div>' +
+            officeDeds.map(d => '<div style="display:flex;justify-content:space-between;padding:9px 0;border-bottom:1px solid var(--border);font:500 12px/1 var(--font-mono);color:var(--muted)">' +
+              '<span style="min-width:0"><span style="color:var(--text)">' + esc(d.reason || 'Office deduction') + '</span><br><span style="font-size:10px">' + fmtBonusDate(d.deduction_date) + '</span></span>' +
+              '<span style="color:var(--negative);white-space:nowrap">−' + sSym + parseFloat(d.amount||0).toLocaleString('en-GB',{minimumFractionDigits:2}) + '</span>' +
+            '</div>').join('') +
+            (excessDed > 0
+              ? '<div style="display:flex;justify-content:space-between;padding:9px 0;border-bottom:1px solid var(--border);font:500 12px/1 var(--font-mono);color:var(--muted)">' +
+                  '<span style="min-width:0"><span style="color:var(--text)">Excess days off</span><br><span style="font-size:10px">' + (parseFloat(s.excess_days)||0) + ' day' + ((parseFloat(s.excess_days)||0) !== 1 ? 's' : '') + ' over allowance</span></span>' +
+                  '<span style="color:var(--negative);white-space:nowrap">−' + sSym + excessDed.toLocaleString('en-GB',{minimumFractionDigits:2}) + '</span>' +
+                '</div>'
+              : '') +
+            '<div style="font:500 10px/1.5 var(--font-mono);color:var(--muted);margin-top:10px">Deductions are already reflected in your remaining balance above.</div>' +
+          '</div>'
+        : '';
+
       salHtml =
         '<div class="card" style="margin-top:16px">' +
           '<div class="card-header"><span class="card-title">My Pay — ' + s.year + '</span>' +
@@ -5811,6 +5837,7 @@ async function loadEmployeeDashboard(user) {
             paymentsHtml +
           '</div>' +
           bonusesHtml +
+          deductionsHtml +
         '</div>';
     }
 

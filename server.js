@@ -817,6 +817,11 @@ app.get('/api/employee/salary', requireAuth, async (req, res) => {
        ORDER BY bonus_date DESC`,
       [empId, year]
     );
+    const { rows: officeRows } = await q(
+      `SELECT id, amount, deduction_date::TEXT AS deduction_date, reason
+       FROM office_deductions WHERE employee_id = ? ORDER BY deduction_date DESC`,
+      [empId]
+    );
     const totalBonuses = parseFloat(bonusRows.reduce((a, b) => a + parseFloat(b.amount || 0), 0).toFixed(2));
     const allowance   = DAY_OFF_ALLOWANCE[emp.employment_type] || 20;
     const annualSal   = parseFloat(emp.annual_salary) || 0;
@@ -850,8 +855,11 @@ app.get('/api/employee/salary', requireAuth, async (req, res) => {
     const netFactor       = ukPay ? ukPay.net_annual / annualSal : 1;
     const netSalaryTarget = parseFloat((salaryTarget * netFactor).toFixed(2));
     const totalPaid       = payments.reduce((a, b) => a + parseFloat(b.amount), 0);
-    // % paid is measured against the target net of deductions, matching "amount left".
-    const effectiveTarget = parseFloat((netSalaryTarget - dayCalc.excess_deduction).toFixed(2));
+    const totalOffice     = officeRows.reduce((a, b) => a + parseFloat(b.amount), 0);
+    // % paid is measured against the target net of ALL deductions (day-off excess
+    // + office deductions) — must mirror the admin salary-overview formula exactly
+    // so the employee sees the same remaining figure the admin sees.
+    const effectiveTarget = parseFloat((netSalaryTarget - dayCalc.excess_deduction - totalOffice).toFixed(2));
     const netRemaining    = parseFloat((effectiveTarget - totalPaid).toFixed(2));
     const pctPaid         = effectiveTarget > 0
       ? Math.min(100, Math.round((totalPaid / effectiveTarget) * 100))
@@ -873,6 +881,8 @@ app.get('/api/employee/salary', requireAuth, async (req, res) => {
       payments,
       bonuses:          bonusRows,
       total_bonuses:    totalBonuses,
+      office_deductions: officeRows,
+      total_office_deductions: parseFloat(totalOffice.toFixed(2)),
       total_paid:       parseFloat(totalPaid.toFixed(2)),
       total_days_off:   dayCalc.total_days_off,
       allowance_days:   allowance,
