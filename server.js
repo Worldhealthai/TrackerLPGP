@@ -818,7 +818,7 @@ app.get('/api/employee/salary', requireAuth, async (req, res) => {
       [empId, year]
     );
     const { rows: officeRows } = await q(
-      `SELECT id, amount, deduction_date::TEXT AS deduction_date, reason
+      `SELECT id, amount, deduction_date::TEXT AS deduction_date, description
        FROM office_deductions WHERE employee_id = ? ORDER BY deduction_date DESC`,
       [empId]
     );

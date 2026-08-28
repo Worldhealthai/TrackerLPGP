@@ -5739,7 +5739,7 @@ async function loadEmployeeDashboard(user) {
               '<span style="font:700 12px/1 var(--font-mono);color:var(--negative)">−' + sSym + totalDeds.toLocaleString('en-GB',{minimumFractionDigits:2}) + '</span>' +
             '</div>' +
             officeDeds.map(d => '<div style="display:flex;justify-content:space-between;padding:9px 0;border-bottom:1px solid var(--border);font:500 12px/1 var(--font-mono);color:var(--muted)">' +
-              '<span style="min-width:0"><span style="color:var(--text)">' + esc(d.reason || 'Office deduction') + '</span><br><span style="font-size:10px">' + fmtBonusDate(d.deduction_date) + '</span></span>' +
+              '<span style="min-width:0"><span style="color:var(--text)">' + esc(d.description || 'Office deduction') + '</span><br><span style="font-size:10px">' + fmtBonusDate(d.deduction_date) + '</span></span>' +
               '<span style="color:var(--negative);white-space:nowrap">−' + sSym + parseFloat(d.amount||0).toLocaleString('en-GB',{minimumFractionDigits:2}) + '</span>' +
             '</div>').join('') +
             (excessDed > 0
@@ -5773,7 +5773,7 @@ async function loadEmployeeDashboard(user) {
             '</div>' +
           '</div>' +
           // Stat row
-          '<div style="display:flex;border-bottom:1px solid var(--border)">' +
+          '<div class="emp-pay-stats" style="display:flex;border-bottom:1px solid var(--border)">' +
             '<div style="flex:1;padding:16px 20px;border-right:1px solid var(--border)">' +
               '<div style="font:600 9px/1 var(--font-mono);text-transform:uppercase;letter-spacing:1px;color:var(--muted);margin-bottom:8px">' + monthlyLbl + '</div>' +
               '<div style="font:700 22px/1 var(--font-mono);color:var(--text)">' + sSym + monthlyVal.toLocaleString('en-GB',{maximumFractionDigits:0}) + '</div>' +
@@ -5813,7 +5813,7 @@ async function loadEmployeeDashboard(user) {
             })() +
           '</div>' +
           // PAYE breakdown (if applicable)
-          (paye ? '<div style="padding:16px 20px;border-bottom:1px solid var(--border);display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px">' +
+          (paye ? '<div class="emp-paye-grid" style="padding:16px 20px;border-bottom:1px solid var(--border);display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px">' +
               '<div style="text-align:center">' +
                 '<div style="font:600 9px/1 var(--font-mono);text-transform:uppercase;letter-spacing:1px;color:var(--muted);margin-bottom:6px">Income Tax</div>' +
                 '<div style="font:700 16px/1 var(--font-mono);color:var(--text)">' + sSym + paye.income_tax.toLocaleString('en-GB',{minimumFractionDigits:0}) + '</div>' +
@@ -5842,24 +5842,24 @@ async function loadEmployeeDashboard(user) {
     }
 
     el.innerHTML =
-      '<div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:0">' +
+      '<div class="emp-dash-grid">' +
         // Profile card
         '<div class="card">' +
           '<div style="padding:24px">' +
             '<div style="display:flex;align-items:center;gap:16px;margin-bottom:20px">' +
               '<div style="width:52px;height:52px;border-radius:50%;background:var(--primary);display:flex;align-items:center;justify-content:center;font:800 18px/1 var(--font-mono);color:#000;flex-shrink:0">' + initials + '</div>' +
-              '<div>' +
-                '<div style="font:700 18px/1 var(--font-sans);color:var(--text)">' + esc(profile.name||'') + '</div>' +
-                '<div style="font:500 12px/1 var(--font-mono);color:var(--muted);margin-top:4px">' + esc([profile.job_title, profile.department].filter(Boolean).join(' · ')) + '</div>' +
+              '<div style="min-width:0">' +
+                '<div style="font:700 18px/1.25 var(--font-sans);color:var(--text)">' + esc(profile.name||'') + '</div>' +
+                '<div style="font:500 12px/1.4 var(--font-mono);color:var(--muted);margin-top:4px">' + esc([profile.job_title, profile.department].filter(Boolean).join(' · ')) + '</div>' +
               '</div>' +
             '</div>' +
             (profile.start_date ? '<div style="font:500 11px/1 var(--font-mono);color:var(--muted);margin-bottom:16px">Since ' + profile.start_date + '</div>' : '') +
             '<div style="font:600 10px/1 var(--font-mono);text-transform:uppercase;letter-spacing:1px;color:var(--muted);margin-bottom:8px">Days Off ' + (profile.year||new Date().getFullYear()) + '</div>' +
-            '<div style="display:flex;justify-content:space-between;font:600 12px/1 var(--font-mono);color:var(--muted);margin-bottom:6px">' +
-              '<span>' + daysUsed + ' used</span>' +
+            '<div style="display:flex;justify-content:space-between;gap:10px;font:600 12px/1.4 var(--font-mono);color:var(--muted);margin-bottom:6px">' +
+              '<span style="white-space:nowrap">' + daysUsed + ' used</span>' +
               (excessDays > 0
-                ? '<span style="color:var(--negative)">' + excessDays + ' excess day' + (excessDays !== 1 ? 's' : '') + '</span>'
-                : '<span style="color:' + barColor + '">' + remaining + ' remaining</span>') +
+                ? '<span style="color:var(--negative);white-space:nowrap">' + excessDays + ' excess day' + (excessDays !== 1 ? 's' : '') + '</span>'
+                : '<span style="color:' + barColor + ';white-space:nowrap">' + remaining + ' remaining</span>') +
             '</div>' +
             '<div style="height:8px;background:var(--border);border-radius:4px;margin-bottom:8px">' +
               '<div style="height:100%;width:' + pct + '%;background:' + barColor + ';border-radius:4px"></div>' +
