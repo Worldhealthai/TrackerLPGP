@@ -1216,6 +1216,35 @@ tbody tr:last-child td { border-bottom: none; }
 .ig-ev-del:hover { color: #fff; background: var(--negative); border-color: var(--negative); }
 .ig-benefit-gap { height: 10px; }
 
+/* ── Employee portal (staff dashboard) responsive layout ── */
+.emp-dash-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+@media (max-width: 900px) {
+  .emp-dash-grid { grid-template-columns: 1fr; }
+}
+@media (max-width: 700px) {
+  /* Pay stat tiles: stack two-up instead of four crushed columns */
+  .emp-pay-stats { flex-wrap: wrap; }
+  .emp-pay-stats > div {
+    flex: 1 1 50% !important; min-width: 50%; box-sizing: border-box;
+    padding: 14px 16px !important;
+    border-left: none !important;
+    border-right: 1px solid var(--border) !important;
+    border-top: 1px solid var(--border);
+  }
+  .emp-pay-stats > div:nth-child(2n) { border-right: none !important; }
+  .emp-pay-stats > div:nth-child(-n+2) { border-top: none; }
+  .emp-paye-grid { grid-template-columns: 1fr 1fr 1fr; gap: 8px !important; padding: 14px 12px !important; }
+  .emp-paye-grid > div { padding: 0 4px; }
+}
+@media (max-width: 420px) {
+  .emp-paye-grid { grid-template-columns: 1fr; }
+  .emp-paye-grid > div {
+    border-left: none !important; border-right: none !important;
+    border-bottom: 1px solid var(--border); padding-bottom: 10px;
+  }
+  .emp-paye-grid > div:last-child { border-bottom: none; padding-bottom: 0; }
+}
+
 /* ── Expenses: invoices-to-pay section ── */
 .exp-pending-card {
   padding: 0; overflow: hidden; margin-bottom: 20px;
