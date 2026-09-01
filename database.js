@@ -360,8 +360,19 @@ async function runMigrations() {
   // Migrate: set currency from paid_currency where available
   await sql(`UPDATE hotel_expenses SET currency = paid_currency WHERE currency IS NULL AND paid_currency IS NOT NULL`);
 
-  // Tag all existing hotel expenses as 2026 if event_year not set
-  await sql(`UPDATE hotel_expenses SET event_year = 2026 WHERE event_year IS NULL`);
+  // Tag pre-existing hotel expenses as 2026 — ONE TIME ONLY.
+  // This used to run on every boot, which silently dragged newly added 2027 rows
+  // back to 2026 whenever they were saved without a year. The marker table keeps
+  // it to a single run so a row's year is only ever changed by the user.
+  await sql(`CREATE TABLE IF NOT EXISTS app_migrations (
+    name TEXT PRIMARY KEY,
+    applied_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+  )`);
+  const heYearDone = await sql(`SELECT 1 FROM app_migrations WHERE name = 'hotel_expenses_year_backfill_2026'`);
+  if (!heYearDone.length) {
+    await sql(`UPDATE hotel_expenses SET event_year = 2026 WHERE event_year IS NULL`);
+    await sql(`INSERT INTO app_migrations (name) VALUES ('hotel_expenses_year_backfill_2026') ON CONFLICT DO NOTHING`);
+  }
 
   await sql(`CREATE TABLE IF NOT EXISTS day_off_requests (
   id SERIAL PRIMARY KEY,

@@ -3419,6 +3419,7 @@ function renderUpcomingWidget(upcoming) {
 
 let hotelData = [];
 let _hotelYearFilter = 'all';
+const HOTEL_YEARS = [2025, 2026, 2027, 2028];
 
 async function loadHotelExpenses() {
   const res = await fetch('/api/hotel-expenses');
@@ -3438,7 +3439,14 @@ function setHotelYear(btn, yr) {
 function hotelYearFiltered() {
   if (_hotelYearFilter === 'all') return hotelData;
   const yr = parseInt(_hotelYearFilter);
-  return hotelData.filter(r => r.event_year === yr || r.event_year === String(yr));
+  return hotelData.filter(r => parseInt(r.event_year) === yr);
+}
+
+// Year a newly added event should default to: the year tab you're looking at,
+// falling back to the current calendar year on "All Years".
+function hotelDefaultYear() {
+  const yr = parseInt(_hotelYearFilter);
+  return Number.isFinite(yr) ? yr : new Date().getFullYear();
 }
 
 function hotelCurrencySymbol(c) {
@@ -3634,6 +3642,12 @@ function renderHotelTable() {
           <option value="paid"${r.status==='paid'?' selected':''}>Paid</option>
         </select>
       </td>
+      <td class="ht-cell ht-cur-sel" data-id="${r.id}" data-field="event_year" data-val="${r.event_year || ''}">
+        <select class="ht-select" onchange="htMoveYear(${r.id},this.value)" onclick="event.stopPropagation()" title="Move this event to another year">
+          <option value=""${!r.event_year ? ' selected' : ''}>—</option>
+          ${HOTEL_YEARS.map(y=>`<option value="${y}"${parseInt(r.event_year)===y?' selected':''}>${y}</option>`).join('')}
+        </select>
+      </td>
       <td style="padding:4px 8px">${invoiceCell}</td>
       <td><button class="btn btn-danger btn-sm" onclick="deleteHotelExpense(${r.id})">×</button></td>
       <td style="padding:4px 6px;text-align:center">
@@ -3641,7 +3655,7 @@ function renderHotelTable() {
       </td>
     </tr>
     <tr id="hotel-notes-row-${r.id}" class="hotel-notes-row" style="display:none">
-      <td colspan="11" style="padding:0">
+      <td colspan="12" style="padding:0">
         <div class="hotel-notes-panel">
           <textarea id="hotel-notes-ta-${r.id}" class="hotel-notes-ta" placeholder="Add notes for this event…" onblur="saveHotelNotes(${r.id})">${esc(r.notes || '')}</textarea>
           <div class="hotel-notes-hint">Changes save automatically when you click away</div>
@@ -3701,7 +3715,9 @@ function openHotelModal(id) {
   document.getElementById('hotelFlights').value     = r && r.flights    != null ? r.flights    : '';
   document.getElementById('hotelPrinting').value    = r && r.printing   != null ? r.printing   : '';
   document.getElementById('hotelNotes').value       = r ? (r.notes || '') : '';
-  document.getElementById('hotelEventYear').value   = r && r.event_year ? String(r.event_year) : '';
+  document.getElementById('hotelEventYear').value   = r
+    ? (r.event_year ? String(r.event_year) : '')
+    : String(hotelDefaultYear());
   document.getElementById('hotelModal').classList.add('open');
 }
 
@@ -3785,10 +3801,18 @@ async function htPatchField(id, field, value) {
     const idx = hotelData.findIndex(r => r.id === id);
     if (idx !== -1) hotelData[idx] = updated;
     renderHotelSummary();
-    if (field === 'cost' || field === 'paid_amount' || field === 'currency') {
+    if (field === 'cost' || field === 'paid_amount' || field === 'currency' || field === 'event_year') {
       renderHotelTable();
     }
   } catch { showToast('Save failed', 'error'); }
+}
+
+// Move a single event to another year straight from the table
+async function htMoveYear(id, value) {
+  const rec  = hotelData.find(r => r.id === id);
+  const name = rec ? rec.event_name : 'Event';
+  await htPatchField(id, 'event_year', value === '' ? null : parseInt(value));
+  showToast(value ? `${name} moved to ${value}` : `${name} year cleared`, 'success');
 }
 
 function htUpdateRowClass(id, status) {
