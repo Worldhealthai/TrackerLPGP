@@ -1583,6 +1583,12 @@ app.get('/api/export/payroll-csv', requireAuth, requireAdmin, async (req, res) =
 
 // ─── HOTEL EXPENSES ──────────────────────────────────────────────────────────
 
+// Normalise an event year coming off the wire ('2027', 2027, '', null) to an int or null
+function hotelYear(v) {
+  const n = parseInt(v, 10);
+  return Number.isFinite(n) ? n : null;
+}
+
 app.get('/api/hotel-expenses', requireAuth, async (req, res) => {
   try {
     const { rows } = await q('SELECT * FROM hotel_expenses ORDER BY sort_order, id');
@@ -1601,7 +1607,7 @@ app.post('/api/hotel-expenses', requireAuth, async (req, res) => {
        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?) RETURNING *`,
       [event_name, hotel||'', cost||'', av_amount||null, av_billing||'separate',
        paid_amount||null, currency||'USD', staff_hotel||null, flights||null, printing||null,
-       status||'pending', notes||'', event_year||null, req.user?.id||null]
+       status||'pending', notes||'', hotelYear(event_year) || new Date().getFullYear(), req.user?.id||null]
     );
     res.json(rows[0]);
   } catch (e) { res.status(500).json({ error: e.message }); }
@@ -1618,7 +1624,7 @@ app.put('/api/hotel-expenses/:id', requireAuth, async (req, res) => {
        WHERE id=? RETURNING *`,
       [event_name, hotel||'', cost||'', av_amount||null, av_billing||'separate',
        paid_amount||null, currency||'USD', staff_hotel||null, flights||null, printing||null,
-       status||'pending', notes||'', event_year||null, req.params.id]
+       status||'pending', notes||'', hotelYear(event_year), req.params.id]
     );
     if (!rows.length) return res.status(404).json({ error: 'Not found' });
     res.json(rows[0]);
@@ -1676,7 +1682,8 @@ app.patch('/api/hotel-expenses/:id', requireAuth, async (req, res) => {
     const fields = Object.keys(req.body).filter(k => allowed.includes(k));
     if (!fields.length) return res.status(400).json({ error: 'No valid fields' });
     const sets = fields.map(f => `${f}=?`).join(', ');
-    const vals = fields.map(f => req.body[f] === '' ? null : req.body[f]);
+    const vals = fields.map(f => f === 'event_year' ? hotelYear(req.body[f])
+                                : req.body[f] === '' ? null : req.body[f]);
     const { rows } = await q(`UPDATE hotel_expenses SET ${sets} WHERE id=? RETURNING *`, [...vals, req.params.id]);
     if (!rows.length) return res.status(404).json({ error: 'Not found' });
     // Refresh in-memory for summary recalc (client will re-fetch)
