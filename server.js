@@ -371,52 +371,94 @@ function dailyRateForMonth(annualSalary, year, month) {
   return (annualSalary / 12) / workingDaysInMonth(year, month);
 }
 
+// A day off is exempt only on an explicit true. Never use a bare truthy test:
+// were the driver ever to hand back Postgres' 't'/'f' as strings, 'f' is truthy
+// in JS and would silently stop charging for days that should be charged.
+const isExemptDay = v => v === true || v === 1 || v === 't' || v === 'true';
+
 // Walk day-off records in date order; first N days are free (allowance),
 // excess days are charged at the daily rate of the month they fall in.
+//
+// A record flagged no_deduction is an approved day off that must never cost the
+// employee money. It still shows in the days-used total and can still push that
+// total past the allowance on screen — but it is skipped entirely by the charging
+// walk, so it neither gets charged itself nor uses up a free day that an ordinary
+// day off would otherwise have claimed.
 async function calcExcessDeductions(empId, year, annualSalary, allowance) {
   const { rows } = await q(`
-    SELECT record_date::TEXT AS record_date, is_day_off
+    SELECT record_date::TEXT AS record_date, is_day_off, no_deduction
     FROM daily_records
     WHERE employee_id = ? AND EXTRACT(YEAR FROM record_date) = ? AND is_day_off > 0
     ORDER BY record_date ASC
   `, [empId, year]);
 
-  let daysUsed = 0;
-  let excessDays = 0;
-  let totalDeduction = 0;
-  const monthBreakdown = {};
+  // Charge walk. countExempt=false skips exempt days (the real figure); passing
+  // true prices the same year as if nothing were exempt, so the difference is
+  // exactly what the exemptions saved.
+  function charge(countExempt) {
+    let used = 0, excess = 0, total = 0;
+    const months = {};
+    for (const r of rows) {
+      const val = parseFloat(r.is_day_off);
+      if (!countExempt && isExemptDay(r.no_deduction)) continue;
+      const freeRemaining = Math.max(0, allowance - used);
+      const excessHere    = Math.max(0, val - freeRemaining);
+      used += val;
+      if (excessHere <= 0) continue;
 
-  for (const r of rows) {
-    const val = parseFloat(r.is_day_off);
-    const freeRemaining = Math.max(0, allowance - daysUsed);
-    const excessHere   = Math.max(0, val - freeRemaining);
-    daysUsed += val;
-
-    if (excessHere > 0) {
       const [y, m] = r.record_date.split('-').map(Number);
       const wDays  = workingDaysInMonth(y, m);
       const rate   = dailyRateForMonth(annualSalary, y, m);
       const amount = excessHere * rate;
-      totalDeduction += amount;
-      excessDays     += excessHere;
+      total  += amount;
+      excess += excessHere;
 
       const key = `${y}-${String(m).padStart(2, '0')}`;
-      if (!monthBreakdown[key]) {
-        monthBreakdown[key] = { year: y, month: m, working_days: wDays, rate: parseFloat(rate.toFixed(4)), days: 0, deduction: 0 };
+      if (!months[key]) {
+        months[key] = { year: y, month: m, working_days: wDays, rate: parseFloat(rate.toFixed(4)),
+                        days: 0, exempt_days: 0, deduction: 0 };
       }
-      monthBreakdown[key].days      += excessHere;
-      monthBreakdown[key].deduction += amount;
+      months[key].days      += excessHere;
+      months[key].deduction += amount;
+    }
+    return { charged_days: excess, deduction: total, months };
+  }
+
+  const actual = charge(false);          // what is really taken off their salary
+  const ifNoneExempt = charge(true);     // what it would have been without the flags
+
+  // Days taken, exempt or not — this is the figure shown as "X used / Y allowed"
+  let daysUsed = 0, exemptDays = 0;
+  for (const r of rows) {
+    const val = parseFloat(r.is_day_off);
+    daysUsed += val;
+    if (isExemptDay(r.no_deduction)) {
+      exemptDays += val;
+      // Surface exempt days in the month breakdown even when nothing is charged
+      const [y, m] = r.record_date.split('-').map(Number);
+      const key = `${y}-${String(m).padStart(2, '0')}`;
+      if (!actual.months[key]) {
+        actual.months[key] = { year: y, month: m, working_days: workingDaysInMonth(y, m),
+                               rate: parseFloat(dailyRateForMonth(annualSalary, y, m).toFixed(4)),
+                               days: 0, exempt_days: 0, deduction: 0 };
+      }
+      actual.months[key].exempt_days += val;
     }
   }
 
-  // Round deduction column in breakdown
-  const breakdown = Object.values(monthBreakdown)
-    .map(b => ({ ...b, deduction: parseFloat(b.deduction.toFixed(2)) }));
+  const breakdown = Object.values(actual.months)
+    .sort((x, y) => (x.year - y.year) || (x.month - y.month))
+    .map(b => ({ ...b, exempt_days: parseFloat(b.exempt_days.toFixed(1)), deduction: parseFloat(b.deduction.toFixed(2)) }));
 
   return {
     total_days_off:   daysUsed,
-    excess_days:      parseFloat(excessDays.toFixed(1)),
-    excess_deduction: parseFloat(totalDeduction.toFixed(2)),
+    // Days over the allowance as shown on screen — exempt days included
+    excess_days:      parseFloat(Math.max(0, daysUsed - allowance).toFixed(1)),
+    // Days actually charged for
+    charged_days:     parseFloat(actual.charged_days.toFixed(1)),
+    exempt_days:      parseFloat(exemptDays.toFixed(1)),
+    excess_deduction: parseFloat(actual.deduction.toFixed(2)),
+    waived_deduction: parseFloat((ifNoneExempt.deduction - actual.deduction).toFixed(2)),
     breakdown
   };
 }
@@ -655,7 +697,7 @@ app.get('/api/employee/profile', requireAuth, async (req, res) => {
   const year = new Date().getFullYear();
   const allowance = DAY_OFF_ALLOWANCE[emp.employment_type] || 20;
   const calc = await calcExcessDeductions(empId, year, parseFloat(emp.annual_salary) || 0, allowance);
-  res.json({ ...emp, has_pin, year, days_used: calc.total_days_off, allowance_days: allowance, excess_days: calc.excess_days, excess_deduction: calc.excess_deduction });
+  res.json({ ...emp, has_pin, year, days_used: calc.total_days_off, allowance_days: allowance, excess_days: calc.excess_days, exempt_days: calc.exempt_days, excess_deduction: calc.excess_deduction, waived_deduction: calc.waived_deduction });
 });
 
 // Employee: update own editable details (phone, job_title)
@@ -887,7 +929,9 @@ app.get('/api/employee/salary', requireAuth, async (req, res) => {
       total_days_off:   dayCalc.total_days_off,
       allowance_days:   allowance,
       excess_days:      dayCalc.excess_days,
+      exempt_days:      dayCalc.exempt_days,
       excess_deduction: dayCalc.excess_deduction,
+      waived_deduction: dayCalc.waived_deduction,
       net_remaining:    netRemaining,
       pct_paid:         pctPaid,
       year
@@ -916,7 +960,10 @@ app.get('/api/employees/:id/year-stats', requireAuth, async (req, res) => {
     allowance_days:     allowance,
     remaining_allowance: Math.max(0, allowance - calc.total_days_off),
     excess_days:        calc.excess_days,
+    exempt_days:        calc.exempt_days,
+    charged_days:       calc.charged_days,
     excess_deduction:   calc.excess_deduction,
+    waived_deduction:   calc.waived_deduction,
     breakdown:          calc.breakdown,
     employment_type:    emp.employment_type
   });
@@ -970,15 +1017,17 @@ app.get('/api/records/:employeeId', requireAuth, async (req, res) => {
 });
 
 app.post('/api/records', requireAuth, async (req, res) => {
-  const { employee_id, record_date, break_minutes, phone_minutes, wasted_minutes, late_minutes, is_day_off, notes } = req.body;
+  const { employee_id, record_date, break_minutes, phone_minutes, wasted_minutes, late_minutes, is_day_off, notes, no_deduction } = req.body;
   if (!employee_id || !record_date) return res.status(400).json({ error: 'employee_id and record_date required' });
   const dayOffVal = parseFloat(is_day_off) || 0;
+  // Only a day off can be exempt — a working day has nothing to waive
+  const noDeduct = dayOffVal > 0 && no_deduction === true;
   try {
     const { rows } = await q(
-      `INSERT INTO daily_records (employee_id, record_date, break_minutes, phone_minutes, wasted_minutes, late_minutes, is_day_off, notes, created_by)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id`,
+      `INSERT INTO daily_records (employee_id, record_date, break_minutes, phone_minutes, wasted_minutes, late_minutes, is_day_off, notes, no_deduction, created_by)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id`,
       [employee_id, record_date, break_minutes || 0, phone_minutes || 0, wasted_minutes || 0,
-       late_minutes || 0, dayOffVal, notes || '', req.admin.id]
+       late_minutes || 0, dayOffVal, notes || '', noDeduct, req.admin.id]
     );
     res.json({ id: rows[0].id });
   } catch (e) {
@@ -988,11 +1037,13 @@ app.post('/api/records', requireAuth, async (req, res) => {
 });
 
 app.put('/api/records/:id', requireAuth, async (req, res) => {
-  const { break_minutes, phone_minutes, wasted_minutes, late_minutes, is_day_off, notes } = req.body;
+  const { break_minutes, phone_minutes, wasted_minutes, late_minutes, is_day_off, notes, no_deduction } = req.body;
   const dayOffVal = parseFloat(is_day_off) || 0;
+  // Only a day off can be exempt — switching a record back to a working day clears the flag
+  const noDeduct = dayOffVal > 0 && no_deduction === true;
   await q(
-    `UPDATE daily_records SET break_minutes=?, phone_minutes=?, wasted_minutes=?, late_minutes=?, is_day_off=?, notes=?, updated_at=NOW() WHERE id=?`,
-    [break_minutes || 0, phone_minutes || 0, wasted_minutes || 0, late_minutes || 0, dayOffVal, notes || '', req.params.id]
+    `UPDATE daily_records SET break_minutes=?, phone_minutes=?, wasted_minutes=?, late_minutes=?, is_day_off=?, notes=?, no_deduction=?, updated_at=NOW() WHERE id=?`,
+    [break_minutes || 0, phone_minutes || 0, wasted_minutes || 0, late_minutes || 0, dayOffVal, notes || '', noDeduct, req.params.id]
   );
   res.json({ success: true });
 });
@@ -1180,7 +1231,9 @@ app.get('/api/salary-overview', requireAuth, requireAdmin, async (req, res) => {
         total_days_off:      dayCalc.total_days_off,
         allowance_days:      allowance,
         excess_days:         dayCalc.excess_days,
+        exempt_days:         dayCalc.exempt_days,
         excess_deduction:    dayCalc.excess_deduction,
+        waived_deduction:    dayCalc.waived_deduction,
         breakdown:           dayCalc.breakdown,
         net_remaining:       netRemaining,
         pct_paid:            pctPaid,
@@ -1278,7 +1331,9 @@ app.get('/api/summary', requireAuth, async (req, res) => {
       year_days_off:        totalYearDaysOff,
       allowance_days:       allowance,
       excess_days:          excessDays,
+      exempt_days:          dayCalc.exempt_days,
       excess_day_deduction: excessDayDeduction,
+      waived_deduction:     dayCalc.waived_deduction,
       office_deductions:    totalOffice,
       total_deduction:      parseFloat((excessDayDeduction + totalOffice).toFixed(2)), // actual deductions only
       total_paid_year:      totalPaid,
@@ -2860,7 +2915,8 @@ async function wmFetchSalaryOverview(year) {
       total_bonuses: parseFloat(bonusRows.reduce((a, b) => a + parseFloat(b.amount), 0).toFixed(2)),
       office_deductions: officeRows, total_office_deductions: parseFloat(totalOffice.toFixed(2)),
       total_paid: parseFloat(totalPaid.toFixed(2)), total_days_off: dayCalc.total_days_off,
-      allowance_days: allowance, excess_days: dayCalc.excess_days, excess_deduction: dayCalc.excess_deduction,
+      allowance_days: allowance, excess_days: dayCalc.excess_days, exempt_days: dayCalc.exempt_days,
+      excess_deduction: dayCalc.excess_deduction, waived_deduction: dayCalc.waived_deduction,
       net_remaining: netRemaining, pct_paid: pctPaid
     };
   }));
@@ -2905,7 +2961,8 @@ async function wmFetchAttendanceSummary(from, to) {
       employee_id: emp.id, name: emp.name, employment_type: emp.employment_type,
       record_count: records.length, period_days_off: periodDaysOff,
       year_days_off: dayCalc.total_days_off, allowance_days: allowance,
-      excess_days: dayCalc.excess_days, excess_day_deduction: dayCalc.excess_deduction
+      excess_days: dayCalc.excess_days, exempt_days: dayCalc.exempt_days,
+      excess_day_deduction: dayCalc.excess_deduction, waived_deduction: dayCalc.waived_deduction
     };
   }));
 }

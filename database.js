@@ -104,6 +104,10 @@ async function runMigrations() {
     )
   `);
 
+  // Day-off rows flagged with no_deduction are still counted as days taken,
+  // but are never charged against salary (e.g. director / approved paid leave).
+  await sql(`ALTER TABLE daily_records ADD COLUMN IF NOT EXISTS no_deduction BOOLEAN NOT NULL DEFAULT false`);
+
   await sql(`
     DO $$ BEGIN
       IF (SELECT data_type FROM information_schema.columns
