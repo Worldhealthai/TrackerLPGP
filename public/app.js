@@ -545,7 +545,11 @@ async function loadDashboard() {
 
     const typeBadge = row.employment_type === 'self_employed' ? 'badge-yellow' : 'badge-blue';
     const typeLabel = row.employment_type === 'self_employed' ? 'Self-Emp' : 'Payroll';
-    const daysColor = row.excess_days > 0 ? 'text-danger fw-bold' : '';
+    // Red only when the excess actually costs them — days over the allowance that
+    // are all marked "no deduct" are approved leave, not an overrun
+    const daysColor = (parseFloat(row.excess_day_deduction) || 0) > 0 ? 'text-danger fw-bold' : '';
+    const exemptTip = (parseFloat(row.exempt_days) || 0) > 0
+      ? ` title="${row.exempt_days} day(s) marked 'no deduct' — logged but never charged"` : '';
     const typeCell  = `<span class="badge ${typeBadge}">${typeLabel}</span>` +
       (isIntl ? ` <span class="badge es-badge-intl">${esc(currency)}</span>` : '');
 
@@ -592,7 +596,7 @@ async function loadDashboard() {
       </td>
       <td>${emp?.department ? `<span style="font-size:0.82rem;font-weight:600">${esc(emp.department)}</span>` : '<span style="color:var(--muted)">—</span>'}</td>
       <td>${typeCell}</td>
-      <td class="${daysColor}">${row.year_days_off} / ${row.allowance_days}</td>
+      <td class="${daysColor}"${exemptTip}>${row.year_days_off} / ${row.allowance_days}${(parseFloat(row.exempt_days)||0) > 0 ? ` <span class="badge badge-green" style="font-size:0.62rem">${row.exempt_days} free</span>` : ''}</td>
       <td class="${row.total_deduction > 0 ? 'text-danger fw-bold' : ''}">${row.total_deduction > 0 ? fmtMoney(row.total_deduction, currency) : '<span style="color:var(--muted)">—</span>'}</td>
       <td>${annualCell}</td>
       <td>${lastCell}</td>
@@ -1031,8 +1035,9 @@ function renderDashActivity(summary, expiring, hotelData, salaryData) {
     items.push({ icon: ICONS.pay, tone: 'pos', title: 'Logged payment', detail: sym + parseFloat(last.amount||0).toLocaleString('en-GB') + ' &rarr; ' + esc(e.name) });
   });
 
-  // Allowance breaches
-  summary.filter(r => (parseFloat(r.excess_days)||0) > 0).slice(0,2).forEach(r => {
+  // Allowance breaches — only when it actually costs money. Days over the
+  // allowance that are all marked "no deduct" are approved leave, not a breach.
+  summary.filter(r => (parseFloat(r.excess_day_deduction)||0) > 0).slice(0,2).forEach(r => {
     items.push({ icon: ICONS.breach, tone: 'neg', title: 'Allowance breach', detail: esc(r.name) + ' &middot; ' + r.year_days_off + '/' + r.allowance_days + ' days &middot; &pound;' + parseFloat(r.excess_day_deduction||0).toFixed(2) + ' deduct' });
   });
 
@@ -1126,27 +1131,41 @@ async function loadEmployeeRecords() {
     const excess     = yearStats.excess_days;
     const dailyRate  = yearStats.daily_rate || emp.daily_rate || 0;
     const deduction  = yearStats.excess_deduction || 0;
+    const exemptDays = yearStats.exempt_days || 0;
+    const chargedDays = yearStats.charged_days != null ? yearStats.charged_days : excess;
+    const waived     = yearStats.waived_deduction || 0;
     const typeLabel  = emp.employment_type === 'self_employed' ? 'Self-Employed' : 'Payroll';
+    const exemptNote = exemptDays > 0
+      ? `<span style="opacity:0.4">·</span><span style="color:var(--positive)">${exemptDays} day(s) marked <strong>no deduct</strong></span>`
+      : '';
 
     if (excess > 0) {
-      banner.className = 'alert alert-error';
+      // Excess days that are all exempt cost nothing — don't shout about them
+      banner.className = deduction > 0 ? 'alert alert-error' : 'alert alert-success';
       const breakdown = yearStats.breakdown || [];
-      const breakdownHtml = breakdown.map(b =>
-        `<span>${MONTHS[b.month]}: ${b.days}d × £${parseFloat(b.rate).toFixed(2)} = <strong>£${b.deduction.toFixed(2)}</strong>
-         <small style="opacity:0.7">(${b.working_days} working days)</small></span>`
-      ).join('<span style="opacity:0.4">·</span>');
+      const breakdownHtml = breakdown.map(b => {
+        const exemptPart = b.exempt_days > 0
+          ? ` <small style="opacity:0.85;color:var(--positive)">+${b.exempt_days}d no deduct</small>`
+          : '';
+        return `<span>${MONTHS[b.month]}: ${b.days}d × £${parseFloat(b.rate).toFixed(2)} = <strong>£${b.deduction.toFixed(2)}</strong>${exemptPart}
+         <small style="opacity:0.7">(${b.working_days} working days)</small></span>`;
+      }).join('<span style="opacity:0.4">·</span>');
       banner.innerHTML = `
         <div style="display:flex;flex-direction:column;gap:6px;width:100%">
           <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px">
             <span><strong>${typeLabel} — Days Off ${yearStats.year}:</strong>
               ${used} used / ${allowance} allowed &nbsp;·&nbsp;
               <strong>${excess} excess day(s)</strong>
+              ${exemptNote}
             </span>
-            <span style="font-size:1rem;font-weight:800;color:var(--danger)">−£${deduction.toFixed(2)} deduction</span>
+            <span style="font-size:1rem;font-weight:800;color:${deduction > 0 ? 'var(--danger)' : 'var(--positive)'}">
+              ${deduction > 0 ? `−£${deduction.toFixed(2)} deduction` : 'No deduction'}
+            </span>
           </div>
           <div style="font-size:0.78rem;background:var(--surface-2);border-radius:6px;padding:6px 10px;display:flex;gap:8px;align-items:center;flex-wrap:wrap">
             <span>📐</span>
-            <span>${used} used − ${allowance} free = <strong>${excess} excess</strong></span>
+            <span>${used} used − ${allowance} free = <strong>${excess} excess</strong>${chargedDays !== excess ? `, <strong>${chargedDays}</strong> chargeable` : ''}</span>
+            ${waived > 0 ? `<span style="opacity:0.4">·</span><span style="color:var(--positive)">£${waived.toFixed(2)} waived on no-deduct days</span>` : ''}
             <span style="opacity:0.4">·</span>
             <span>Rate = annual ÷ 12 ÷ working days in month</span>
             <span style="opacity:0.4">·</span>
@@ -1156,7 +1175,8 @@ async function loadEmployeeRecords() {
     } else {
       banner.className = 'alert alert-success';
       banner.innerHTML = `<strong>${typeLabel} — Days Off ${yearStats.year}:</strong>
-        ${used} used / ${allowance} allowed &nbsp;|&nbsp; <strong>${remaining} day(s) remaining</strong>`;
+        ${used} used / ${allowance} allowed &nbsp;|&nbsp; <strong>${remaining} day(s) remaining</strong>
+        ${exemptDays > 0 ? `&nbsp;|&nbsp; <span style="color:var(--positive)">${exemptDays} marked no deduct</span>` : ''}`;
     }
     banner.classList.remove('hidden');
   }
@@ -1196,13 +1216,16 @@ async function loadEmployeeRecords() {
       const dayOffLabel = r.is_day_off === 1 ? '<span class="badge badge-red">Full Day</span>'
                         : r.is_day_off === 0.5 ? '<span class="badge badge-yellow">Half Day</span>'
                         : '—';
+      const noDeductBadge = r.is_day_off > 0 && r.no_deduction
+        ? ' <span class="badge badge-green" title="Logged as a day off, but never deducted from salary">No deduct</span>'
+        : '';
       tr.innerHTML = `
         <td><strong>${r.record_date}</strong></td>
         <td>${r.break_minutes}m ${excessBreak > 0 ? `<span class="badge badge-red">+${excessBreak}m</span>` : '<span class="badge badge-green">OK</span>'}</td>
         <td>${r.phone_minutes > 0 ? `<span class="badge badge-yellow">${r.phone_minutes}m</span>` : '—'}</td>
         <td>${r.wasted_minutes > 0 ? `<span class="badge badge-yellow">${r.wasted_minutes}m</span>` : '—'}</td>
         <td>${r.late_minutes > 0 ? `<span class="badge badge-red">${r.late_minutes}m</span>` : '—'}</td>
-        <td>${dayOffLabel}</td>
+        <td>${dayOffLabel}${noDeductBadge}</td>
         <td>
           ${r.manual_adj_minutes !== 0 ? `<span class="badge ${r.manual_adj_minutes > 0 ? 'badge-red' : 'badge-green'}">${adjSign}${r.manual_adj_minutes}m</span>` : ''}
           <button class="btn btn-ghost btn-sm" onclick="openAdjModal(${r.employee_id},'${r.record_date}')">Adj</button>
@@ -1211,7 +1234,7 @@ async function loadEmployeeRecords() {
         <td style="color:var(--primary);font-size:0.8rem" title="Reference only — not deducted from salary">£${(r.ref_amount||0).toFixed(2)} <span style="opacity:0.5;font-size:0.68rem">ref</span></td>
         <td style="max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(r.notes||'')}">${esc(r.notes||'')||'—'}</td>
         <td style="white-space:nowrap">
-          <button class="btn btn-ghost btn-sm" onclick="openEditRecord(${r.id},${r.employee_id},'${r.record_date}',${r.break_minutes},${r.phone_minutes},${r.wasted_minutes},${r.late_minutes},${r.is_day_off},\`${esc(r.notes||'')}\`)">Edit</button>
+          <button class="btn btn-ghost btn-sm" onclick="openEditRecord(${r.id},${r.employee_id},'${r.record_date}',${r.break_minutes},${r.phone_minutes},${r.wasted_minutes},${r.late_minutes},${r.is_day_off},\`${esc(r.notes||'')}\`,${!!r.no_deduction})">Edit</button>
           <button class="btn btn-danger btn-sm" onclick="deleteRecord(${r.id})">Del</button>
         </td>`;
       tbody.appendChild(tr);
@@ -1235,15 +1258,17 @@ function openRecordModal() {
   document.getElementById('recWasted').value = 0;
   document.getElementById('recLate').value = 0;
   document.getElementById('recDayOff').value = '0';
+  document.getElementById('recNoDeduction').checked = false;
   document.getElementById('recNotes').value = '';
   document.getElementById('recFields').style.display = '';
+  document.getElementById('recNoDeductRow').style.display = 'none';
   document.getElementById('recordModalTitle').textContent = 'Add Daily Record';
   document.getElementById('recPreview').classList.add('hidden');
   updatePreview();
   openModal('recordModal');
 }
 
-function openEditRecord(id, empId, date, brk, phone, wasted, late, dayOff, notes) {
+function openEditRecord(id, empId, date, brk, phone, wasted, late, dayOff, notes, noDeduction) {
   document.getElementById('recId').value = id;
   document.getElementById('recEmpId').value = empId;
   document.getElementById('recEmpRow').classList.add('hidden');
@@ -1253,8 +1278,10 @@ function openEditRecord(id, empId, date, brk, phone, wasted, late, dayOff, notes
   document.getElementById('recWasted').value = wasted;
   document.getElementById('recLate').value = late;
   document.getElementById('recDayOff').value = String(dayOff);
+  document.getElementById('recNoDeduction').checked = !!noDeduction;
   document.getElementById('recNotes').value = notes;
   document.getElementById('recFields').style.display = dayOff > 0 ? 'none' : '';
+  document.getElementById('recNoDeductRow').style.display = dayOff > 0 ? '' : 'none';
   document.getElementById('recordModalTitle').textContent = 'Edit Record';
   updatePreview();
   openModal('recordModal');
@@ -1263,6 +1290,9 @@ function openEditRecord(id, empId, date, brk, phone, wasted, late, dayOff, notes
 function toggleDayOff() {
   const dayOff = parseFloat(document.getElementById('recDayOff').value);
   document.getElementById('recFields').style.display = dayOff > 0 ? 'none' : '';
+  // The exemption only means anything for a day off
+  document.getElementById('recNoDeductRow').style.display = dayOff > 0 ? '' : 'none';
+  if (!(dayOff > 0)) document.getElementById('recNoDeduction').checked = false;
   updatePreview();
 }
 
@@ -1282,9 +1312,11 @@ function updatePreview() {
     const typeNote = emp.employment_type === 'self_employed'
       ? ' (check year allowance — self-employed: 5 days free)'
       : ' (check year allowance — payroll: 20 days free)';
+    const noDeduct = document.getElementById('recNoDeduction')?.checked;
     html = `<h3>Day Off Note</h3>
       <div class="deduction-row"><span>${label}${typeNote}</span></div>
-      <div class="deduction-row" style="font-size:0.8rem;color:var(--muted)">Day-off deductions are calculated at year level based on your allowance.</div>`;
+      <div class="deduction-row" style="font-size:0.8rem;color:var(--muted)">Day-off deductions are calculated at year level based on your allowance.</div>
+      ${noDeduct ? `<div class="deduction-row" style="font-size:0.8rem;color:var(--positive);font-weight:600">✓ Marked "doesn't count" — this day is logged and counts in the days-used total, but will never be deducted from salary.</div>` : ''}`;
   } else {
     const brk = parseInt(document.getElementById('recBreak').value) || 0;
     const phone = parseInt(document.getElementById('recPhone').value) || 0;
@@ -1315,6 +1347,7 @@ async function saveRecord() {
     wasted_minutes: parseInt(document.getElementById('recWasted').value) || 0,
     late_minutes: parseInt(document.getElementById('recLate').value) || 0,
     is_day_off: parseFloat(document.getElementById('recDayOff').value) || 0,
+    no_deduction: document.getElementById('recNoDeduction').checked,
     notes: document.getElementById('recNotes').value
   };
   const res = await fetch(id ? `/api/records/${id}` : '/api/records', {
@@ -3055,9 +3088,15 @@ function renderDayOffRequestsBanner(pending) {
         '<div style="font:500 11px/1 var(--font-mono);color:var(--muted);margin-top:3px">' + typeLabel + (r.department ? ' · ' + esc(r.department) : '') + '</div>' +
         (r.reason ? '<div style="font:500 11px/1.4 var(--font-sans);color:var(--text-2);margin-top:4px;padding:4px 8px;background:var(--surface);border-radius:4px;border-left:2px solid var(--warning)">' + esc(r.reason) + '</div>' : '') +
       '</div>' +
-      '<div style="display:flex;gap:6px">' +
-        '<button class="btn btn-primary btn-sm" onclick="approveLeave(' + r.id + ')">Approve</button>' +
-        '<button class="btn btn-danger btn-sm" onclick="declineLeave(' + r.id + ')">Decline</button>' +
+      '<div style="display:flex;flex-direction:column;align-items:flex-end;gap:6px">' +
+        '<div style="display:flex;gap:6px">' +
+          '<button class="btn btn-primary btn-sm" onclick="approveLeave(' + r.id + ')">Approve</button>' +
+          '<button class="btn btn-danger btn-sm" onclick="declineLeave(' + r.id + ')">Decline</button>' +
+        '</div>' +
+        '<label style="display:flex;align-items:center;gap:5px;font:500 10.5px/1 var(--font-sans);color:var(--muted);cursor:pointer;white-space:nowrap">' +
+          '<input type="checkbox" id="dor-nodeduct-' + r.id + '" style="width:13px;height:13px;cursor:pointer">' +
+          'No deduct' +
+        '</label>' +
       '</div>' +
     '</div>';
   }).join('');
@@ -3073,8 +3112,11 @@ function renderDayOffRequestsBanner(pending) {
 }
 
 async function approveLeave(id) {
-  const res = await fetch('/api/day-off-requests/' + id + '/approve', { method: 'PUT' });
-  if (res.ok) { showToast('Day off approved', 'success'); loadCalendar(); }
+  const noDeduct = document.getElementById('dor-nodeduct-' + id)?.checked || false;
+  const res = await fetch('/api/day-off-requests/' + id + '/approve', {
+    method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ no_deduction: noDeduct })
+  });
+  if (res.ok) { showToast(noDeduct ? 'Day off approved (no deduct)' : 'Day off approved', 'success'); loadCalendar(); }
   else showToast('Failed to approve', 'error');
 }
 
@@ -3143,8 +3185,10 @@ function openRecordModalForDate(dateStr) {
   document.getElementById('recWasted').value = 0;
   document.getElementById('recLate').value = 0;
   document.getElementById('recDayOff').value = '1';
+  document.getElementById('recNoDeduction').checked = false;
   document.getElementById('recNotes').value = '';
   document.getElementById('recFields').style.display = 'none';
+  document.getElementById('recNoDeductRow').style.display = '';
   document.getElementById('recordModalTitle').textContent = 'Book Day Off – ' + dateStr;
 
   // Show employee selector and populate it
@@ -3912,6 +3956,10 @@ async function loadNotifPanel() {
         <div class="notif-item-name">${esc(r.employee_name)}</div>
         <div class="notif-item-meta">${dateStr} · ${typeStr} · Requested ${since}</div>
         ${r.note ? `<div class="notif-item-note">"${esc(r.note)}"</div>` : ''}
+        <label style="display:flex;align-items:center;gap:5px;font:500 11px/1 var(--font-sans);color:var(--muted);cursor:pointer;margin-top:4px">
+          <input type="checkbox" id="hr-nodeduct-${r.id}" style="width:13px;height:13px;cursor:pointer">
+          Doesn't count towards the deduction
+        </label>
         <div class="notif-item-actions">
           <button class="notif-approve-btn" onclick="reviewHolidayRequest(${r.id},'approve')">✓ Approve</button>
           <button class="notif-deny-btn" onclick="reviewHolidayRequest(${r.id},'deny')">✕ Deny</button>
@@ -3931,7 +3979,10 @@ async function dismissAgendaNotif(id) {
 }
 
 async function reviewHolidayRequest(id, action) {
-  const res = await fetch(`/api/holiday-requests/${id}/${action}`, { method: 'PUT' });
+  const noDeduct = action === 'approve' && (document.getElementById('hr-nodeduct-' + id)?.checked || false);
+  const res = await fetch(`/api/holiday-requests/${id}/${action}`, {
+    method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ no_deduction: noDeduct })
+  });
   if (!res.ok) { const e = await res.json(); showToast(e.error || 'Failed', 'error'); return; }
   showToast(action === 'approve' ? 'Request approved' : 'Request denied', action === 'approve' ? 'success' : 'error');
   document.getElementById(`notif-item-${id}`)?.remove();
