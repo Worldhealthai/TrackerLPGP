@@ -784,10 +784,11 @@ app.put('/api/day-off-requests/:id/approve', requireAuth, requireAdmin, async (r
   const { rows } = await q('SELECT * FROM day_off_requests WHERE id = ?', [req.params.id]);
   if (!rows.length) return res.status(404).json({ error: 'Not found' });
   const r = rows[0];
+  const noDeduct = req.body?.no_deduction === true;
   // Write to daily_records
-  await q(`INSERT INTO daily_records (employee_id, record_date, is_day_off, notes) VALUES (?, ?, ?, ?)
-    ON CONFLICT (employee_id, record_date) DO UPDATE SET is_day_off = EXCLUDED.is_day_off`,
-    [r.employee_id, r.request_date, r.is_day_off, 'Approved day off']);
+  await q(`INSERT INTO daily_records (employee_id, record_date, is_day_off, notes, no_deduction) VALUES (?, ?, ?, ?, ?)
+    ON CONFLICT (employee_id, record_date) DO UPDATE SET is_day_off = EXCLUDED.is_day_off, no_deduction = EXCLUDED.no_deduction`,
+    [r.employee_id, r.request_date, r.is_day_off, 'Approved day off', noDeduct]);
   // Update request status
   await q('UPDATE day_off_requests SET status = ?, reviewed_at = NOW(), reviewed_by = ? WHERE id = ?',
     ['approved', req.user.username || 'admin', req.params.id]);
@@ -2603,11 +2604,12 @@ app.put('/api/holiday-requests/:id/approve', requireAuth, async (req, res) => {
     if (!hr) return res.status(404).json({ error: 'Request not found' });
     if (hr.status !== 'pending') return res.status(400).json({ error: 'Request already reviewed' });
     const dayOff = hr.day_type === 'half' ? 0.5 : 1;
+    const noDeduct = req.body?.no_deduction === true;
     await q(
-      `INSERT INTO daily_records (employee_id, record_date, is_day_off, notes)
-       VALUES (?, ?, ?, ?)
-       ON CONFLICT (employee_id, record_date) DO UPDATE SET is_day_off = EXCLUDED.is_day_off, notes = EXCLUDED.notes`,
-      [hr.employee_id, hr.request_date, dayOff, hr.note || 'Portal request (approved)']
+      `INSERT INTO daily_records (employee_id, record_date, is_day_off, notes, no_deduction)
+       VALUES (?, ?, ?, ?, ?)
+       ON CONFLICT (employee_id, record_date) DO UPDATE SET is_day_off = EXCLUDED.is_day_off, notes = EXCLUDED.notes, no_deduction = EXCLUDED.no_deduction`,
+      [hr.employee_id, hr.request_date, dayOff, hr.note || 'Portal request (approved)', noDeduct]
     );
     await q(
       `UPDATE holiday_requests SET status = 'approved', reviewed_by = ?, reviewed_at = NOW() WHERE id = ?`,

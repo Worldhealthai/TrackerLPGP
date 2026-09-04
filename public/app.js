@@ -3088,9 +3088,15 @@ function renderDayOffRequestsBanner(pending) {
         '<div style="font:500 11px/1 var(--font-mono);color:var(--muted);margin-top:3px">' + typeLabel + (r.department ? ' · ' + esc(r.department) : '') + '</div>' +
         (r.reason ? '<div style="font:500 11px/1.4 var(--font-sans);color:var(--text-2);margin-top:4px;padding:4px 8px;background:var(--surface);border-radius:4px;border-left:2px solid var(--warning)">' + esc(r.reason) + '</div>' : '') +
       '</div>' +
-      '<div style="display:flex;gap:6px">' +
-        '<button class="btn btn-primary btn-sm" onclick="approveLeave(' + r.id + ')">Approve</button>' +
-        '<button class="btn btn-danger btn-sm" onclick="declineLeave(' + r.id + ')">Decline</button>' +
+      '<div style="display:flex;flex-direction:column;align-items:flex-end;gap:6px">' +
+        '<div style="display:flex;gap:6px">' +
+          '<button class="btn btn-primary btn-sm" onclick="approveLeave(' + r.id + ')">Approve</button>' +
+          '<button class="btn btn-danger btn-sm" onclick="declineLeave(' + r.id + ')">Decline</button>' +
+        '</div>' +
+        '<label style="display:flex;align-items:center;gap:5px;font:500 10.5px/1 var(--font-sans);color:var(--muted);cursor:pointer;white-space:nowrap">' +
+          '<input type="checkbox" id="dor-nodeduct-' + r.id + '" style="width:13px;height:13px;cursor:pointer">' +
+          'No deduct' +
+        '</label>' +
       '</div>' +
     '</div>';
   }).join('');
@@ -3106,8 +3112,11 @@ function renderDayOffRequestsBanner(pending) {
 }
 
 async function approveLeave(id) {
-  const res = await fetch('/api/day-off-requests/' + id + '/approve', { method: 'PUT' });
-  if (res.ok) { showToast('Day off approved', 'success'); loadCalendar(); }
+  const noDeduct = document.getElementById('dor-nodeduct-' + id)?.checked || false;
+  const res = await fetch('/api/day-off-requests/' + id + '/approve', {
+    method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ no_deduction: noDeduct })
+  });
+  if (res.ok) { showToast(noDeduct ? 'Day off approved (no deduct)' : 'Day off approved', 'success'); loadCalendar(); }
   else showToast('Failed to approve', 'error');
 }
 
@@ -3947,6 +3956,10 @@ async function loadNotifPanel() {
         <div class="notif-item-name">${esc(r.employee_name)}</div>
         <div class="notif-item-meta">${dateStr} · ${typeStr} · Requested ${since}</div>
         ${r.note ? `<div class="notif-item-note">"${esc(r.note)}"</div>` : ''}
+        <label style="display:flex;align-items:center;gap:5px;font:500 11px/1 var(--font-sans);color:var(--muted);cursor:pointer;margin-top:4px">
+          <input type="checkbox" id="hr-nodeduct-${r.id}" style="width:13px;height:13px;cursor:pointer">
+          Doesn't count towards the deduction
+        </label>
         <div class="notif-item-actions">
           <button class="notif-approve-btn" onclick="reviewHolidayRequest(${r.id},'approve')">✓ Approve</button>
           <button class="notif-deny-btn" onclick="reviewHolidayRequest(${r.id},'deny')">✕ Deny</button>
@@ -3966,7 +3979,10 @@ async function dismissAgendaNotif(id) {
 }
 
 async function reviewHolidayRequest(id, action) {
-  const res = await fetch(`/api/holiday-requests/${id}/${action}`, { method: 'PUT' });
+  const noDeduct = action === 'approve' && (document.getElementById('hr-nodeduct-' + id)?.checked || false);
+  const res = await fetch(`/api/holiday-requests/${id}/${action}`, {
+    method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ no_deduction: noDeduct })
+  });
   if (!res.ok) { const e = await res.json(); showToast(e.error || 'Failed', 'error'); return; }
   showToast(action === 'approve' ? 'Request approved' : 'Request denied', action === 'approve' ? 'success' : 'error');
   document.getElementById(`notif-item-${id}`)?.remove();
