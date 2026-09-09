@@ -472,6 +472,7 @@
                   <th style="width:55px">AV Billing</th>
                   <th style="width:100px">Paid So Far</th>
                   <th style="width:78px">Status</th>
+                  <th style="width:74px">Year</th>
                   <th style="width:80px">Invoice</th>
                   <th style="width:36px"></th>
                   <th style="width:32px"></th>
@@ -792,6 +793,15 @@
           <option value="0.5">Half Day Off</option>
           <option value="1">Full Day Off</option>
         </select>
+      </div>
+    </div>
+    <div class="form-group" id="recNoDeductRow" style="display:none">
+      <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-weight:600">
+        <input type="checkbox" id="recNoDeduction" onchange="updatePreview()" style="width:16px;height:16px;cursor:pointer">
+        Doesn't count towards the deduction
+      </label>
+      <div style="font-size:0.76rem;color:var(--muted);margin-top:4px">
+        The day is still logged and still counts in their days-used total — it just never reduces their salary.
       </div>
     </div>
     <div id="recFields">
@@ -1422,7 +1432,7 @@
             <select id="hotelEventYear">
               <option value="">— Unset —</option>
               <option value="2025">2025</option>
-              <option value="2026" selected>2026</option>
+              <option value="2026">2026</option>
               <option value="2027">2027</option>
               <option value="2028">2028</option>
             </select>
