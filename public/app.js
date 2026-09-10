@@ -8935,8 +8935,9 @@ function closeInvoiceGenModal() {
 function igCollectPayload() {
   const evs = igCollectEventObjs();
 
-  // Events list on page 2: "Event Name — £3,750" one per line
-  const eventLines = evs.map(e => [e.name, e.amount].filter(Boolean).join(' — '));
+  // Events list on page 2: event names only — the price belongs on the
+  // Total Cost line, not beside each event
+  const eventLines = evs.map(e => e.name);
 
   // Benefits: a block per event — "Event — Package" header followed by its bullets
   const benefits = [];
@@ -9027,8 +9028,10 @@ function previewInvoice() {
     <div class="ig-event-name">${p.event_name ? p.event_name.split('\n').map(l => `<div>${esc(l)}</div>`).join('') : '—'}</div>
     ${benefits || '<div class="ig-benefit" style="color:#999">No package details listed</div>'}
     <div class="ig-total-cost">Total Cost - £${amt} plus VAT</div>
-    <div class="ig-sec-hd" style="margin-top:22px">Additional Comments:</div>
-    <div class="ig-comments">${esc(p.additional_notes || '—')}</div>
+    ${p.additional_notes
+      ? `<div class="ig-sec-hd" style="margin-top:22px">Additional Comments:</div>
+         <div class="ig-comments">${esc(p.additional_notes)}</div>`
+      : ''}
   </div>`;
 
   const page3 = `<div class="ig-page">
