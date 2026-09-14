@@ -1710,6 +1710,19 @@
         </div>
       </div>
 
+      <!-- Deal period: the month and year the deal is for. Lives outside the
+           edit-only Invoice section so it is asked when a deal is first added. -->
+      <div>
+        <div class="deal-modal-sec-label">Deal Period</div>
+        <div class="form-group" style="margin:0;max-width:260px">
+          <div class="deal-period" title="The month and year this deal is for. The year decides which year tab it appears under.">
+            <select id="dealPeriodMonth" onchange="onDealPeriodChange()"></select>
+            <select id="dealPeriodYear" onchange="onDealPeriodChange()"></select>
+          </div>
+          <div class="deal-period-hint" id="dealPeriodHint"></div>
+        </div>
+      </div>
+
       <!-- Financials -->
       <div>
         <div class="deal-modal-sec-label">Financials</div>
@@ -1745,14 +1758,6 @@
           <div class="form-group" style="width:150px;margin:0">
             <label class="deal-mini-lbl">Invoice Date</label>
             <input type="date" id="dealInvoiceDate" style="width:100%" onchange="autofillDealMonth()">
-          </div>
-          <div class="form-group" style="width:130px;margin:0">
-            <label class="deal-mini-lbl">Business Month</label>
-            <input type="text" id="dealMonth" placeholder="e.g. 26 - Jul" style="width:100%;font-size:0.82rem" title="Auto-filled from the month the deal was added.">
-          </div>
-          <div class="form-group" style="width:100px;margin:0">
-            <label class="deal-mini-lbl">Year</label>
-            <select id="dealFiscalYear" style="width:100%;font-size:0.82rem" title="Which year tab this deal belongs to."></select>
           </div>
         </div>
         <div class="form-row" style="margin:10px 0 0;gap:10px">
