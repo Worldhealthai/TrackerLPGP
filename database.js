@@ -4,12 +4,49 @@ const bcrypt = require('bcryptjs');
 const connectionString = process.env.DATABASE_URL || process.env.POSTGRES_URL;
 
 // Create an HTTP-based SQL client — no persistent TCP connections, no stale TLS issues
-const sql = connectionString ? neon(connectionString) : null;
+const rawSql = connectionString ? neon(connectionString) : null;
 
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 
+// Neon's HTTP endpoint occasionally drops a request while a branch wakes from
+// idle. It surfaces as a bare "fetch failed" with no SQL error attached — the
+// statement never reached Postgres.
+function isTransientDbError(err) {
+  const msg = `${err && err.message} ${err && err.cause && err.cause.message}`;
+  // Deliberately narrow: an HTTP status from Neon (403 not-in-allowlist, 429
+  // quota) means the request arrived and was refused, so replaying it is futile.
+  if (/HTTP status/i.test(msg)) return false;
+  return /fetch failed|ECONNRESET|ECONNREFUSED|ETIMEDOUT|EAI_AGAIN|socket hang up|terminated unexpectedly|Connection terminated/i.test(msg);
+}
+
+// Only replay statements that are safe to run twice. A dropped connection gives
+// no way to know whether Postgres already applied the statement, so retrying an
+// INSERT or UPDATE risks duplicating a time record or a payment — those failures
+// are surfaced to the caller instead.
+function isReplayable(statement) {
+  return /^\s*(select|with)\b/i.test(statement) || /\bif\s+(not\s+)?exists\b/i.test(statement);
+}
+
+async function sql(statement, params) {
+  if (!rawSql) throw new Error('DATABASE_URL or POSTGRES_URL environment variable is not set');
+
+  const attempts = isReplayable(statement) ? 3 : 1;
+  let lastErr;
+  for (let attempt = 1; attempt <= attempts; attempt++) {
+    try {
+      return params === undefined ? await rawSql(statement) : await rawSql(statement, params);
+    } catch (err) {
+      lastErr = err;
+      if (attempt === attempts || !isTransientDbError(err)) throw err;
+      console.warn(`Transient DB error (attempt ${attempt}/${attempts}): ${err.message} — retrying`);
+      await sleep(attempt * 300);
+    }
+  }
+  throw lastErr;
+}
+
 async function initDb() {
-  if (!sql) throw new Error('DATABASE_URL or POSTGRES_URL environment variable is not set');
+  if (!rawSql) throw new Error('DATABASE_URL or POSTGRES_URL environment variable is not set');
 
   // Retry up to 4 times with backoff — handles Neon cold-start wake-up delays
   let lastErr;
