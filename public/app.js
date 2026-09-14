@@ -4972,8 +4972,14 @@ function dealPassesFilter(d) {
     return true;
   }
   if (yr !== 'all') {
-    // fiscal_year takes priority; fall back to invoice_date calendar year
-    const dealYear = d.fiscal_year ? String(d.fiscal_year) : (invYear ? String(invYear) : null);
+    // fiscal_year takes priority; then invoice_date's calendar year; then the
+    // year encoded in the business month ("26 - Sep"), so a deal entered with
+    // neither an explicit year nor an invoice date still lands on a year tab
+    // instead of only showing under All Years.
+    const dealYear = d.fiscal_year ? String(d.fiscal_year)
+                   : invYear       ? String(invYear)
+                   : dealMonthStr  ? dealMonthStr.slice(0, 4)
+                   : null;
     if (!dealYear || dealYear !== yr) return false;
   }
   if (q !== 'all') {
@@ -7258,6 +7264,7 @@ async function openDealModal(id, defaultStage) {
       _dealPackageMode = true;
       d.events.forEach(e => { _dealPackages[e.event_id] = { amount: e.allocated_amount, label: e.package_label || '' }; });
     }
+    populateDealYearOptions(dealYearOf(d));
     if (d.invoice1_name) document.getElementById('dealInv1Preview').textContent = `Current: ${d.invoice1_name}`;
     if (d.invoice2_name) document.getElementById('dealInv2Preview').textContent = `Current: ${d.invoice2_name}`;
     setDealPayment(d.bank === 'Stripe' ? 'Stripe' : d.bank ? 'HSBC' : '');
@@ -7274,6 +7281,9 @@ async function openDealModal(id, defaultStage) {
     document.getElementById('dealInvoiceDate').value = '';
     // Business month auto-fills from when the deal is entered (e.g. "26 - Jul")
     document.getElementById('dealMonth').value = dealMonthLabel(new Date());
+    // Default the year to whichever year tab is open, so a deal added while
+    // viewing 2027 lands in 2027 rather than only under All Years
+    populateDealYearOptions(_dealYearFilter !== 'all' ? _dealYearFilter : String(new Date().getFullYear()));
     document.getElementById('dealInvSent').value = 'false';
     document.getElementById('dealSigReceived').value = 'false';
     document.getElementById('dealNotes').value = '';
@@ -7304,6 +7314,32 @@ async function openDealModal(id, defaultStage) {
   updateDealSplitPreview();
   if (_dealPackageMode) { _dealPackageMode = false; toggleDealPackageMode(); }
   openModal('dealModal');
+}
+
+// Which year tab a deal currently falls under, using the same precedence as
+// dealPassesFilter: explicit fiscal_year, then invoice_date, then business month.
+function dealYearOf(d) {
+  if (d.fiscal_year) return String(d.fiscal_year);
+  if (d.invoice_date) return String(d.invoice_date).slice(0, 4);
+  const m = (d.deal_month || '').trim().match(/^(\d{2})\s*[-–]/);
+  if (m) { const yr2 = parseInt(m[1], 10); return String(yr2 >= 50 ? 1900 + yr2 : 2000 + yr2); }
+  return '';
+}
+
+// Fill the modal's Year dropdown from the year tabs on the deals screen, so the
+// options always match the tabs the user has set up (including any added via +).
+function populateDealYearOptions(selected) {
+  const sel = document.getElementById('dealFiscalYear');
+  if (!sel) return;
+  const years = new Set();
+  document.querySelectorAll('#dealYearFilters .deal-q-btn').forEach(b => {
+    if (b.dataset.yr && b.dataset.yr !== 'all') years.add(b.dataset.yr);
+  });
+  years.add(String(new Date().getFullYear()));
+  if (selected) years.add(String(selected));
+  const ordered = [...years].sort((a, b) => b.localeCompare(a));
+  sel.innerHTML = ordered.map(y => `<option value="${y}">${y}</option>`).join('');
+  sel.value = selected && years.has(String(selected)) ? String(selected) : ordered[0];
 }
 
 // "26 - Jul" style label from a Date (or parseable date string)
@@ -7474,6 +7510,7 @@ async function saveDeal() {
     invoice_number: document.getElementById('dealInvoiceNumber').value.trim(),
     invoice_date: document.getElementById('dealInvoiceDate').value || null,
     deal_month: document.getElementById('dealMonth').value.trim(),
+    fiscal_year: parseInt(document.getElementById('dealFiscalYear').value) || null,
     paid_date: null,
     bank: document.getElementById('dealBank').value,
     invoice_agreement_sent: document.getElementById('dealInvSent').value === 'true',

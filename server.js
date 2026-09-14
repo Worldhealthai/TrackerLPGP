@@ -2088,13 +2088,14 @@ app.put('/api/deals/:id', requireAuth, requireAdminOrManager, async (req, res) =
     const { title, company, contact_name, amount, currency, stage, event_ids, event_packages, notes,
             invoice1_name, invoice1_data, invoice2_name, invoice2_data,
             paid_inc_vat, tax_vat, invoice_date, paid_date, bank, invoice_number,
-            invoice_agreement_sent, signature_received, initials, deal_month } = req.body;
+            invoice_agreement_sent, signature_received, initials, deal_month, fiscal_year } = req.body;
     const { rows } = await q(
       `UPDATE deals SET title=?, company=?, contact_name=?, amount=?, currency=?, stage=?, notes=?,
         invoice1_name=COALESCE(?,invoice1_name), invoice1_data=COALESCE(?,invoice1_data),
         invoice2_name=COALESCE(?,invoice2_name), invoice2_data=COALESCE(?,invoice2_data),
         paid_inc_vat=?, tax_vat=?, invoice_date=?, paid_date=?, bank=?, invoice_number=?,
-        invoice_agreement_sent=?, signature_received=?, initials=?, deal_month=?
+        invoice_agreement_sent=?, signature_received=?, initials=?, deal_month=?,
+        fiscal_year=COALESCE(?,fiscal_year)
        WHERE id=? RETURNING *`,
       [title, company||'', contact_name||'', parseFloat(amount)||0, currency||'GBP',
        stage||'Prospect', notes||'',
@@ -2103,7 +2104,7 @@ app.put('/api/deals/:id', requireAuth, requireAdminOrManager, async (req, res) =
        tax_vat != null ? parseFloat(tax_vat) : null,
        invoice_date||null, paid_date||null, bank||'', invoice_number||'',
        invoice_agreement_sent ? true : false, signature_received ? true : false, initials||'',
-       deal_month||'', req.params.id]
+       deal_month||'', fiscal_year ? parseInt(fiscal_year) : null, req.params.id]
     );
     if (!rows.length) return res.status(404).json({ error: 'Not found' });
     if (Array.isArray(event_ids) || Array.isArray(event_packages)) {
