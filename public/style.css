@@ -5268,12 +5268,34 @@ tbody tr:last-child td { border-bottom: none; }
   white-space: normal;
 }
 /* Month cell display */
+/* Month over year, so it fits the narrow column without truncating:  Sep
+                                                                        2026 */
 .deal-month-disp {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
   font-size: 13px;
+  line-height: 1.15;
   white-space: nowrap;
   color: var(--text-2);
   font-weight: 500;
 }
+.deal-month-yr { font: 600 10.5px/1 var(--font-mono); color: var(--muted); letter-spacing: .3px; }
+
+/* Deal period: month + year as one segmented control */
+.deal-period { display: flex; align-items: stretch; }
+.deal-period select { min-width: 0; font-size: 0.82rem; }
+.deal-period select:first-child { flex: 1 1 58%; border-radius: 9px 0 0 9px; border-right-width: 0; }
+.deal-period select:last-child  { flex: 1 1 42%; border-radius: 0 9px 9px 0; font-family: var(--font-mono); }
+.deal-period select:first-child:focus { border-right-width: 1.5px; margin-right: -1.5px; position: relative; z-index: 1; }
+.deal-period-hint { font: 500 10px/1.4 var(--font-mono); color: var(--muted); margin-top: 5px; min-height: 14px; }
+.deal-period-hint b { color: var(--primary); font-weight: 700; }
+
+/* Inline period editor in the deals table: stacked like the display, so both
+   pickers fit inside the narrow, overflow-hidden Month cell */
+.deal-inline-period { display: inline-flex; flex-direction: column; gap: 3px; max-width: 100%; }
+.deal-inline-period select { font-family: var(--font-mono); width: 68px; padding: 3px 2px; }
 /* Deal title display */
 .deal-title-disp {
   font-size: 0.82rem;

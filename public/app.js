@@ -4972,8 +4972,14 @@ function dealPassesFilter(d) {
     return true;
   }
   if (yr !== 'all') {
-    // fiscal_year takes priority; fall back to invoice_date calendar year
-    const dealYear = d.fiscal_year ? String(d.fiscal_year) : (invYear ? String(invYear) : null);
+    // fiscal_year takes priority; then invoice_date's calendar year; then the
+    // year encoded in the business month ("26 - Sep"), so a deal entered with
+    // neither an explicit year nor an invoice date still lands on a year tab
+    // instead of only showing under All Years.
+    const dealYear = d.fiscal_year ? String(d.fiscal_year)
+                   : invYear       ? String(invYear)
+                   : dealMonthStr  ? dealMonthStr.slice(0, 4)
+                   : null;
     if (!dealYear || dealYear !== yr) return false;
   }
   if (q !== 'all') {
@@ -5011,12 +5017,6 @@ function renderDealsTable() {
   const MONTHS_SHORT = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
   tbody.innerHTML = filtered.map(d => {
     const sym = symMap[d.currency] || '£';
-    // deal_month is the business month (editable). Fall back to invoice_date if blank.
-    const dealMonthVal = d.deal_month || (d.invoice_date ? (() => {
-      const yy = d.invoice_date.slice(2, 4);
-      const mo = parseInt(d.invoice_date.slice(5, 7), 10) - 1;
-      return `${yy} - ${MONTHS_SHORT[mo]}`;
-    })() : '');
     const invDateStr = d.invoice_date ? new Date(d.invoice_date).toLocaleDateString('en-GB',{day:'2-digit',month:'2-digit',year:'2-digit'}) : '';
 
     // Auto-colour logic based on payment
@@ -5057,7 +5057,7 @@ function renderDealsTable() {
         <input type="checkbox" class="deal-select-cb" ${isSelected?'checked':''} onclick="event.stopPropagation();toggleDealSelect(${d.id})" style="cursor:pointer;width:14px;height:14px">
         <button onclick="event.stopPropagation();dealToggleFlag(${d.id})" title="Flag row" style="background:none;border:none;cursor:pointer;font-size:15px;color:${isFlagged?'#f59e0b':'var(--border)'};padding:4px;line-height:1">⚑</button>
       </td>
-      ${ec('deal_month','text',d.deal_month||'', dealMonthVal ? `<span class="deal-month-disp">${esc(dealMonthVal)}</span>` : '<span style="color:var(--muted)">—</span>', 'style="text-align:center"')}
+      ${ec('deal_month','period',d.deal_month||'', dealPeriodDisplayHtml(d), 'style="text-align:center"')}
       <td class="deal-cell-company${coHl?' deal-cell-orange':''}" data-id="${d.id}" data-hlkey="${coHlKey}" onclick="dealCompanyClick(event,${d.id},this)" title="Click to open deal · Shift+click to highlight"><strong class="deal-co-link">${esc(d.company||d.title)}</strong></td>
       ${ec('paid_inc_vat','number',d.paid_inc_vat??'', paidDisplay, `class="deal-num dt-r" oncontextmenu="dealCellContextMenu(event,this)"${isPartial?' style="background:rgba(234,88,12,.28)"':''}`)}
       ${ec('amount','number',d.amount||0, `${sym}${fmt(dealAmt)}`, 'class="deal-num dt-r"')}
@@ -5150,7 +5150,23 @@ function dealCellClick(td) {
   const originalHTML = td.innerHTML;
 
   let input;
-  if (type === 'select') {
+  let periodMonth, periodYear; // the two selects of a period editor
+  if (type === 'period') {
+    // Month + year pickers, like the deal form. Focus moving between the two
+    // must not commit, so the container's focusout is what commits (below).
+    const deal = dealsData.find(x => x.id === id) || {};
+    const parsed = parseDealMonth(val);
+    const fallbackDt = new Date(deal.invoice_date || deal.created_at || Date.now());
+    input = document.createElement('span');
+    input.className = 'deal-inline-period';
+    periodMonth = document.createElement('select');
+    periodYear  = document.createElement('select');
+    periodMonth.className = periodYear.className = 'deal-inline-select';
+    fillPeriodSelects(periodMonth, periodYear,
+      parsed ? parsed.month : fallbackDt.getMonth() + 1,
+      dealYearOf(deal) || String(fallbackDt.getFullYear()));
+    input.append(periodMonth, periodYear);
+  } else if (type === 'select') {
     input = document.createElement('select');
     input.className = 'deal-inline-select';
     DEAL_STAGES.forEach(s => {
@@ -5187,8 +5203,33 @@ function dealCellClick(td) {
 
   td.innerHTML = '';
   td.appendChild(input);
-  input.focus();
+  if (type === 'period') periodMonth.focus(); else input.focus();
   if (input.tagName !== 'TEXTAREA' && (input.type === 'text' || input.type === 'number')) input.select();
+
+  if (type === 'period') {
+    let done = false;
+    const commitPeriod = async () => {
+      if (done) return; done = true;
+      const month = parseInt(periodMonth.value, 10), year = parseInt(periodYear.value, 10);
+      td.innerHTML = originalHTML;
+      // Two columns, one meaning: write both so the cell and the year tab agree
+      const ok = await dealPatchField(id, 'deal_month', dealMonthText(month, year))
+              && await dealPatchField(id, 'fiscal_year', year);
+      if (ok) {
+        const idx = dealsData.findIndex(d => d.id === id);
+        if (idx !== -1) { dealsData[idx].deal_month = dealMonthText(month, year); dealsData[idx].fiscal_year = year; }
+        renderDealsTable();
+      }
+    };
+    const cancelPeriod = () => { done = true; td.innerHTML = originalHTML; };
+    // Only commit when focus leaves the editor entirely, not when it hops between the two selects
+    input.addEventListener('focusout', e => { if (!input.contains(e.relatedTarget)) commitPeriod(); });
+    input.addEventListener('keydown', e => {
+      if (e.key === 'Enter')  { e.preventDefault(); commitPeriod(); }
+      if (e.key === 'Escape') { cancelPeriod(); }
+    });
+    return;
+  }
 
   const commit = async () => {
     let newVal = input.value;
@@ -7212,6 +7253,7 @@ async function cycleDealStatus(id, newStatus) {
 
 async function openDealModal(id, defaultStage) {
   _dealInv1 = null; _dealInv2 = null;
+  _dealPeriodTouched = false;
   _dealPackageMode = false;
   _dealPackages = {};
   document.getElementById('dealEditId').value = id || '';
@@ -7248,7 +7290,12 @@ async function openDealModal(id, defaultStage) {
     document.getElementById('dealTaxVat').value = d.tax_vat || '';
     document.getElementById('dealInvoiceNumber').value = d.invoice_number || '';
     document.getElementById('dealInvoiceDate').value = d.invoice_date ? d.invoice_date.split('T')[0] : '';
-    document.getElementById('dealMonth').value = d.deal_month || dealMonthLabel(d.invoice_date || d.created_at || new Date());
+    // Period: month from the stored business month (falling back to the invoice
+    // date, then when the deal was created); year from wherever the tab comes from
+    const parsed = parseDealMonth(d.deal_month);
+    const fallbackDt = new Date(d.invoice_date || d.created_at || Date.now());
+    setDealPeriod(parsed ? parsed.month : fallbackDt.getMonth() + 1,
+                  dealYearOf(d) || String(fallbackDt.getFullYear()));
     document.getElementById('dealInvSent').value = d.invoice_agreement_sent ? 'true' : 'false';
     document.getElementById('dealSigReceived').value = d.signature_received ? 'true' : 'false';
     document.getElementById('dealNotes').value = d.notes || '';
@@ -7272,8 +7319,10 @@ async function openDealModal(id, defaultStage) {
     document.getElementById('dealTaxVat').value = '';
     document.getElementById('dealInvoiceNumber').value = '';
     document.getElementById('dealInvoiceDate').value = '';
-    // Business month auto-fills from when the deal is entered (e.g. "26 - Jul")
-    document.getElementById('dealMonth').value = dealMonthLabel(new Date());
+    // Period defaults to this month, in whichever year tab is open — so a deal
+    // added while viewing 2027 lands in 2027, not only under All Years
+    const now = new Date();
+    setDealPeriod(now.getMonth() + 1, _dealYearFilter !== 'all' ? _dealYearFilter : String(now.getFullYear()));
     document.getElementById('dealInvSent').value = 'false';
     document.getElementById('dealSigReceived').value = 'false';
     document.getElementById('dealNotes').value = '';
@@ -7306,19 +7355,101 @@ async function openDealModal(id, defaultStage) {
   openModal('dealModal');
 }
 
-// "26 - Jul" style label from a Date (or parseable date string)
-function dealMonthLabel(d) {
-  const dt = d instanceof Date ? d : new Date(d);
-  if (isNaN(dt.getTime())) return '';
-  const MONS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
-  return String(dt.getFullYear()).slice(2) + ' - ' + MONS[dt.getMonth()];
+// Which year tab a deal currently falls under, using the same precedence as
+// dealPassesFilter: explicit fiscal_year, then invoice_date, then business month.
+function dealYearOf(d) {
+  if (d.fiscal_year) return String(d.fiscal_year);
+  if (d.invoice_date) return String(d.invoice_date).slice(0, 4);
+  const m = (d.deal_month || '').trim().match(/^(\d{2})\s*[-–]/);
+  if (m) { const yr2 = parseInt(m[1], 10); return String(yr2 >= 50 ? 1900 + yr2 : 2000 + yr2); }
+  return '';
 }
 
+// ── Deal period ──────────────────────────────────────────────────────────────
+// A deal's period is one thing to the user — "the month and year this deal is
+// for" — but it is stored as two columns: deal_month, the "YY - Mon" text the
+// range filter and CSV import read, and fiscal_year, the year tab. The helpers
+// below keep those two in step so they can never disagree again.
+
+const DEAL_MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+let _dealPeriodTouched = false; // user picked a period by hand; don't let the invoice date overwrite it
+
+// "26 - Sep" → { month: 9, year: 2026 }; anything unparseable → null
+function parseDealMonth(text) {
+  const m = (text || '').trim().match(/^(\d{2})\s*[-–]\s*([A-Za-z]{3})/);
+  if (!m) return null;
+  const month = DEAL_MONTHS.findIndex(mn => mn.toLowerCase() === m[2].toLowerCase()) + 1;
+  if (!month) return null;
+  const yr2 = parseInt(m[1], 10);
+  return { month, year: yr2 >= 50 ? 1900 + yr2 : 2000 + yr2 };
+}
+
+// (9, 2026) → "26 - Sep", the stored deal_month format
+function dealMonthText(month, year) {
+  return String(year).slice(2) + ' - ' + DEAL_MONTHS[month - 1];
+}
+
+// The year options are the year tabs on the deals screen (including any added
+// via +), plus the current year and the year being selected.
+function dealYearOptions(selected) {
+  const years = new Set();
+  document.querySelectorAll('#dealYearFilters .deal-q-btn').forEach(b => {
+    if (b.dataset.yr && b.dataset.yr !== 'all') years.add(b.dataset.yr);
+  });
+  years.add(String(new Date().getFullYear()));
+  if (selected) years.add(String(selected));
+  return [...years].sort((a, b) => b.localeCompare(a));
+}
+
+function fillPeriodSelects(monthSel, yearSel, month, year) {
+  monthSel.innerHTML = DEAL_MONTHS.map((mn, i) => `<option value="${i + 1}">${mn}</option>`).join('');
+  monthSel.value = String(month);
+  yearSel.innerHTML = dealYearOptions(year).map(y => `<option value="${y}">${y}</option>`).join('');
+  yearSel.value = String(year);
+}
+
+function setDealPeriod(month, year) {
+  fillPeriodSelects(document.getElementById('dealPeriodMonth'), document.getElementById('dealPeriodYear'), month, year);
+  updateDealPeriodHint();
+}
+
+function getDealPeriod() {
+  const month = parseInt(document.getElementById('dealPeriodMonth').value, 10);
+  const year  = parseInt(document.getElementById('dealPeriodYear').value, 10);
+  return { month, year, deal_month: dealMonthText(month, year), fiscal_year: year };
+}
+
+function updateDealPeriodHint() {
+  const hint = document.getElementById('dealPeriodHint');
+  if (!hint) return;
+  const { month, year } = getDealPeriod();
+  hint.innerHTML = `${DEAL_MONTHS[month - 1]} ${year} · shows under the <b>${year}</b> tab`;
+}
+
+function onDealPeriodChange() {
+  _dealPeriodTouched = true;
+  updateDealPeriodHint();
+}
+
+// Entering an invoice date proposes its month and year as the period — unless
+// the user has already chosen one (a Sep 2026 invoice for a 2027 deal is normal).
 function autofillDealMonth() {
   const dateVal = document.getElementById('dealInvoiceDate').value;
-  const monthEl = document.getElementById('dealMonth');
-  if (!dateVal || monthEl.value.trim()) return; // don't overwrite if already set
-  monthEl.value = dealMonthLabel(dateVal + 'T12:00:00');
+  if (!dateVal || _dealPeriodTouched) return;
+  const dt = new Date(dateVal + 'T12:00:00');
+  if (isNaN(dt.getTime())) return;
+  setDealPeriod(dt.getMonth() + 1, String(dt.getFullYear()));
+}
+
+// Table cell: "Sep 2026" with the year muted. The month comes from the business
+// month (falling back to the invoice date); the year is whichever one puts the
+// deal on its tab, so the cell always agrees with the tab the row is under.
+function dealPeriodDisplayHtml(d) {
+  const parsed = parseDealMonth(d.deal_month);
+  const monthNum = parsed ? parsed.month : (d.invoice_date ? parseInt(String(d.invoice_date).slice(5, 7), 10) : 0);
+  if (!monthNum) return d.deal_month ? `<span class="deal-month-disp">${esc(d.deal_month)}</span>` : '<span style="color:var(--muted)">—</span>';
+  const year = dealYearOf(d);
+  return `<span class="deal-month-disp">${DEAL_MONTHS[monthNum - 1]}${year ? ` <span class="deal-month-yr">${year}</span>` : ''}</span>`;
 }
 
 function setDealPayment(value) {
@@ -7473,7 +7604,8 @@ async function saveDeal() {
     tax_vat: taxVat ? parseFloat(taxVat) : null,
     invoice_number: document.getElementById('dealInvoiceNumber').value.trim(),
     invoice_date: document.getElementById('dealInvoiceDate').value || null,
-    deal_month: document.getElementById('dealMonth').value.trim(),
+    deal_month: getDealPeriod().deal_month,
+    fiscal_year: getDealPeriod().fiscal_year,
     paid_date: null,
     bank: document.getElementById('dealBank').value,
     invoice_agreement_sent: document.getElementById('dealInvSent').value === 'true',
