@@ -363,7 +363,7 @@ function createBridgeRouter({ q, ensureDb, insertDealEvents }) {
       const { rows } = await q(
         `SELECT d.id AS deal_id,
                 COALESCE(NULLIF(d.company, ''), d.title) AS company,
-                d.currency, d.stage, d.paid_inc_vat, d.contact_name,
+                d.currency, d.stage, d.paid_inc_vat, d.contact_name, d.initials,
                 de.allocated_amount, de.package_label
          FROM deal_events de
          JOIN deals d ON d.id = de.deal_id
@@ -382,6 +382,8 @@ function createBridgeRouter({ q, ensureDb, insertDealEvents }) {
           package_label: r.package_label || '',
           paid: (toNum(r.paid_inc_vat) ?? 0) > 0,
           paid_inc_vat: toNum(r.paid_inc_vat),
+          // Who signed it — the CRM resolves these to a person.
+          initials: r.initials || '',
         }))
       );
     })

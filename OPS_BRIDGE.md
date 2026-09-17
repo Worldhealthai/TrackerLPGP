@@ -43,7 +43,7 @@ browser.
 | `GET /api/bridge/match?name=Barings` | Scored company matches with their event allocations |
 | `GET /api/bridge/companies[?slim=1]` | Every company with deals, grouped |
 | `GET /api/bridge/events` | Portfolio events with allocated and paid revenue |
-| `GET /api/bridge/events/:id/sponsors` | Who's sponsoring one event, and for how much |
+| `GET /api/bridge/events/:id/sponsors` | Who's sponsoring one event, for how much, and the signer's initials |
 | `GET /api/bridge/deals/:id` | One deal in full |
 
 ### Writes — also `x-ops-write-key`
@@ -101,6 +101,7 @@ npm test
 
 Runs the bridge against a stubbed database — no Postgres needed. 41 checks
 covering the auth guards (including that a read key cannot write), company
-grouping, the match tiers, per-currency totals, every payload shape, and the
+grouping, the match tiers, per-currency totals, every payload shape (including
+the signer's initials on sponsor rows), and the
 write paths: allocations landing with their split intact, wholesale replacement
 on update, and each refusal above.

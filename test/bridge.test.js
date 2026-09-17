@@ -121,7 +121,7 @@ async function readQuery(sql, params = []) {
     return { rows: [{ id: 10, name: 'Berlin', event_date: '2026-05-12', location: 'Waldorf', notes: '', deal_count: 2, allocated_total: '11000.00', allocated_paid: '11000.00' }] };
   }
   if (/FROM deal_events de/i.test(sql)) {
-    return { rows: [{ deal_id: 1, company: 'Barings LLC', currency: 'GBP', stage: 'Won', paid_inc_vat: '4800.00', contact_name: 'Jane Doe', allocated_amount: '2000.00', package_label: 'Gold' }] };
+    return { rows: [{ deal_id: 1, company: 'Barings LLC', currency: 'GBP', stage: 'Won', paid_inc_vat: '4800.00', contact_name: 'Jane Doe', initials: 'JS', allocated_amount: '2000.00', package_label: 'Gold' }] };
   }
   throw new Error('unexpected SQL: ' + sql.slice(0, 60));
 }
@@ -175,7 +175,9 @@ const server = app.listen(0, async () => {
   console.log('\nOther routes');
   check('deals/:id returns a shaped deal', (await (await fetch(`${base}/deals/1`, { headers: KEY })).json()).invoice_number === 'INV-1042');
   check('events returns numbers not strings', typeof (await (await fetch(`${base}/events`, { headers: KEY })).json())[0].allocated_total === 'number');
-  check('event sponsors listed', (await (await fetch(`${base}/events/10/sponsors`, { headers: KEY })).json())[0].company === 'Barings LLC');
+  const sponsors = await (await fetch(`${base}/events/10/sponsors`, { headers: KEY })).json();
+  check('event sponsors listed', sponsors[0].company === 'Barings LLC');
+  check('sponsor carries the signer\'s initials', sponsors[0].initials === 'JS', JSON.stringify(sponsors[0]));
 
   const WKEY = { 'x-ops-key': 'test-secret-key', 'x-ops-write-key': 'test-write-key', 'content-type': 'application/json' };
   const post = (path, body, headers = WKEY) =>
