@@ -1,13 +1,18 @@
 // ─────────────────────────────────────────────────────────────────────────────
 // Ops-panel bridge
 //
-// A read-only JSON surface the Sales CRM (LPGP-CRM) calls server-to-server to
-// answer one question: "does this company already exist as a deal in the ops
-// panel, and which events is it sponsoring?"
+// The JSON surface the Sales CRM (LPGP-CRM) calls server-to-server. It answers
+// "does this company already exist as a deal here, and which events is it
+// sponsoring?", and — when explicitly enabled — lets the CRM record deals
+// without the tracker ceasing to be the single source of truth for money.
 //
-// Nothing here mutates the tracker. Auth is a shared secret in `x-ops-key`
-// (OPS_BRIDGE_KEY), not the admin session cookie, because the caller is another
-// service rather than a logged-in browser.
+// Two secrets, two postures:
+//   OPS_BRIDGE_KEY        (x-ops-key)       reads. Always required.
+//   OPS_BRIDGE_WRITE_KEY  (x-ops-write-key) writes. Absent ⇒ every write 503s.
+//
+// They are deliberately separate: a leaked read key must never be able to
+// create a financial record. Neither is the admin session cookie, because the
+// caller is another service rather than a logged-in browser.
 // ─────────────────────────────────────────────────────────────────────────────
 const express = require('express');
 const crypto = require('crypto');
@@ -213,12 +218,33 @@ const DEAL_SELECT = `
   LEFT JOIN portfolio_events pe ON pe.id = de.event_id
 `;
 
+const DEAL_STAGES = ['Prospect', 'Qualified', 'Proposal', 'Negotiation', 'Won', 'Lost'];
+
+function cleanText(v) {
+  return typeof v === 'string' ? v.trim() : '';
+}
+
+function parseMoney(v) {
+  if (v == null || v === '') return null;
+  const n = typeof v === 'number' ? v : parseFloat(String(v).replace(/[^0-9.\-]/g, ''));
+  return Number.isFinite(n) ? n : null;
+}
+
+function parseDate(v) {
+  if (!v) return null;
+  // Accept YYYY-MM-DD only — anything looser risks a silent wrong date.
+  return /^\d{4}-\d{2}-\d{2}$/.test(String(v).trim()) ? String(v).trim() : null;
+}
+
 /**
  * @param {object} deps
  * @param {(sql: string, params?: any[]) => Promise<{rows: any[]}>} deps.q
  * @param {() => Promise<void>} deps.ensureDb
+ * @param {(dealId: number, amount: any, eventIds: any, packages: any) => Promise<void>} [deps.insertDealEvents]
+ *   The tracker's own allocation writer, passed in so there is exactly one
+ *   implementation of "how a deal's money is split across events".
  */
-function createBridgeRouter({ q, ensureDb }) {
+function createBridgeRouter({ q, ensureDb, insertDealEvents }) {
   const router = express.Router();
 
   function requireBridgeKey(req, res, next) {
@@ -271,6 +297,9 @@ function createBridgeRouter({ q, ensureDb }) {
     return [...groups.values()].map((g) => summarizeCompany(g.name, g.deals));
   }
 
+  // Parse JSON here so the router works wherever it's mounted. When the host
+  // app already parsed the body, express.json() sees that and skips.
+  router.use(express.json({ limit: '15mb' }));
   router.use(requireBridgeKey);
 
   // Health / handshake — lets the CRM settings page verify the key works.
@@ -433,6 +462,240 @@ function createBridgeRouter({ q, ensureDb }) {
       const { rows } = await q(`${DEAL_SELECT} WHERE d.id = ? GROUP BY d.id`, [req.params.id]);
       if (!rows.length) return res.status(404).json({ error: 'Deal not found' });
       res.json(shapeDeal(rows[0]));
+    })
+  );
+
+  // ── WRITES ────────────────────────────────────────────────────────────────
+  // Off by default. Enabling them is a deliberate act: set OPS_BRIDGE_WRITE_KEY
+  // to a DIFFERENT secret from the read key, so a leaked read key can never
+  // create financial records. Everything above stays read-only regardless.
+  function requireWriteKey(req, res, next) {
+    const expected = process.env.OPS_BRIDGE_WRITE_KEY;
+    if (!expected) {
+      return res.status(503).json({
+        error:
+          'Writes are not enabled on this tracker. Set OPS_BRIDGE_WRITE_KEY to allow the sales CRM to record deals.',
+      });
+    }
+    const supplied =
+      req.get('x-ops-write-key') || (req.get('authorization') || '').replace(/^Bearer\s+/i, '');
+    if (!supplied || !timingSafeCompare(supplied, expected)) {
+      return res.status(401).json({ error: 'Invalid ops bridge write key' });
+    }
+    return next();
+  }
+
+  /** Shared validation for create and update. Returns { error } or { fields }. */
+  function readDealBody(body, { requireCompany }) {
+    const company = cleanText(body.company);
+    if (requireCompany && !company) return { error: 'A company name is required.' };
+
+    const stage = cleanText(body.stage) || 'Prospect';
+    if (!DEAL_STAGES.includes(stage)) {
+      return { error: `stage must be one of: ${DEAL_STAGES.join(', ')}` };
+    }
+
+    const amount = parseMoney(body.amount) ?? 0;
+    if (amount < 0) return { error: 'amount cannot be negative.' };
+
+    const packages = Array.isArray(body.event_packages) ? body.event_packages : null;
+    if (packages) {
+      for (const p of packages) {
+        if (!Number.isInteger(Number(p?.event_id))) {
+          return { error: 'Each event allocation needs a numeric event_id.' };
+        }
+        if ((parseMoney(p.amount) ?? 0) < 0) {
+          return { error: 'An event allocation cannot be negative.' };
+        }
+      }
+    }
+
+    return {
+      fields: {
+        title: cleanText(body.title) || company,
+        company,
+        contact_name: cleanText(body.contact_name),
+        amount,
+        currency: (cleanText(body.currency) || 'GBP').toUpperCase().slice(0, 3),
+        stage,
+        notes: cleanText(body.notes),
+        paid_inc_vat: parseMoney(body.paid_inc_vat),
+        tax_vat: parseMoney(body.tax_vat),
+        invoice_date: parseDate(body.invoice_date),
+        paid_date: parseDate(body.paid_date),
+        bank: cleanText(body.bank),
+        invoice_number: cleanText(body.invoice_number),
+        invoice_agreement_sent: Boolean(body.invoice_agreement_sent),
+        signature_received: Boolean(body.signature_received),
+        initials: cleanText(body.initials),
+        deal_month: cleanText(body.deal_month),
+        fiscal_year: Number.isInteger(Number(body.fiscal_year)) ? Number(body.fiscal_year) : null,
+        event_ids: Array.isArray(body.event_ids) ? body.event_ids : null,
+        event_packages: packages,
+      },
+    };
+  }
+
+  /** Every referenced event must exist, or the allocation would dangle. */
+  async function assertEventsExist(fields) {
+    const ids = [
+      ...(fields.event_packages ?? []).map((p) => Number(p.event_id)),
+      ...(fields.event_ids ?? []).map(Number),
+    ].filter(Number.isInteger);
+    if (!ids.length) return null;
+    const unique = [...new Set(ids)];
+    const { rows } = await q(
+      `SELECT id FROM portfolio_events WHERE id IN (${unique.map(() => '?').join(',')})`,
+      unique
+    );
+    const found = new Set(rows.map((r) => Number(r.id)));
+    const missing = unique.filter((id) => !found.has(id));
+    return missing.length ? `Unknown event id(s): ${missing.join(', ')}` : null;
+  }
+
+  async function writeAllocations(dealId, fields) {
+    if (!fields.event_packages && !fields.event_ids) return;
+    if (typeof insertDealEvents === 'function') {
+      await insertDealEvents(dealId, fields.amount, fields.event_ids, fields.event_packages);
+      return;
+    }
+    // Fallback for a router constructed without the tracker's own writer.
+    for (const p of fields.event_packages ?? []) {
+      await q(
+        'INSERT INTO deal_events (deal_id, event_id, allocated_amount, package_label) VALUES (?,?,?,?)',
+        [dealId, p.event_id, parseMoney(p.amount) ?? 0, cleanText(p.package_label)]
+      );
+    }
+  }
+
+  // POST /api/bridge/deals — record a deal from the sales CRM.
+  router.post(
+    '/deals',
+    requireWriteKey,
+    handle(async (req, res) => {
+      const parsed = readDealBody(req.body || {}, { requireCompany: true });
+      if (parsed.error) return res.status(400).json({ error: parsed.error });
+      const f = parsed.fields;
+
+      const eventError = await assertEventsExist(f);
+      if (eventError) return res.status(400).json({ error: eventError });
+
+      // Refuse a duplicate invoice number outright — two deals sharing one is
+      // an accounting problem that is painful to unpick later.
+      if (f.invoice_number) {
+        const { rows: clash } = await q(
+          'SELECT id FROM deals WHERE invoice_number = ? LIMIT 1',
+          [f.invoice_number]
+        );
+        if (clash.length) {
+          return res
+            .status(409)
+            .json({ error: `Invoice ${f.invoice_number} is already on deal #${clash[0].id}.` });
+        }
+      }
+
+      const { rows } = await q(
+        `INSERT INTO deals (title, company, contact_name, amount, currency, stage, notes,
+           paid_inc_vat, tax_vat, invoice_date, paid_date, bank, invoice_number,
+           invoice_agreement_sent, signature_received, initials, deal_month, fiscal_year,
+           invoice1_name, invoice1_data)
+         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) RETURNING id`,
+        [
+          f.title, f.company, f.contact_name, f.amount, f.currency, f.stage, f.notes,
+          f.paid_inc_vat, f.tax_vat, f.invoice_date, f.paid_date, f.bank, f.invoice_number,
+          f.invoice_agreement_sent, f.signature_received, f.initials, f.deal_month, f.fiscal_year,
+          cleanText(req.body.invoice1_name) || null,
+          typeof req.body.invoice1_data === 'string' ? req.body.invoice1_data : null,
+        ]
+      );
+      const dealId = rows[0].id;
+      await writeAllocations(dealId, f);
+
+      const { rows: created } = await q(`${DEAL_SELECT} WHERE d.id = ? GROUP BY d.id`, [dealId]);
+      res.status(201).json(shapeDeal(created[0]));
+    })
+  );
+
+  // PATCH /api/bridge/deals/:id — update a deal, e.g. recording a payment.
+  router.patch(
+    '/deals/:id',
+    requireWriteKey,
+    handle(async (req, res) => {
+      const id = Number(req.params.id);
+      if (!Number.isInteger(id)) return res.status(400).json({ error: 'Invalid deal id' });
+
+      const { rows: existing } = await q('SELECT id FROM deals WHERE id = ?', [id]);
+      if (!existing.length) return res.status(404).json({ error: 'Deal not found' });
+
+      const parsed = readDealBody(req.body || {}, { requireCompany: false });
+      if (parsed.error) return res.status(400).json({ error: parsed.error });
+      const f = parsed.fields;
+
+      const eventError = await assertEventsExist(f);
+      if (eventError) return res.status(400).json({ error: eventError });
+
+      if (f.invoice_number) {
+        const { rows: clash } = await q(
+          'SELECT id FROM deals WHERE invoice_number = ? AND id <> ? LIMIT 1',
+          [f.invoice_number, id]
+        );
+        if (clash.length) {
+          return res
+            .status(409)
+            .json({ error: `Invoice ${f.invoice_number} is already on deal #${clash[0].id}.` });
+        }
+      }
+
+      await q(
+        `UPDATE deals SET
+           title = COALESCE(NULLIF(?,''), title),
+           company = COALESCE(NULLIF(?,''), company),
+           contact_name = ?, amount = ?, currency = ?, stage = ?, notes = ?,
+           paid_inc_vat = ?, tax_vat = ?, invoice_date = ?, paid_date = ?,
+           bank = ?, invoice_number = ?, invoice_agreement_sent = ?,
+           signature_received = ?, initials = ?, deal_month = ?,
+           fiscal_year = COALESCE(?, fiscal_year)
+         WHERE id = ?`,
+        [
+          f.title, f.company, f.contact_name, f.amount, f.currency, f.stage, f.notes,
+          f.paid_inc_vat, f.tax_vat, f.invoice_date, f.paid_date, f.bank, f.invoice_number,
+          f.invoice_agreement_sent, f.signature_received, f.initials, f.deal_month,
+          f.fiscal_year, id,
+        ]
+      );
+
+      // Allocations are replaced wholesale, and only when the caller sent some
+      // — omitting them leaves the existing split untouched.
+      if (f.event_packages || f.event_ids) {
+        await q('DELETE FROM deal_events WHERE deal_id = ?', [id]);
+        await writeAllocations(id, f);
+      }
+
+      const { rows: updated } = await q(`${DEAL_SELECT} WHERE d.id = ? GROUP BY d.id`, [id]);
+      res.json(shapeDeal(updated[0]));
+    })
+  );
+
+  // POST /api/bridge/deals/:id/invoice/:n — attach an invoice file (1 or 2).
+  router.post(
+    '/deals/:id/invoice/:n',
+    requireWriteKey,
+    handle(async (req, res) => {
+      const id = Number(req.params.id);
+      const n = Number(req.params.n);
+      if (!Number.isInteger(id)) return res.status(400).json({ error: 'Invalid deal id' });
+      if (n !== 1 && n !== 2) return res.status(400).json({ error: 'Invoice slot must be 1 or 2' });
+
+      const name = cleanText(req.body?.name);
+      const data = typeof req.body?.data === 'string' ? req.body.data : '';
+      if (!name || !data) return res.status(400).json({ error: 'name and data are required.' });
+
+      const { rows } = await q(
+        `UPDATE deals SET invoice${n}_name = ?, invoice${n}_data = ? WHERE id = ? RETURNING id`,
+        [name, data, id]
+      );
+      if (!rows.length) return res.status(404).json({ error: 'Deal not found' });
+      res.json({ ok: true, deal_id: id, slot: n, name });
     })
   );
 

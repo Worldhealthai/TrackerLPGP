@@ -468,7 +468,7 @@ async function calcExcessDeductions(empId, year, annualSalary, allowance) {
 // Read-only surface for the Sales CRM (LPGP-CRM). Authenticated by the shared
 // OPS_BRIDGE_KEY secret rather than an admin cookie — the caller is a server,
 // not a browser. Mounted before the auth routes so it never inherits them.
-app.use('/api/bridge', createBridgeRouter({ q, ensureDb }));
+app.use('/api/bridge', createBridgeRouter({ q, ensureDb, insertDealEvents }));
 
 // ─── AUTH ────────────────────────────────────────────────────────────────────
 

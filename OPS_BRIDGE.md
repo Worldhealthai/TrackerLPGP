@@ -1,35 +1,41 @@
 # Ops bridge
 
-A read-only JSON surface the **Sales CRM** (`LPGP-CRM`) calls server-to-server to
-answer one question:
+The JSON surface the **Sales CRM** (`LPGP-CRM`) calls server-to-server. It
+answers:
 
 > Does this company already exist as a deal here, and which events is it
 > sponsoring?
 
-Nothing in `bridge.js` mutates the tracker.
+and, when you enable it, lets the CRM record deals — without this tracker
+ceasing to be the single source of truth for money.
 
 ## Enabling it
 
-Set one environment variable on this app:
-
 ```bash
-openssl rand -hex 32     # generate a secret
+openssl rand -hex 32     # generate each secret separately
 ```
 
-| Variable | Value |
-| --- | --- |
-| `OPS_BRIDGE_KEY` | The secret. Set the **same value** on the sales CRM. |
+| Variable | Grants | Required |
+| --- | --- | --- |
+| `OPS_BRIDGE_KEY` | Reads | Yes — unset, every route returns `503` |
+| `OPS_BRIDGE_WRITE_KEY` | Writes | No — unset, every write returns `503` |
 
-Unset, every bridge route returns `503` and the CRM hides its ops features.
+Set the same values on the sales CRM. **Use two different secrets**: a leaked
+read key must never be able to create a financial record.
+
+Read-only is the default posture. You get the match notice, the account
+allocations and the Event Performance page without enabling writes at all.
 
 ## Auth
 
-Send the secret as `x-ops-key` (or `Authorization: Bearer …`). It's compared over
-SHA-256 digests so the check is timing-safe for unequal-length inputs. These
-routes deliberately do **not** use the admin session cookie — the caller is
-another server, not a browser.
+Reads send `x-ops-key`; writes send `x-ops-write-key` as well. Both are compared
+over SHA-256 digests, so the check is timing-safe for unequal-length inputs.
+Neither is the admin session cookie — the caller is another server, not a
+browser.
 
 ## Routes
+
+### Reads — `x-ops-key`
 
 | Route | Returns |
 | --- | --- |
@@ -39,6 +45,27 @@ another server, not a browser.
 | `GET /api/bridge/events` | Portfolio events with allocated and paid revenue |
 | `GET /api/bridge/events/:id/sponsors` | Who's sponsoring one event, and for how much |
 | `GET /api/bridge/deals/:id` | One deal in full |
+
+### Writes — also `x-ops-write-key`
+
+| Route | Does |
+| --- | --- |
+| `POST /api/bridge/deals` | Record a deal with its event allocations |
+| `PATCH /api/bridge/deals/:id` | Update a deal (e.g. record a payment) |
+| `POST /api/bridge/deals/:id/invoice/:n` | Attach an invoice file (slot 1 or 2) |
+
+Writes reuse the tracker's own allocation writer — passed into the router — so
+there is exactly one implementation of how a deal's money is split across
+events, whoever creates it.
+
+They refuse rather than guess:
+
+- a missing company, an unknown stage, or a negative amount → `400`
+- an allocation pointing at an event that doesn't exist → `400`
+- an invoice number already on another deal → `409`
+
+`PATCH` replaces a deal's allocations wholesale, and only when the caller sends
+some — omitting them leaves the existing split untouched.
 
 ## How matching works
 
@@ -72,5 +99,8 @@ counted separately.
 npm test
 ```
 
-Runs the bridge against a stubbed database: the auth guard, the grouping, the
-match tiers, per-currency totals and every payload shape — no Postgres needed.
+Runs the bridge against a stubbed database — no Postgres needed. 41 checks
+covering the auth guards (including that a read key cannot write), company
+grouping, the match tiers, per-currency totals, every payload shape, and the
+write paths: allocations landing with their split intact, wholesale replacement
+on update, and each refusal above.

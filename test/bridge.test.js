@@ -38,9 +38,84 @@ const DEAL_ROWS = [
     created_at: '2026-01-02T00:00:00Z', events: [] },
 ];
 
-async function q(sql) {
-  if (/FROM deals d/i.test(sql) && /WHERE d\.id/i.test(sql)) return { rows: [DEAL_ROWS[0]] };
-  if (/FROM deals d/i.test(sql)) return { rows: DEAL_ROWS };
+process.env.OPS_BRIDGE_WRITE_KEY = 'test-write-key';
+
+// Mutable state so writes are observable. Deliberately minimal — it models the
+// three tables the bridge touches, not Postgres.
+const DB = { deals: [...DEAL_ROWS], allocations: [], nextId: 5 };
+const EVENT_IDS = [10, 11, 12];
+
+async function q(sql, params = []) {
+  // --- writes ---
+  if (/^\s*INSERT INTO deals/i.test(sql)) {
+    const [title, company, contact_name, amount, currency, stage, notes,
+           paid_inc_vat, tax_vat, invoice_date, paid_date, bank, invoice_number] = params;
+    const row = {
+      ...DEAL_ROWS[0], id: DB.nextId++, title, company, contact_name,
+      amount: String(amount), currency, stage, notes, paid_inc_vat, tax_vat,
+      invoice_date, paid_date, bank, invoice_number, stage_cancelled: false, events: [],
+    };
+    DB.deals.push(row);
+    return { rows: [{ id: row.id }] };
+  }
+  if (/^\s*INSERT INTO deal_events/i.test(sql)) {
+    const [deal_id, event_id, allocated_amount, package_label] = params;
+    DB.allocations.push({ deal_id, event_id, allocated_amount, package_label });
+    const deal = DB.deals.find((d) => d.id === deal_id);
+    if (deal) {
+      deal.events.push({ event_id, event_name: `Event ${event_id}`, event_date: null,
+        location: '', allocated_amount: String(allocated_amount), package_label });
+    }
+    return { rows: [] };
+  }
+  if (/^\s*DELETE FROM deal_events/i.test(sql)) {
+    const [deal_id] = params;
+    DB.allocations = DB.allocations.filter((a) => a.deal_id !== deal_id);
+    const deal = DB.deals.find((d) => d.id === Number(deal_id));
+    if (deal) deal.events = [];
+    return { rows: [] };
+  }
+  if (/^\s*UPDATE deals SET\s+title/i.test(sql)) {
+    const id = params[params.length - 1];
+    const deal = DB.deals.find((d) => d.id === Number(id));
+    if (deal) {
+      deal.contact_name = params[2]; deal.amount = String(params[3]);
+      deal.currency = params[4]; deal.stage = params[5];
+      deal.paid_inc_vat = params[7]; deal.invoice_number = params[12];
+      if (params[0]) deal.title = params[0];
+    }
+    return { rows: deal ? [{ id: deal.id }] : [] };
+  }
+  if (/^\s*UPDATE deals SET invoice\d_name/i.test(sql)) {
+    const [name, data, id] = params;
+    const deal = DB.deals.find((d) => d.id === Number(id));
+    if (deal) { deal.invoice1_name = name; deal.invoice1_data = data; }
+    return { rows: deal ? [{ id: deal.id }] : [] };
+  }
+  if (/SELECT id FROM portfolio_events WHERE id IN/i.test(sql)) {
+    return { rows: params.filter((p) => EVENT_IDS.includes(Number(p))).map((id) => ({ id })) };
+  }
+  if (/SELECT id FROM deals WHERE invoice_number/i.test(sql)) {
+    const [invoice_number, excludeId] = params;
+    const hit = DB.deals.find(
+      (d) => d.invoice_number === invoice_number && (excludeId == null || d.id !== Number(excludeId))
+    );
+    return { rows: hit ? [{ id: hit.id }] : [] };
+  }
+  if (/^\s*SELECT id FROM deals WHERE id/i.test(sql)) {
+    const hit = DB.deals.find((d) => d.id === Number(params[0]));
+    return { rows: hit ? [{ id: hit.id }] : [] };
+  }
+  return readQuery(sql, params);
+}
+
+async function readQuery(sql, params = []) {
+  if (/FROM deals d/i.test(sql) && /WHERE d\.id/i.test(sql)) {
+    const id = Number(params[0] ?? 0);
+    const hit = DB.deals.find((d) => d.id === id) || DEAL_ROWS[0];
+    return { rows: [hit] };
+  }
+  if (/FROM deals d/i.test(sql)) return { rows: DB.deals };
   if (/SELECT\s+\(SELECT COUNT/i.test(sql)) return { rows: [{ deals: 4, events: 3, allocations: 4 }] };
   if (/FROM portfolio_events pe/i.test(sql)) {
     return { rows: [{ id: 10, name: 'Berlin', event_date: '2026-05-12', location: 'Waldorf', notes: '', deal_count: 2, allocated_total: '11000.00', allocated_paid: '11000.00' }] };
@@ -101,6 +176,84 @@ const server = app.listen(0, async () => {
   check('deals/:id returns a shaped deal', (await (await fetch(`${base}/deals/1`, { headers: KEY })).json()).invoice_number === 'INV-1042');
   check('events returns numbers not strings', typeof (await (await fetch(`${base}/events`, { headers: KEY })).json())[0].allocated_total === 'number');
   check('event sponsors listed', (await (await fetch(`${base}/events/10/sponsors`, { headers: KEY })).json())[0].company === 'Barings LLC');
+
+  const WKEY = { 'x-ops-key': 'test-secret-key', 'x-ops-write-key': 'test-write-key', 'content-type': 'application/json' };
+  const post = (path, body, headers = WKEY) =>
+    fetch(`${base}${path}`, { method: 'POST', headers, body: JSON.stringify(body) });
+  const patch = (path, body) =>
+    fetch(`${base}${path}`, { method: 'PATCH', headers: WKEY, body: JSON.stringify(body) });
+
+  console.log('\nWrite auth');
+  check(
+    'write with only the read key → 401',
+    (await post('/deals', { company: 'X' }, { ...KEY, 'content-type': 'application/json' })).status === 401
+  );
+  check(
+    'wrong write key → 401',
+    (await post('/deals', { company: 'X' }, { ...WKEY, 'x-ops-write-key': 'nope' })).status === 401
+  );
+
+  console.log('\nCreating a deal');
+  const createRes = await post('/deals', {
+    company: 'Apex Group',
+    contact_name: 'Sam Patel',
+    amount: 9000,
+    currency: 'GBP',
+    stage: 'Won',
+    invoice_number: 'INV-2001',
+    paid_inc_vat: 10800,
+    tax_vat: 1800,
+    invoice_date: '2027-01-15',
+    event_packages: [
+      { event_id: 10, amount: 5000, package_label: 'Gold' },
+      { event_id: 11, amount: 4000, package_label: '' },
+    ],
+  });
+  const created = await createRes.json();
+  check('returns 201', createRes.status === 201, String(createRes.status));
+  check('deal carries the company', created.company === 'Apex Group', created.company);
+  check('both allocations written', created.events?.length === 2, JSON.stringify(created.events));
+  check(
+    'allocations keep their split',
+    created.events?.[0]?.allocated_amount === 5000 && created.events?.[1]?.allocated_amount === 4000,
+    JSON.stringify(created.events?.map((e) => e.allocated_amount))
+  );
+  check('package label preserved', created.events?.[0]?.package_label === 'Gold');
+
+  console.log('\nValidation refuses bad writes');
+  check('no company → 400', (await post('/deals', { amount: 1 })).status === 400);
+  check('unknown stage → 400', (await post('/deals', { company: 'X', stage: 'Bananas' })).status === 400);
+  check('negative amount → 400', (await post('/deals', { company: 'X', amount: -5 })).status === 400);
+  check(
+    'unknown event id → 400',
+    (await post('/deals', { company: 'X', event_packages: [{ event_id: 999, amount: 1 }] })).status === 400
+  );
+  const dupe = await post('/deals', { company: 'Other', invoice_number: 'INV-2001' });
+  check('duplicate invoice number → 409', dupe.status === 409, String(dupe.status));
+
+  console.log('\nUpdating a deal');
+  const patched = await patch(`/deals/${created.id}`, {
+    company: 'Apex Group',
+    amount: 9000,
+    stage: 'Won',
+    paid_inc_vat: 10800,
+    paid_date: '2027-02-01',
+    event_packages: [{ event_id: 12, amount: 9000, package_label: 'Platinum' }],
+  });
+  const after = await patched.json();
+  check('patch returns 200', patched.status === 200, String(patched.status));
+  check('allocations replaced wholesale', after.events?.length === 1, JSON.stringify(after.events));
+  check('new allocation is the one sent', after.events?.[0]?.event_id === 12);
+  check('missing deal → 404', (await patch('/deals/99999', { amount: 1 })).status === 404);
+
+  console.log('\nAttaching an invoice');
+  const inv = await post(`/deals/${created.id}/invoice/1`, { name: 'INV-2001.pdf', data: 'JVBERi0x' });
+  check('invoice attaches', inv.status === 200 && (await inv.json()).name === 'INV-2001.pdf');
+  check(
+    'invalid slot → 400',
+    (await post(`/deals/${created.id}/invoice/3`, { name: 'a', data: 'b' })).status === 400
+  );
+  check('missing data → 400', (await post(`/deals/${created.id}/invoice/1`, { name: 'a' })).status === 400);
 
   console.log(`\n${pass} passed, ${fail} failed`);
   server.close();
