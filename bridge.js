@@ -365,6 +365,8 @@ function createBridgeRouter({ q, ensureDb }) {
       const index = await loadCompanyIndex();
       const slim = req.query.slim === '1';
       index.sort((a, b) => a.company.localeCompare(b.company));
+      // Slim drops the full deal payloads (notes, invoice metadata) but keeps
+      // the event rollup and its deal ids, which is all a bulk reconcile needs.
       res.json(
         slim
           ? index.map((c) => ({
@@ -373,7 +375,15 @@ function createBridgeRouter({ q, ensureDb }) {
               deal_count: c.deal_count,
               event_count: c.event_count,
               totals: c.totals,
-              events: c.events.map((e) => ({ event_id: e.event_id, event_name: e.event_name })),
+              has_payment: c.has_payment,
+              events: c.events.map((e) => ({
+                event_id: e.event_id,
+                event_name: e.event_name,
+                event_date: e.event_date,
+                allocated_amount: e.allocated_amount,
+                currency: e.currency,
+                deal_ids: e.deal_ids,
+              })),
             }))
           : index
       );
