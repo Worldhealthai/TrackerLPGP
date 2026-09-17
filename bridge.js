@@ -100,6 +100,23 @@ function toNum(v) {
 }
 
 /**
+ * Where a deal stands on paperwork.
+ *
+ *   need_invoice        nothing on file to send — the admin still owes the
+ *                       client an agreement/invoice
+ *   awaiting_signature  sent, but the signed copy hasn't come back
+ *   signed              signature received
+ *
+ * Keyed off the FILE, not the "sent" tick: a deal can be marked sent with
+ * nothing filed, and that still means someone has to produce the document.
+ */
+function agreementStatus(row) {
+  if (row.signature_received) return 'signed';
+  if (!row.invoice1_name) return 'need_invoice';
+  return 'awaiting_signature';
+}
+
+/**
  * Shape one DB row into the deal payload the CRM consumes. Keeps the contract
  * explicit so tracker-side column changes don't silently leak through.
  */
@@ -126,6 +143,10 @@ function shapeDeal(row) {
     deal_month: row.deal_month || '',
     invoice_agreement_sent: Boolean(row.invoice_agreement_sent),
     signature_received: Boolean(row.signature_received),
+    agreement_status: agreementStatus(row),
+    // Names only — the files themselves stream from the tracker on demand.
+    agreement_file: row.invoice1_name || '',
+    signed_file: row.invoice2_name || '',
     notes: row.notes || '',
     created_at: row.created_at,
     events: events
@@ -202,7 +223,7 @@ const DEAL_SELECT = `
          d.notes, d.paid_inc_vat, d.tax_vat, d.invoice_date, d.paid_date, d.bank,
          d.invoice_number, d.invoice_agreement_sent, d.signature_received,
          d.initials, d.deal_month, d.fiscal_year, d.stage_cancelled, d.is_flagged,
-         d.created_at,
+         d.created_at, d.invoice1_name, d.invoice2_name,
          COALESCE(json_agg(
            json_build_object(
              'event_id', pe.id,
@@ -454,6 +475,37 @@ function createBridgeRouter({ q, ensureDb, insertDealEvents }) {
         best: matches[0] ?? null,
         matches,
       });
+    })
+  );
+
+  // Deals, filterable. Powers the CRM's "my deals" (by the initials the signer
+  // is stamped with) and its paperwork chase (by agreement status).
+  router.get(
+    '/deals',
+    handle(async (req, res) => {
+      const limit = Math.min(Math.max(parseInt(req.query.limit, 10) || 200, 1), 500);
+      const { rows } = await q(`${DEAL_SELECT} GROUP BY d.id ORDER BY d.created_at DESC`);
+      let deals = rows.map(shapeDeal);
+
+      const initials = cleanText(req.query.initials).toUpperCase();
+      if (initials) {
+        // Compare on letters alone — the tracker holds "J.S.", "js" and "JS".
+        const want = initials.replace(/[^A-Z]/g, '');
+        deals = deals.filter((d) => d.initials.toUpperCase().replace(/[^A-Z]/g, '') === want);
+      }
+
+      const company = cleanText(req.query.company);
+      if (company) {
+        const key = matchKey(company);
+        deals = deals.filter((d) => matchKey(d.company) === key);
+      }
+
+      const status = cleanText(req.query.status);
+      if (status) deals = deals.filter((d) => d.agreement_status === status);
+
+      if (req.query.include_cancelled !== '1') deals = deals.filter((d) => !d.cancelled);
+
+      res.json(deals.slice(0, limit));
     })
   );
 

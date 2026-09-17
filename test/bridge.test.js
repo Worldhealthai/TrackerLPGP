@@ -12,6 +12,7 @@ const DEAL_ROWS = [
     invoice_number: 'INV-1042', invoice_agreement_sent: true, signature_received: true,
     initials: 'AB', deal_month: 'Feb', fiscal_year: 2026, stage_cancelled: false,
     is_flagged: false, created_at: '2026-01-05T00:00:00Z',
+    invoice1_name: 'INV-1042.pdf', invoice2_name: 'INV-1042-signed.pdf',
     events: [
       { event_id: 10, event_name: 'Berlin', event_date: '2026-05-12', location: 'Waldorf Astoria', allocated_amount: '2000.00', package_label: 'Gold' },
       { event_id: 11, event_name: 'CFO Miami', event_date: '2026-09-02', location: 'Four Seasons', allocated_amount: '2000.00', package_label: '' },
@@ -21,14 +22,14 @@ const DEAL_ROWS = [
     invoice_date: null, paid_date: null, bank: '', invoice_number: '',
     invoice_agreement_sent: false, signature_received: false, initials: '', deal_month: '',
     fiscal_year: 2027, stage_cancelled: false, is_flagged: false,
-    created_at: '2026-03-01T00:00:00Z',
+    created_at: '2026-03-01T00:00:00Z', invoice1_name: null, invoice2_name: null,
     events: [{ event_id: 12, event_name: 'Ops NYC', event_date: '2027-01-20', location: '', allocated_amount: '1500.00', package_label: 'Silver' }] },
   { id: 3, title: 'BlackRock', company: 'BlackRock', contact_name: '', amount: '9000.00',
     currency: 'USD', stage: 'Won', notes: '', paid_inc_vat: '9000.00', tax_vat: '0',
     invoice_date: null, paid_date: null, bank: '', invoice_number: '',
     invoice_agreement_sent: false, signature_received: false, initials: '', deal_month: '',
     fiscal_year: 2026, stage_cancelled: false, is_flagged: false,
-    created_at: '2026-01-01T00:00:00Z',
+    created_at: '2026-01-01T00:00:00Z', invoice1_name: 'BR-agreement.pdf', invoice2_name: null,
     events: [{ event_id: 10, event_name: 'Berlin', event_date: '2026-05-12', location: '', allocated_amount: '9000.00', package_label: '' }] },
   { id: 4, title: 'Barings cancelled', company: 'Barings', contact_name: '', amount: '500.00',
     currency: 'GBP', stage: 'Lost', notes: '', paid_inc_vat: null, tax_vat: null,
@@ -184,6 +185,32 @@ const server = app.listen(0, async () => {
     fetch(`${base}${path}`, { method: 'POST', headers, body: JSON.stringify(body) });
   const patch = (path, body) =>
     fetch(`${base}${path}`, { method: 'PATCH', headers: WKEY, body: JSON.stringify(body) });
+
+  console.log('\nAgreement status');
+  const allDeals = await (await fetch(`${base}/deals?include_cancelled=1`, { headers: KEY })).json();
+  const byId = Object.fromEntries(allDeals.map((d) => [d.id, d]));
+  check('signed when the signature is in', byId[1]?.agreement_status === 'signed', byId[1]?.agreement_status);
+  check(
+    'need_invoice when nothing is on file',
+    byId[2]?.agreement_status === 'need_invoice',
+    byId[2]?.agreement_status
+  );
+  check(
+    'awaiting_signature once the agreement is filed',
+    byId[3]?.agreement_status === 'awaiting_signature',
+    byId[3]?.agreement_status
+  );
+  check('carries the agreement file name', byId[1]?.agreement_file === 'INV-1042.pdf');
+
+  console.log('\nListing deals');
+  const live = await (await fetch(`${base}/deals`, { headers: KEY })).json();
+  check('cancelled excluded by default', !live.some((d) => d.cancelled), String(live.length));
+  const mine = await (await fetch(`${base}/deals?initials=ab`, { headers: KEY })).json();
+  check('filters by initials, case and dots ignored', mine.length === 1 && mine[0].id === 1, JSON.stringify(mine.map((d) => d.id)));
+  const chasing = await (await fetch(`${base}/deals?status=need_invoice`, { headers: KEY })).json();
+  check('filters by agreement status', chasing.every((d) => d.agreement_status === 'need_invoice') && chasing.length > 0);
+  const byCompany = await (await fetch(`${base}/deals?company=${encodeURIComponent('Barings LLC')}`, { headers: KEY })).json();
+  check('company filter uses the match key', byCompany.length === 2, JSON.stringify(byCompany.map((d) => d.id)));
 
   console.log('\nWrite auth');
   check(

@@ -1197,6 +1197,21 @@ tbody tr:last-child td { border-bottom: none; }
   border: 1px dashed var(--border); white-space: nowrap;
 }
 .deal-inv-missing-badge:hover { color: var(--accent); border-color: var(--accent); }
+/* No agreement on file yet — someone still owes the client a document. Warm
+   and solid, because this is a job to do rather than a field left blank. */
+.deal-inv-todo-badge {
+  display: inline-block; margin-top: 4px; padding: 2px 7px; border-radius: 20px;
+  font: 700 10px/1.6 var(--font-mono); background: rgba(234,88,12,0.16); color: #f59e0b;
+  border: 1px solid rgba(234,88,12,0.35); white-space: nowrap;
+}
+.deal-inv-todo-badge:hover { background: rgba(234,88,12,0.26); }
+/* Sent, waiting on the countersigned copy. */
+.deal-inv-await-badge {
+  display: inline-block; margin-top: 4px; padding: 2px 7px; border-radius: 20px;
+  font: 600 10px/1.6 var(--font-mono); background: var(--surface-2); color: var(--muted);
+  border: 1px solid var(--border); white-space: nowrap;
+}
+.deal-inv-await-badge:hover { color: var(--accent); border-color: var(--accent); }
 .ig-event-card {
   display: flex; flex-direction: column; gap: 8px;
   border: 1px solid var(--border); border-left: 3px solid var(--accent);

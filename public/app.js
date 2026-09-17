@@ -5066,9 +5066,7 @@ function renderDealsTable() {
       ${ec('bank','select-bank',d.bank||'', `${esc(d.bank||'')||'<span style="color:var(--muted)">—</span>'}`)}
       <td class="deal-cell-inv" data-id="${d.id}" onclick="openDealInvoicePanel(${d.id})" title="Click to upload / view invoice files" style="cursor:pointer">
         <div style="font-family:monospace;font-size:0.72rem;color:${d.invoice_number?'var(--text)':'var(--muted)'}">${d.invoice_number ? esc(d.invoice_number) : '—'}</div>
-        ${(d.invoice1_name||d.invoice2_name)
-          ? `<span class="deal-inv-filed-badge" title="${[d.invoice1_name,d.invoice2_name].filter(Boolean).join(', ')}">📎 Filed</span>`
-          : `<span class="deal-inv-missing-badge" title="No invoice file uploaded yet">+ Add file</span>`}
+${(() => { const st = dealAgreementStatus(d); return `<span class="${st.cls}" title="${esc(st.title)}">${st.label}</span>`; })()}
       </td>
       <td class="deal-cell-toggle" onclick="dealToggleBool(${d.id},'signature_received',${!!d.signature_received})" style="text-align:center;cursor:pointer" title="Click to toggle">${d.signature_received ? '✅' : '<span style="color:var(--muted)">—</span>'}</td>
       ${ec('initials','text',d.initials||'', d.initials ? `<span class="deal-initials-badge">${esc(d.initials)}</span>` : '<span style="color:var(--muted)">—</span>', 'style="text-align:center"')}
@@ -5261,14 +5259,47 @@ function dealCellClick(td) {
   });
 }
 
+/**
+ * Where a deal stands on paperwork. Mirrors agreementStatus() in bridge.js, so
+ * the tracker and the sales CRM say the same thing about the same deal.
+ *
+ * Keyed off the FILE, not the "sent" tick: a deal can be marked sent with
+ * nothing filed, and that still means someone has to produce the document.
+ */
+function dealAgreementStatus(d) {
+  if (d.signature_received) {
+    return { key: 'signed', label: '✓ Signed', cls: 'deal-inv-filed-badge', title: d.invoice2_name || 'Signed copy received' };
+  }
+  if (!d.invoice1_name) {
+    return {
+      key: 'need_invoice',
+      label: '! Need to send invoice',
+      cls: 'deal-inv-todo-badge',
+      title: d.invoice_agreement_sent
+        ? 'Marked sent, but no document is on file — upload it here'
+        : 'No agreement or invoice on file yet — send one and upload it here',
+    };
+  }
+  return {
+    key: 'awaiting_signature',
+    label: '⧗ Awaiting signature',
+    cls: 'deal-inv-await-badge',
+    title: `Sent: ${d.invoice1_name} — waiting on the signed copy`,
+  };
+}
+
 function openDealInvoicePanel(dealId) {
   const deal = dealsData.find(d => d.id === dealId);
   if (!deal) return;
   const body = document.getElementById('dealInvoicePanelBody');
 
+  // Slot 1 is what we send the client; slot 2 is what comes back signed.
   function slotHtml(n) {
     const name = n === 1 ? deal.invoice1_name : deal.invoice2_name;
-    const label = n === 1 ? 'Invoice 1' : 'Invoice 2';
+    const label = n === 1 ? 'Agreement / invoice sent' : 'Signed copy';
+    const emptyHint = n === 1
+      ? "Nothing on file — send the client their agreement, then upload it here"
+      : "Upload the countersigned copy once it comes back";
     return `<div id="dealInvSlot${n}" style="border:1px solid ${name ? 'rgba(95,211,150,0.35)' : 'var(--border)'};background:${name ? 'var(--positive-soft)' : 'transparent'};border-radius:10px;padding:14px 16px">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
         <div style="font:700 12px/1 var(--font-mono);text-transform:uppercase;letter-spacing:0.5px;color:var(--muted)">${label}</div>
@@ -5280,16 +5311,45 @@ function openDealInvoicePanel(dealId) {
             <button class="btn btn-ghost btn-sm" style="color:var(--negative);flex-shrink:0" onclick="dealInvoiceDelete(${dealId},${n})">Remove</button>
           </div>`
         : `<label style="display:flex;align-items:center;gap:10px;cursor:pointer">
-            <span style="font-size:13px;color:var(--muted)">No file uploaded — sales team won't see a package doc here</span>
+            <span style="font-size:13px;color:var(--muted);flex:1">${emptyHint}</span>
             <input type="file" accept=".pdf,.doc,.docx" style="display:none" onchange="dealInvoiceUpload(event,${dealId},${n})">
-            <button class="btn btn-ghost btn-sm" onclick="this.previousElementSibling.click()">Upload PDF / Word</button>
+            <button class="btn btn-ghost btn-sm" style="flex-shrink:0" onclick="this.previousElementSibling.click()">Upload PDF / Word</button>
           </label>`
       }
+      ${n === 2 ? `
+      <label style="display:flex;align-items:center;gap:8px;margin-top:12px;padding-top:12px;border-top:1px solid var(--border);cursor:pointer">
+        <input type="checkbox" id="dealSignedTick" ${deal.signature_received ? 'checked' : ''}
+               onchange="dealSetSigned(${dealId}, this.checked)" style="width:15px;height:15px;cursor:pointer">
+        <span style="font-size:13px;font-weight:600">Signed</span>
+        <span style="font-size:12px;color:var(--muted)">— tick once they've signed and returned it</span>
+      </label>` : ''}
     </div>`;
   }
 
-  body.innerHTML = slotHtml(1) + slotHtml(2);
+  const st = dealAgreementStatus(deal);
+  const banner = st.key === 'need_invoice'
+    ? `<div style="border:1px solid rgba(234,88,12,0.35);background:rgba(234,88,12,0.12);border-radius:10px;padding:12px 14px;font-size:13px;color:#f59e0b">
+         <strong>Need to send invoice.</strong> ${esc(deal.company || deal.title || 'This deal')} has no agreement on file${deal.invoice_agreement_sent ? ' despite being marked sent' : ''} — send it, then upload it below.
+       </div>`
+    : st.key === 'awaiting_signature'
+      ? `<div style="border:1px solid var(--border);background:var(--surface-2);border-radius:10px;padding:12px 14px;font-size:13px;color:var(--muted)">
+           Agreement sent. Waiting on the signed copy — upload it and tick <strong>Signed</strong> when it arrives.
+         </div>`
+      : '';
+
+  body.innerHTML = banner + slotHtml(1) + slotHtml(2);
   openModal('dealInvoicePanel');
+}
+
+/** Tick/untick the signature on a deal from the invoice panel. */
+async function dealSetSigned(dealId, signed) {
+  const ok = await dealPatchField(dealId, 'signature_received', signed);
+  if (!ok) { showToast('Could not update', 'error'); return; }
+  const idx = dealsData.findIndex(d => d.id === dealId);
+  if (idx !== -1) dealsData[idx].signature_received = signed;
+  showToast(signed ? 'Marked as signed' : 'Signature cleared', 'success');
+  openDealInvoicePanel(dealId);
+  renderDealsTable();
 }
 
 async function dealInvoiceUpload(evt, dealId, n) {
@@ -5305,11 +5365,17 @@ async function dealInvoiceUpload(evt, dealId, n) {
       body: JSON.stringify({ invoice_name: file.name, invoice_data: base64 })
     });
     if (!res.ok) { showToast('Upload failed', 'error'); return; }
-    showToast('Invoice uploaded', 'success');
+    showToast(n === 1 ? 'Agreement uploaded' : 'Signed copy uploaded', 'success');
     const idx = dealsData.findIndex(d => d.id === dealId);
     if (idx !== -1) {
       if (n === 1) { dealsData[idx].invoice1_name = file.name; dealsData[idx].invoice1_data = base64; }
       else         { dealsData[idx].invoice2_name = file.name; dealsData[idx].invoice2_data = base64; }
+    }
+    // Uploading the signed copy is the moment it's signed — tick it in the
+    // same motion rather than leaving the deal reading "awaiting signature".
+    if (n === 2 && idx !== -1 && !dealsData[idx].signature_received) {
+      await dealSetSigned(dealId, true);
+      return;
     }
     openDealInvoicePanel(dealId);
     renderDealsTable();
