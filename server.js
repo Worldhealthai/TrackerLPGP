@@ -9,6 +9,7 @@ const PizZip = require('pizzip');
 const Docxtemplater = require('docxtemplater');
 const { sql, initDb } = require('./database');
 const { registerWasteman } = require('./wasteman');
+const { createBridgeRouter } = require('./bridge');
 
 // Email transporter — configured via env vars; silently disabled if not set
 function createMailTransport() {
@@ -462,6 +463,12 @@ async function calcExcessDeductions(empId, year, annualSalary, allowance) {
     breakdown
   };
 }
+
+// ─── OPS BRIDGE ──────────────────────────────────────────────────────────────
+// Read-only surface for the Sales CRM (LPGP-CRM). Authenticated by the shared
+// OPS_BRIDGE_KEY secret rather than an admin cookie — the caller is a server,
+// not a browser. Mounted before the auth routes so it never inherits them.
+app.use('/api/bridge', createBridgeRouter({ q, ensureDb }));
 
 // ─── AUTH ────────────────────────────────────────────────────────────────────
 
